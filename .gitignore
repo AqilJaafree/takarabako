@@ -1,0 +1,28 @@
+# Internal docs — not for the public repo
+takarabako-prd.md
+
+# Secrets / private keys
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.der
+secrets.json
+**/*private-key*
+**/*privkey*
+
+# Node
+node_modules/
+dist/
+build/
+*.log
+
+# Foundry (contracts/) — vendored deps, reinstall via `forge install`; build output
+contracts/lib/
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+
+# OS
+.DS_Store
