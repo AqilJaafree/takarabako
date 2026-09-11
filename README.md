@@ -7,7 +7,7 @@ working spec (v0.2) lives outside this repo, kept local-only.
 
 ## Layout
 
-- **`contracts/`** — Foundry workspace: `MockJPYC`, mock risk-tier tokens,
+- **`contracts/`** — Foundry workspace: `MockUSDC`, mock risk-tier tokens,
   and `TakarabakoVault` (mock-yield ERC-4626-flavored vault). See its own
   `forge test` output for coverage.
 - **`backend/`** — Node/TypeScript orchestrator: the deposit/verify/withdraw

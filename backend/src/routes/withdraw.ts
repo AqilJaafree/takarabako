@@ -5,7 +5,7 @@ import { store } from "../store.js";
 import { proposeExitAll } from "../agent.js";
 
 /// POST /withdraw — PRD §6.6. Exits every open position for the user,
-/// settles JPYC to the dev/treasury wallet (not the user's own address —
+/// settles USDC to the dev/treasury wallet (not the user's own address —
 /// see PRD §6.6 and contracts/src/TakarabakoVault.sol `withdrawTo`), and
 /// returns a redemption receipt with the 2% fee applied.
 export const withdrawRouter = Router();
@@ -29,27 +29,27 @@ withdrawRouter.post("/withdraw", async (req, res) => {
   }
 
   const positions = store.getPositions(nullifier);
-  const { grossJpyc } = await proposeExitAll(positions);
+  const { grossUsdc } = await proposeExitAll(positions);
   store.clearPositions(nullifier);
 
   const feeBps = config.withdrawFeeBps;
-  const fee = (grossJpyc * feeBps) / 10_000;
-  const netJpyc = grossJpyc - fee;
+  const fee = (grossUsdc * feeBps) / 10_000;
+  const netUsdc = grossUsdc - fee;
 
   store.logWithdraw({
     id: crypto.randomUUID(),
     nullifier,
-    grossJpyc,
+    grossUsdc,
     feeBps,
-    netJpyc,
+    netUsdc,
     ts: Date.now(),
   });
 
   res.json({
     positionsClosed: positions.length,
-    grossJpyc,
+    grossUsdc,
     feeBps,
-    netJpyc,
-    receipt: `¥${grossJpyc.toFixed(0)} -> ${feeBps / 100}% fee -> ¥${netJpyc.toFixed(0)} ready for pickup`,
+    netUsdc,
+    receipt: `$${grossUsdc.toFixed(2)} -> ${feeBps / 100}% fee -> $${netUsdc.toFixed(2)} ready for pickup`,
   });
 });

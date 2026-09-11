@@ -4,7 +4,7 @@ import { store } from "../store.js";
 import { walletSubname, registerSubname } from "../ens.js";
 
 /// POST /deposit — PRD §6.1 + §7.3. Cash lands in the box, backend fronts
-/// JPYC from the treasury (Phase 1: real on-chain `depositFor` call — see
+/// USDC from the treasury (Phase 1: real on-chain `depositFor` call — see
 /// contracts/src/TakarabakoVault.sol) and registers/reuses the wallet's ENS
 /// v2 subname under `wantest.eth`.
 export const depositRouter = Router();

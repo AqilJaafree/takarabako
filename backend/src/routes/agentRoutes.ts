@@ -4,7 +4,7 @@ import { store } from "../store.js";
 import { positionSubname, registerSubname } from "../ens.js";
 import { proposeOpenPosition } from "../agent.js";
 
-/// POST /agent/open-position — PRD §6.4 + §7.9. Routes idle JPYC into the
+/// POST /agent/open-position — PRD §6.4 + §7.9. Routes idle USDC into the
 /// Claude Haiku agent's risk-tiered Uniswap v3/v4 position management, then
 /// registers the position's own ENS v2 subname (`uniswap-{positionId}.wantest.eth`).
 export const agentRouter = Router();

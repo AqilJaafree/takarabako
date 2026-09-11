@@ -2,7 +2,7 @@ export const config = {
   port: Number(process.env.PORT ?? 4000),
   rpcUrl: process.env.RPC_URL ?? "https://sepolia.base.org",
   treasuryPrivateKey: process.env.TREASURY_PRIVATE_KEY ?? "",
-  jpycAddress: process.env.JPYC_ADDRESS ?? "",
+  usdcAddress: process.env.USDC_ADDRESS ?? "",
   vaultAddress: process.env.VAULT_ADDRESS ?? "",
   world: {
     appId: process.env.WORLD_APP_ID ?? "",

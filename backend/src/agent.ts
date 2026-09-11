@@ -35,5 +35,5 @@ export async function proposeExitAll(positions: { pair: string; amount: number; 
   // ITakarabakoAgentController, decreaseLiquidity + collect on-chain.
   const total = positions.reduce((sum, p) => sum + p.amount, 0);
   console.log(`[agent:stub] exiting ${positions.length} position(s), gross ${total}`);
-  return { grossJpyc: total };
+  return { grossUsdc: total };
 }

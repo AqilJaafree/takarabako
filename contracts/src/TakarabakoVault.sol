@@ -15,72 +15,72 @@ import {ITakarabakoVault} from "./interfaces/ITakarabakoVault.sol";
 contract TakarabakoVault is ITakarabakoVault, Ownable {
     using SafeERC20 for IERC20;
 
-    uint256 private constant RAY = 1e18;
+    uint256 private constant RAY = 1e18; // fixed-point scale for the exchange rate, independent of `usdc`'s own decimals
     uint256 private constant BPS_DENOMINATOR = 10_000;
     uint256 private constant SECONDS_PER_YEAR = 365 days;
 
-    IERC20 public immutable jpyc;
+    IERC20 public immutable usdc;
 
-    uint256 public exchangeRate = RAY; // JPYC per share, RAY-scaled
+    uint256 public exchangeRate = RAY; // USDC (raw units) per share, RAY-scaled
     uint256 public apyBps; // e.g. 420 = 4.20%
     uint256 public lastAccrualTs;
 
     mapping(address => uint256) private _shares;
     uint256 public totalShares;
 
-    event Deposited(address indexed user, uint256 jpycAmount, uint256 shares);
-    event Withdrawn(address indexed owner, address indexed recipient, uint256 shares, uint256 jpycAmount);
+    event Deposited(address indexed user, uint256 usdcAmount, uint256 shares);
+    event Withdrawn(address indexed owner, address indexed recipient, uint256 shares, uint256 usdcAmount);
     event ApyUpdated(uint256 newApyBps);
     event YieldReserveFunded(uint256 amount);
 
-    constructor(IERC20 jpyc_, uint256 initialApyBps, address initialOwner) Ownable(initialOwner) {
-        jpyc = jpyc_;
+    constructor(IERC20 usdc_, uint256 initialApyBps, address initialOwner) Ownable(initialOwner) {
+        usdc = usdc_;
         apyBps = initialApyBps;
         lastAccrualTs = block.timestamp;
     }
 
-    /// @notice Treasury fronts `jpycAmount` (already pulled into this tx via
+    /// @notice Treasury fronts `usdcAmount` (already pulled into this tx via
     /// `transferFrom`, so the treasury must have approved the vault once at
     /// setup); shares are minted to `user`.
-    function depositFor(address user, uint256 jpycAmount) external onlyOwner returns (uint256 shares) {
-        require(jpycAmount > 0, "zero amount");
+    function depositFor(address user, uint256 usdcAmount) external onlyOwner returns (uint256 shares) {
+        require(usdcAmount > 0, "zero amount");
         _accrue();
 
-        jpyc.safeTransferFrom(msg.sender, address(this), jpycAmount);
+        usdc.safeTransferFrom(msg.sender, address(this), usdcAmount);
 
-        shares = (jpycAmount * RAY) / exchangeRate;
+        shares = (usdcAmount * RAY) / exchangeRate;
         _shares[user] += shares;
         totalShares += shares;
 
-        emit Deposited(user, jpycAmount, shares);
+        emit Deposited(user, usdcAmount, shares);
     }
 
     /// @notice Burns `shares` of `owner` and sends principal + accrued yield
     /// to `recipient` — the dev/treasury wallet in the v1 withdraw flow
     /// (PRD §6.6); the 2% cash-redemption fee is computed by the backend on
-    /// top of `jpycAmount`, not inside the vault.
+    /// top of `usdcAmount`, not inside the vault.
     function withdrawTo(address owner_, address recipient, uint256 shares)
         external
         onlyOwner
-        returns (uint256 jpycAmount)
+        returns (uint256 usdcAmount)
     {
         require(shares > 0 && shares <= _shares[owner_], "bad shares");
         _accrue();
 
-        jpycAmount = (shares * exchangeRate) / RAY;
+        usdcAmount = (shares * exchangeRate) / RAY;
         _shares[owner_] -= shares;
         totalShares -= shares;
 
-        jpyc.safeTransfer(recipient, jpycAmount);
+        usdc.safeTransfer(recipient, usdcAmount);
 
-        emit Withdrawn(owner_, recipient, shares, jpycAmount);
+        emit Withdrawn(owner_, recipient, shares, usdcAmount);
     }
 
-    /// @notice Treasury tops up the JPYC actually held by the vault so it can
+    /// @notice Treasury tops up the USDC actually held by the vault so it can
     /// pay out the yield implied by the rising exchange rate. Mirrors PRD
     /// §7.6: "topped up from a rewards wallet."
     function fundYieldReserve(uint256 amount) external onlyOwner {
-        jpyc.safeTransferFrom(msg.sender, address(this), amount);
+        usdc.safeTransferFrom(msg.sender, address(this), amount);
         emit YieldReserveFunded(amount);
     }
 
@@ -94,7 +94,7 @@ contract TakarabakoVault is ITakarabakoVault, Ownable {
         return _shares[user];
     }
 
-    function previewValue(address user) external view returns (uint256 jpycValue) {
+    function previewValue(address user) external view returns (uint256 usdcValue) {
         return (_shares[user] * _projectedExchangeRate()) / RAY;
     }
 

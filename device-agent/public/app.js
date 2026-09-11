@@ -38,7 +38,7 @@ function render(html) {
 function screenIdle() {
   render(`
     <p class="sub">No wallet yet — insert cash to begin.</p>
-    <button class="primary" id="btn-deposit">⚠️ Fallback: insert ¥1,000</button>
+    <button class="primary" id="btn-deposit">⚠️ Fallback: insert $1,000</button>
   `);
   document.getElementById("btn-deposit").onclick = onDeposit;
 }
@@ -46,7 +46,7 @@ function screenIdle() {
 function screenDeposited() {
   render(`
     <div class="ens">${state.ensName}</div>
-    <div class="balance">¥${state.balance.toLocaleString()}</div>
+    <div class="balance">$${state.balance.toLocaleString()}</div>
     <p class="sub">Wallet created. Prove you're human to unlock it.</p>
     <div class="qr">World ID<br/>Selfie Check QR<br/>(Sandbox simulator)</div>
     <button class="primary" id="btn-verify">Simulate Selfie Check (Sandbox)</button>
@@ -61,7 +61,7 @@ function screenHandleWallet() {
 
   render(`
     <div class="ens">${state.ensName}</div>
-    <div class="balance">¥${state.balance.toLocaleString()}</div>
+    <div class="balance">$${state.balance.toLocaleString()}</div>
     ${positionHtml}
     <p class="sub">Get yield:</p>
     <div class="row">
@@ -81,7 +81,7 @@ function screenReceipt(receipt) {
   render(`
     <p class="sub">Withdraw complete.</p>
     <div class="balance">${receipt.receipt}</div>
-    <p class="sub">JPYC settled to the dev/treasury wallet — cash payout is a redemption receipt in v1 (PRD §6.6).</p>
+    <p class="sub">USDC settled to the dev/treasury wallet — cash payout is a redemption receipt in v1 (PRD §6.6).</p>
     <button class="primary" id="btn-reset">New deposit</button>
   `);
   document.getElementById("btn-reset").onclick = () => {

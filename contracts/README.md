@@ -2,11 +2,12 @@
 
 Foundry workspace for Takarabako's on-chain pieces (PRD §7.4).
 
-- `src/mocks/MockJPYC.sol` — testnet stand-in for JPYC (PRD §7.5).
+- `src/mocks/MockUSDC.sol` — testnet stand-in for USDC (6 decimals, matching
+  the real token) (PRD §7.5).
 - `src/mocks/MockRiskToken.sol` — generic mintable ERC-20 for the medium/high
   risk-tier Uniswap pools when no liquid real testnet pair exists (PRD §7.6).
 - `src/TakarabakoVault.sol` — the mock-yield ERC-4626-flavored vault (PRD
-  §7.4/§7.6): `depositFor` fronts JPYC from the treasury, `withdrawTo`
+  §7.4/§7.6): `depositFor` fronts USDC from the treasury, `withdrawTo`
   settles principal + accrued yield to an explicit recipient (the
   dev/treasury wallet on withdraw, per §6.6 — not back to the depositor).
 - `script/Deploy.s.sol` — deploys all of the above to a testnet, treasury
@@ -26,8 +27,8 @@ forge test
 forge script script/Deploy.s.sol --rpc-url <testnet_rpc> --broadcast --private-key <treasury_pk>
 ```
 
-Feed the printed `MockJPYC` and `TakarabakoVault` addresses into
-`backend/.env` (`JPYC_ADDRESS`, `VAULT_ADDRESS`).
+Feed the printed `MockUSDC` and `TakarabakoVault` addresses into
+`backend/.env` (`USDC_ADDRESS`, `VAULT_ADDRESS`).
 
 ## Not yet in this workspace
 

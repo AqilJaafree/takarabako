@@ -17,7 +17,7 @@ export interface Position {
   user: string; // worldIdNullifier
   riskTier: RiskTier;
   pair: string;
-  amount: number; // JPYC principal, demo units
+  amount: number; // USDC principal, demo units
   apyBps: number;
   openedAt: number;
 }
@@ -33,9 +33,9 @@ export interface DepositEvent {
 export interface WithdrawEvent {
   id: string;
   nullifier: string;
-  grossJpyc: number;
+  grossUsdc: number;
   feeBps: number;
-  netJpyc: number;
+  netUsdc: number;
   ts: number;
 }
 
@@ -43,7 +43,7 @@ export interface Wallet {
   handle: string;
   ensName: string;
   boundAddress: string;
-  idleBalance: number; // JPYC not yet routed into a position
+  idleBalance: number; // USDC not yet routed into a position
   nullifier: string | null; // set once §6.2 signup/login binds a human
 }
 
