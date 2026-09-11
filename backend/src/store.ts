@@ -1,11 +1,16 @@
+import { keccak256, toBytes, getAddress } from "viem";
+
 /// In-memory store for the hackathon build. PRD §9 data model.
-/// Phase 1 swaps this for reading `sharesOf`/`previewValue` on-chain and a
-/// small Postgres/SQLite table for the event log — the shape stays the same.
+/// Phase 1 (done): `depositOnChain`/`withdrawAllOnChain` (chain.ts) read and
+/// write real vault state keyed by `Wallet.boundAddress` below. Still local:
+/// the event log and the Uniswap-position records — those move to a small
+/// Postgres/SQLite table whenever Phase 3 makes them real.
 
 export type RiskTier = "low" | "medium" | "high";
 
 export interface User {
   worldIdNullifier: string; // PK
+  handle: string;
   boundAddress: string;
   ensName: string;
   createdAt: number;
@@ -72,9 +77,14 @@ export const store = {
     const wallet: Wallet = {
       handle,
       ensName,
-      // Deterministic placeholder address for the demo — Phase 1 generates
-      // (or derives) a real signer/smart-account address here instead.
-      boundAddress: `0x${handle.padEnd(40, "0").slice(0, 40)}`,
+      // Deterministic address derived from the handle — valid, checksummed,
+      // and stable across restarts, but not one anyone holds the key to.
+      // That's fine: only the treasury ever moves vault shares for it
+      // (onlyOwner in TakarabakoVault.sol), so this is purely a bookkeeping
+      // key on-chain. Phase 1+ swaps this for a real generated/derived
+      // signer or smart-account address once the box needs the user to
+      // hold their own key.
+      boundAddress: getAddress(`0x${keccak256(toBytes(handle)).slice(-40)}`),
       idleBalance: 0,
       nullifier: null,
     };

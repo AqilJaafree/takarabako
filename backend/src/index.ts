@@ -29,6 +29,15 @@ app.use(agentRouter);
 app.use(withdrawRouter);
 app.use(positionRouter);
 
+// Catches anything asyncHandler forwards (chain calls, World ID, the
+// agent) — without this, an unhandled rejection in an async route takes
+// the whole process down instead of just failing that one request.
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(err);
+  const message = err instanceof Error ? err.message : "internal error";
+  res.status(500).json({ error: message });
+});
+
 app.listen(config.port, () => {
   console.log(`takarabako backend listening on :${config.port}`);
 });

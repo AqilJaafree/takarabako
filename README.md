@@ -2,7 +2,7 @@
 
 Cash-in IoT box → ENS-registered wallet → World ID Selfie Check → risk-tiered
 Uniswap v3/v4 yield managed by a Claude Haiku agent. Built for ETHGlobal
-Tokyo 2026. Full product spec: `takarabako-prd.pdf` (v0.1) — the current
+Online 2026. Full product spec: `takarabako-prd.pdf` (v0.1) — the current
 working spec (v0.2) lives outside this repo, kept local-only.
 
 ## Layout

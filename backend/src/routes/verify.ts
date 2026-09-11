@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { store } from "../store.js";
 import { verifyProof } from "../worldId.js";
+import { asyncHandler } from "../asyncHandler.js";
 
 /// POST /verify — PRD §6.2. Verifies a World ID Selfie Check proof
 /// server-side (against the Sandbox simulator in dev) and binds the
@@ -19,7 +20,7 @@ const VerifyBody = z.object({
   }),
 });
 
-verifyRouter.post("/verify", async (req, res) => {
+verifyRouter.post("/verify", asyncHandler(async (req, res) => {
   const parsed = VerifyBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -42,6 +43,7 @@ verifyRouter.post("/verify", async (req, res) => {
   const isNewNullifier = !store.getUser(result.nullifierHash);
   store.createUser({
     worldIdNullifier: result.nullifierHash,
+    handle,
     boundAddress: wallet.boundAddress,
     ensName: wallet.ensName,
     createdAt: isNewNullifier ? Date.now() : store.getUser(result.nullifierHash)!.createdAt,
@@ -54,4 +56,4 @@ verifyRouter.post("/verify", async (req, res) => {
     nullifierHash: result.nullifierHash,
     reused: !isNewNullifier,
   });
-});
+}));

@@ -1,6 +1,6 @@
 export const config = {
   port: Number(process.env.PORT ?? 4000),
-  rpcUrl: process.env.RPC_URL ?? "https://sepolia.base.org",
+  rpcUrl: process.env.RPC_URL ?? "https://ethereum-sepolia-rpc.publicnode.com",
   treasuryPrivateKey: process.env.TREASURY_PRIVATE_KEY ?? "",
   usdcAddress: process.env.USDC_ADDRESS ?? "",
   vaultAddress: process.env.VAULT_ADDRESS ?? "",

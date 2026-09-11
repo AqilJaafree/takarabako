@@ -3,6 +3,7 @@ import { z } from "zod";
 import { store } from "../store.js";
 import { positionSubname, registerSubname } from "../ens.js";
 import { proposeOpenPosition } from "../agent.js";
+import { asyncHandler } from "../asyncHandler.js";
 
 /// POST /agent/open-position — PRD §6.4 + §7.9. Routes idle USDC into the
 /// Claude Haiku agent's risk-tiered Uniswap v3/v4 position management, then
@@ -15,7 +16,7 @@ const OpenPositionBody = z.object({
   amount: z.number().positive(),
 });
 
-agentRouter.post("/agent/open-position", async (req, res) => {
+agentRouter.post("/agent/open-position", asyncHandler(async (req, res) => {
   const parsed = OpenPositionBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -51,4 +52,4 @@ agentRouter.post("/agent/open-position", async (req, res) => {
     pair: position.pair,
     apyBps: position.apyBps,
   });
-});
+}));
