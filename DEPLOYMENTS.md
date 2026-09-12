@@ -94,21 +94,55 @@ found).
 - `findOwner("wantest")` → treasury address (independently verified, not just trusting the tx receipt)
 - `findExpiry("wantest")` → 2027-09-12 (1-year registration)
 - Paid 8.000021 real Circle-USDC (commit tx `0x1cf2f306...`, register tx `0x0a10c61f...`)
-- `getSubregistry`/`getResolver` are currently `address(0)` — a deliberate safe placeholder. `ETHRegistry.setSubregistry(anyId, registry)` / `.setResolver(anyId, resolver)` are owner-only calls that can set these properly later, so registering first with placeholders (rather than guessing a `VerifiableFactory.deployProxy` init payload under time/cost pressure) was the lower-risk order of operations.
+- Registered with `address(0)` subregistry/resolver placeholders first (a deliberate lower-risk sequencing — see below), then `setSubregistry` was called once the real registry deployment was confirmed working; `getSubregistry("wantest")` now returns that real registry (see next section). `getResolver("wantest")` is still `address(0)` — no resolver deployed/needed yet.
 
-**Not yet done:** deploying our own `PermissionedRegistry` (via
-`VerifiableFactory.deployProxy(implementation, salt, initData)`) to
-actually issue subnames like `machina.wantest.eth` / `uniswap-{id}.wantest.eth`.
-This needs the exact initializer signature confirmed before spending real
-gas on it — `backend/src/ens.ts` stays stubbed until then.
+### Subname registry — real, deployed, issuing real subnames
+
+Found the exact deployment mechanics by getting `RegistryRolesLib.sol`'s
+authoritative source from `ensdomains/contracts-v2` on GitHub (via `gh api`,
+not a doc summary) rather than guessing a role bitmap, and by confirming
+`UserRegistry` (not the root's `PermissionedRegistry`) is the actual
+`VerifiableFactory`-clonable implementation, with its own `initialize()`.
+
+| Contract | Address | Verified as |
+|---|---|---|
+| `UserRegistry` implementation | `0x624a25d67b59d587752ebec8dded8827dae52050` | `UserRegistry`; has `initialize(address,uint256)`, unlike the root's constructor-only `PermissionedRegistry` |
+| **Our subregistry for `wantest.eth`** | `0x786441fDe1a4006EadD745A8b90d8621F7a99916` | deployed via `VerifiableFactory.deployProxy`; `factory.verifyContract(...)` confirms it points at the `UserRegistry` impl above |
+
+Deployment used `salt = uint256(keccak256(abi.encode(keccak256("UserRegistry"), namehash("wantest.eth"), 0)))`
+and `data = initialize(treasury, ALL_ROLES)`, where `ALL_ROLES` is every
+role constant from `RegistryRolesLib.sol` (base + `<<128` admin variant)
+OR'd together. Both `namehash("wantest.eth")` and `keccak256("wantest")`
+were cross-checked against values that appeared independently inside the
+`wantest.eth` registration transaction's own logs — not just internal
+consistency, agreement with what the real ENS contracts had already
+computed on-chain. Every step (proxy deployment, linking it to
+`wantest.eth` via `ETHRegistry.setSubregistry(findTokenId("wantest"), ...)`,
+then registering the first real subname) was dry-run via `eth_call`
+first — all succeeded with no reverts before any real transaction was sent.
+
+`ETHRegistry.getSubregistry("wantest")` now returns our registry above,
+confirmed independently (not just the tx receipt).
+
+**Real subnames issued and independently verified** (`findOwner(label)`
+on our registry matches exactly):
+
+| Subname | Owner | Register tx |
+|---|---|---|
+| `machina.wantest.eth` | `0xb018D435f253f63fff95E3a37a11FA54D9283702` | `0x15ad190b...` |
+| `realenstest.wantest.eth` | `0x62F5422C49F448d2D3B57F0dd26F14fF6b43A82B` | `0x0b5a23b4...` |
+| `uniswap-1.wantest.eth` | `0x62F5422C49F448d2D3B57F0dd26F14fF6b43A82B` | `0x3ebf71d1...` |
+
+`backend/src/ens.ts` calls this for real now (`registerEnsLabelOnChain` in
+`chain.ts`) — `POST /deposit` and `POST /agent/open-position` both mint
+genuine subnames, no stub path left for the happy case.
 
 ## Not yet real (still stubbed in the backend)
 
 - **World ID Selfie Check** (`backend/src/worldId.ts`) — needs a World
   Developer Portal app + Selfie Check enablement (`developers@toolsforhumanity.com`).
-- **ENS v2 subname issuance** (`backend/src/ens.ts`) — the parent name is
-  real (see above); issuing actual subnames under it is the remaining step.
 - **Claude Haiku *decision-making*** (`backend/src/agent.ts`) — pool
   *selection* is still a hardcoded risk-tier map, not an LLM call; needs
   its own `ANTHROPIC_API_KEY` (`config.agent.model` is wired but unused).
-  Minting/exiting the chosen pool, however, is real — see above.
+  Minting/exiting the chosen pool and issuing its ENS subname, however,
+  are both real — see above.

@@ -120,6 +120,39 @@ export async function currentApyBpsOnChain(): Promise<number> {
   return Number(bps);
 }
 
+const userRegistryAbi = parseAbi([
+  "function register(string label, address owner, address registry, address resolver, uint256 roleBitmap, uint64 expiry) returns (uint256)",
+  "function findOwner(string label) view returns (address)",
+]);
+
+/// Registers `label` as a subname on `registryAddress` (a deployed
+/// UserRegistry — DEPLOYMENTS.md — that already owns/subregisters some
+/// parent name). Used for both wallet subnames and position subnames
+/// under `wantest.eth`; `registry`/`resolver` are left `address(0)` (the
+/// PRD's documented safe-placeholder pattern — owner-settable later via
+/// `setSubregistry`/`setResolver`, same as `wantest.eth` itself).
+export async function registerEnsLabelOnChain(registryAddress: Address, label: string, owner: Address, expiry: bigint) {
+  if (!walletClient) throw new Error("chain not configured — set TREASURY_PRIVATE_KEY/USDC_ADDRESS/VAULT_ADDRESS");
+  const zero: Address = "0x0000000000000000000000000000000000000000";
+
+  const { result: tokenId } = await publicClient.simulateContract({
+    account: walletClient.account,
+    address: registryAddress,
+    abi: userRegistryAbi,
+    functionName: "register",
+    args: [label, owner, zero, zero, 0n, expiry],
+  });
+  const hash = await walletClient.writeContract({
+    address: registryAddress,
+    abi: userRegistryAbi,
+    functionName: "register",
+    args: [label, owner, zero, zero, 0n, expiry],
+  });
+  await publicClient.waitForTransactionReceipt({ hash });
+
+  return { tokenId, txHash: hash };
+}
+
 export interface MintPositionParams {
   token0: Address;
   token1: Address;
