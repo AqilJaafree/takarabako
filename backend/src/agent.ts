@@ -8,13 +8,15 @@ import type { RiskTier } from "./store.js";
 /// `proposeRebalance`, `proposeExit`) against `ITakarabakoAgentController`
 /// and the actual Uniswap v3 `NonfungiblePositionManager`.
 
-// See DEPLOYMENTS.md for verified addresses — only `low` has a real pool
-// with real seeded liquidity so far (pool creation alone costs ~0.005 ETH
-// per pair on Sepolia, since Uniswap deploys a fresh contract per pool).
-const RISK_POOLS: Record<RiskTier, { pair: string; baseApyBps: number; poolAddress?: `0x${string}` }> = {
+// See DEPLOYMENTS.md for verified addresses — all three tiers now have a
+// real Uniswap v3 pool with real seeded liquidity on Sepolia (treasury
+// holds the seed LP NFT for each). Not yet wired: minting a *new* position
+// sized to a user's own deposit into these pools — that's still Phase 3,
+// gated on the Claude Agent SDK call below.
+const RISK_POOLS: Record<RiskTier, { pair: string; baseApyBps: number; poolAddress: `0x${string}` }> = {
   low: { pair: "USDC/ETH", baseApyBps: 320, poolAddress: "0xE8Dd26347E5Ef1D98946D81b681db1bC4dEeC44d" },
-  medium: { pair: "USDC/AAVE", baseApyBps: 610 },
-  high: { pair: "USDC/DOGE", baseApyBps: 1450 },
+  medium: { pair: "USDC/AAVE", baseApyBps: 610, poolAddress: "0xb9a463fdBC9f1be53d582351b631e0EC277B16e0" },
+  high: { pair: "USDC/DOGE", baseApyBps: 1450, poolAddress: "0x90999138f8b1B69b953239Eb1F0D991e601Bbfe2" },
 };
 
 export interface OpenPositionResult {

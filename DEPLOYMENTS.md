@@ -34,8 +34,12 @@ Verified independently before use: `factory.feeAmountTickSpacing(3000) == 60`,
 | Tier | Pair | Fee | Pool address | Status |
 |---|---|---|---|---|
 | **Low** | USDC/WETH | 0.3% | `0xE8Dd26347E5Ef1D98946D81b681db1bC4dEeC44d` | **Live** — real liquidity seeded (LP NFT `#231957`, owned by treasury). Price initialized at 3000 USDC = 1 WETH. |
-| Medium | USDC/mAAVE | 0.3% | — | Not yet created — pool creation alone costs ~0.005 ETH (a fresh Uniswap v3 pool deploys its own contract via CREATE2); deferred pending more testnet ETH. |
-| High | USDC/mDOGE | 1% | — | Not yet created — same reason as medium. |
+| **Medium** | USDC/mAAVE | 0.3% | `0xb9a463fdBC9f1be53d582351b631e0EC277B16e0` | **Live** — real liquidity seeded (LP NFT `#231958`, owned by treasury). Price initialized at 100 USDC = 1 mAAVE. |
+| **High** | USDC/mDOGE | 1% | `0x90999138f8b1B69b953239Eb1F0D991e601Bbfe2` | **Live** — real liquidity seeded (LP NFT `#231959`, owned by treasury). Price initialized at 1 USDC = 10 mDOGE. |
+
+All three verified independently after seeding (`liquidity()` non-zero,
+`token0`/`token1`/`fee` match, `NPM.ownerOf(tokenId)` == treasury) —
+not just trusting transaction receipts.
 
 Pool math (token ordering, `sqrtPriceX96`, full-range ticks) for all three
 tiers was precomputed with exact BigInt arithmetic before touching chain —
@@ -59,4 +63,4 @@ public Sepolia faucets; never used for anything but this project.
 - **Claude Haiku agent** (`backend/src/agent.ts`) — needs its own
   `ANTHROPIC_API_KEY`; pool selection is currently a hardcoded map, not an
   LLM decision, and no per-user LP position is minted yet (only the
-  treasury's own seed position above exists).
+  treasury's own seed positions above exist).
