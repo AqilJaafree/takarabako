@@ -8,8 +8,11 @@ import type { RiskTier } from "./store.js";
 /// `proposeRebalance`, `proposeExit`) against `ITakarabakoAgentController`
 /// and the actual Uniswap v3 `NonfungiblePositionManager`.
 
-const RISK_POOLS: Record<RiskTier, { pair: string; baseApyBps: number }> = {
-  low: { pair: "USDC/ETH", baseApyBps: 320 },
+// See DEPLOYMENTS.md for verified addresses — only `low` has a real pool
+// with real seeded liquidity so far (pool creation alone costs ~0.005 ETH
+// per pair on Sepolia, since Uniswap deploys a fresh contract per pool).
+const RISK_POOLS: Record<RiskTier, { pair: string; baseApyBps: number; poolAddress?: `0x${string}` }> = {
+  low: { pair: "USDC/ETH", baseApyBps: 320, poolAddress: "0xE8Dd26347E5Ef1D98946D81b681db1bC4dEeC44d" },
   medium: { pair: "USDC/AAVE", baseApyBps: 610 },
   high: { pair: "USDC/DOGE", baseApyBps: 1450 },
 };
