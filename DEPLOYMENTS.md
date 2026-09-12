@@ -73,13 +73,41 @@ capital, not just gas; mAAVE/mDOGE are freely mintable mocks for
 medium/high). Mint amounts are small and fixed per tier, not literally
 proportional to the user's deposit — see the "why" comment in `agent.ts`.
 
+## ENS v2 (Sepolia Beta — genuinely live, confirmed on-chain)
+
+Earlier drafts of this doc assumed ENS v2/Namechain testnet availability
+was unconfirmed. It's not unconfirmed — it's live. Every address below
+was verified two ways before use: bytecode presence, then the *actual*
+Etherscan-verified contract name (not a doc summary) via WebFetch, then
+cross-checked against a related contract's own on-chain reference (e.g.
+`ETHRegistrar.ETH_REGISTRY()` == the `ETHRegistry` address independently
+found).
+
+| Contract | Address | Verified as |
+|---|---|---|
+| `ETHRegistry` (root PermissionedRegistry for `.eth`) | `0xbdc85dd5b15d7ecb354cd7cb6f2c50b4f2c4f0e2` | `PermissionedRegistry` |
+| `ETHRegistrar` | `0xa88553f454b77203b0d036a05c894d555eaaa2cc` | `ETHRegistrar`; `.ETH_REGISTRY()` matches the row above exactly |
+| `VerifiableFactory` | `0x10dc6333cdfe1fcef624c6e0a8221b91804cd7ef` | `VerifiableFactory` |
+| `StandardRentPriceOracle` | `0x8914b66260EB8C4fff795650c3AE8Cd335958987` | accepts real Circle Sepolia USDC (`0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`) as `paymentToken` — **not** ETH, **not** our MockUSDC |
+
+**`wantest.eth` is registered**, owned by the treasury:
+- `findOwner("wantest")` → treasury address (independently verified, not just trusting the tx receipt)
+- `findExpiry("wantest")` → 2027-09-12 (1-year registration)
+- Paid 8.000021 real Circle-USDC (commit tx `0x1cf2f306...`, register tx `0x0a10c61f...`)
+- `getSubregistry`/`getResolver` are currently `address(0)` — a deliberate safe placeholder. `ETHRegistry.setSubregistry(anyId, registry)` / `.setResolver(anyId, resolver)` are owner-only calls that can set these properly later, so registering first with placeholders (rather than guessing a `VerifiableFactory.deployProxy` init payload under time/cost pressure) was the lower-risk order of operations.
+
+**Not yet done:** deploying our own `PermissionedRegistry` (via
+`VerifiableFactory.deployProxy(implementation, salt, initData)`) to
+actually issue subnames like `machina.wantest.eth` / `uniswap-{id}.wantest.eth`.
+This needs the exact initializer signature confirmed before spending real
+gas on it — `backend/src/ens.ts` stays stubbed until then.
+
 ## Not yet real (still stubbed in the backend)
 
 - **World ID Selfie Check** (`backend/src/worldId.ts`) — needs a World
   Developer Portal app + Selfie Check enablement (`developers@toolsforhumanity.com`).
-- **ENS v2 subname registration** (`backend/src/ens.ts`) — needs owning
-  `wantest.eth` and confirming ENS v2/Namechain testnet availability
-  (fallback: L1 NameWrapper subname registrar, same UX).
+- **ENS v2 subname issuance** (`backend/src/ens.ts`) — the parent name is
+  real (see above); issuing actual subnames under it is the remaining step.
 - **Claude Haiku *decision-making*** (`backend/src/agent.ts`) — pool
   *selection* is still a hardcoded risk-tier map, not an LLM call; needs
   its own `ANTHROPIC_API_KEY` (`config.agent.model` is wired but unused).
