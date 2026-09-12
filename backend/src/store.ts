@@ -25,6 +25,7 @@ export interface Position {
   amount: number; // USDC principal, demo units
   apyBps: number;
   openedAt: number;
+  nftTokenId?: string; // real Uniswap v3 position NFT id, once minted (chain.ts)
 }
 
 export interface DepositEvent {

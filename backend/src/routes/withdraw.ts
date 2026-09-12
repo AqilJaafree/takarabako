@@ -8,10 +8,11 @@ import { chainReady, withdrawAllOnChain, treasuryAddress } from "../chain.js";
 import { asyncHandler } from "../asyncHandler.js";
 
 /// POST /withdraw — PRD §6.6. Redeems every real vault share the user holds
-/// via a real on-chain `withdrawTo` call, plus exits any (still-stubbed,
-/// Phase 3) Uniswap agent positions, all settling to the dev/treasury
-/// wallet itself — not the user's own address (PRD §6.6) — then applies
-/// the 2% cash-redemption fee, computed here rather than in the vault.
+/// via a real on-chain `withdrawTo` call, plus exits any real Uniswap agent
+/// positions (decreaseLiquidity + collect on the actual LP NFT), all
+/// settling to the dev/treasury wallet itself — not the user's own address
+/// (PRD §6.6) — then applies the 2% cash-redemption fee, computed here
+/// rather than in the vault.
 export const withdrawRouter = Router();
 
 const WithdrawBody = z.object({

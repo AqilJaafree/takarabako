@@ -53,6 +53,26 @@ see the low-risk pool above for the pattern if reviving medium/high:
 lives in `contracts/.env` and `backend/.env` (both gitignored). Funded via
 public Sepolia faucets; never used for anything but this project.
 
+## Per-user position open/exit (PRD §6.4/§6.6) — real
+
+`POST /agent/open-position` mints a genuine new LP NFT into the tier's pool
+above; `POST /withdraw` decreases its liquidity and collects the proceeds,
+valuing the non-USDC side at each pool's fixed init price (not a live
+oracle) to fold into the receipt. Verified end-to-end for all three tiers,
+both directions (`chain.ts`, `agent.ts`):
+
+| Test | Nullifier | Open tx | Position NFT | Exit result |
+|---|---|---|---|---|
+| Low | `0xuni-low` | `0x6b1de330...` | `#231960` | liquidity → 0, gross ≈ $2.00 (1 USDC + 0.000333 WETH) |
+| Medium | `0xuni-med` | `0x868eae43...` | `#231961` | gross ≈ $20.00 (10 USDC + 0.1 mAAVE) |
+| High | `0xuni-high` | `0x99a78ffe...` | `#231962` | gross ≈ $20.00 (100 mDOGE + 10 USDC) |
+
+The treasury supplies the non-USDC side of every open (WETH for low —
+wrapped from real ETH, so this is the one operation that costs real
+capital, not just gas; mAAVE/mDOGE are freely mintable mocks for
+medium/high). Mint amounts are small and fixed per tier, not literally
+proportional to the user's deposit — see the "why" comment in `agent.ts`.
+
 ## Not yet real (still stubbed in the backend)
 
 - **World ID Selfie Check** (`backend/src/worldId.ts`) — needs a World
@@ -60,7 +80,7 @@ public Sepolia faucets; never used for anything but this project.
 - **ENS v2 subname registration** (`backend/src/ens.ts`) — needs owning
   `wantest.eth` and confirming ENS v2/Namechain testnet availability
   (fallback: L1 NameWrapper subname registrar, same UX).
-- **Claude Haiku agent** (`backend/src/agent.ts`) — needs its own
-  `ANTHROPIC_API_KEY`; pool selection is currently a hardcoded map, not an
-  LLM decision, and no per-user LP position is minted yet (only the
-  treasury's own seed positions above exist).
+- **Claude Haiku *decision-making*** (`backend/src/agent.ts`) — pool
+  *selection* is still a hardcoded risk-tier map, not an LLM call; needs
+  its own `ANTHROPIC_API_KEY` (`config.agent.model` is wired but unused).
+  Minting/exiting the chosen pool, however, is real — see above.

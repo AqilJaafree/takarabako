@@ -40,6 +40,7 @@ agentRouter.post("/agent/open-position", asyncHandler(async (req, res) => {
     amount,
     apyBps: proposal.apyBps,
     openedAt: Date.now(),
+    nftTokenId: proposal.tokenId,
   });
 
   const ensName = positionSubname(position.positionId);
@@ -51,5 +52,7 @@ agentRouter.post("/agent/open-position", asyncHandler(async (req, res) => {
     ensName,
     pair: position.pair,
     apyBps: position.apyBps,
+    nftTokenId: proposal.tokenId,
+    txHash: proposal.txHash,
   });
 }));
