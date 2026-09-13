@@ -191,11 +191,99 @@ button.tx-withdraw:hover:not(:disabled) {
   box-shadow: 0 10px 22px -12px rgba(143, 184, 224, 0.5);
 }
 
-button.risk-low { border-color: var(--good); color: var(--good); }
-button.risk-medium { border-color: var(--warn); color: var(--warn); }
-button.risk-high { border-color: var(--danger); color: var(--danger); }
-
 button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* Deposit/withdraw stay their own transaction-type section; yield is a
+   clearly separate section below a divider, one option per real pool. */
+.section-divider {
+  height: 1px;
+  margin: 4px 0 2px;
+  background: linear-gradient(90deg, transparent, var(--border) 20%, var(--border) 80%, transparent);
+}
+
+.section-label {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 2px 0 2px;
+}
+
+.yield-section { display: flex; flex-direction: column; gap: 8px; }
+.yield-list { display: flex; flex-direction: column; gap: 10px; }
+
+.back-link {
+  align-self: flex-start;
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  padding: 6px 4px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.back-link:hover { color: var(--text); }
+
+.yield-option {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  background: var(--panel-2);
+}
+
+.yield-option-top, .yield-option-bottom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.yield-option-bottom {
+  color: var(--muted);
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+}
+
+.yield-tier {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.yield-pair {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.yield-range { margin-left: auto; }
+
+.yield-apy {
+  font-weight: 700;
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.yield-option.risk-low { border-left-color: var(--good); }
+.yield-option.risk-low .yield-tier { color: var(--good); }
+.yield-option.risk-low .yield-apy { color: var(--good); }
+
+.yield-option.risk-medium { border-left-color: var(--warn); }
+.yield-option.risk-medium .yield-tier { color: var(--warn); }
+.yield-option.risk-medium .yield-apy { color: var(--warn); }
+
+.yield-option.risk-high { border-left-color: var(--danger); }
+.yield-option.risk-high .yield-tier { color: var(--danger); }
+.yield-option.risk-high .yield-apy { color: var(--danger); }
 
 #btn-done {
   background: transparent;

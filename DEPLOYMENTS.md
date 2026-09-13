@@ -194,10 +194,46 @@ instead of the original "cash in blind, identify after" order:
   0.001 ETH at verify-time, deposit afterward credited the same account) —
   see PRD §6.1/§6.2/§8 for the updated flow and sequence diagram.
 
-## Not yet real (still stubbed in the backend)
+## Claude Haiku 4.5 decision-making — now real
 
-- **Claude Haiku *decision-making*** (`backend/src/agent.ts`) — pool
-  *selection* is still a hardcoded risk-tier map, not an LLM call; needs
-  its own `ANTHROPIC_API_KEY` (`config.agent.model` is wired but unused).
-  Minting/exiting the chosen pool and issuing its ENS subname, however,
-  are both real — see above.
+`backend/src/agent.ts`'s `chooseRiskTierWithAgent()` makes a genuine
+`@anthropic-ai/sdk` call to `claude-haiku-4-5-20251001` (`ANTHROPIC_API_KEY`
+in `backend/.env`) before every `POST /agent/open-position` mint. It's given
+the live pool data (`getPoolsInfo()` — real pair/fee/APY, not hardcoded
+strings) plus the user's chosen risk tier and deposit amount, and returns a
+one-sentence rationale grounded in that data.
+
+**Guardrail (PRD §10):** the model has no authority to change the user's
+risk tier — `chooseRiskTierWithAgent` always mints into the tier the user
+picked on the kiosk screen; a mismatched `riskTier` in Claude's JSON reply
+is logged as a warning and discarded, never acted on. This is a deliberate
+match for the security posture already in place for the agent's on-chain
+actions: it proposes/explains, the backend's own tier-scoped logic is what
+actually executes.
+
+**Resilience:** any API failure (bad key, timeout, malformed JSON) falls
+back to a canned per-tier rationale rather than blocking the mint — verified
+by triggering a real failure (an unsupported `output_config.effort` param
+on Haiku 4.5) and confirming the position still opened correctly with the
+fallback text logged.
+
+**Verified end-to-end, not just trusted:** real API call → response logged
+as `[agent] model=claude-haiku-4-5-20251001 confirmed risk=low: "USDC/ETH at
+0.3% fee offers stable stablecoin-to-major-asset exposure with modest 3.2%
+APY, matching your low-risk selection."` — the rationale cites the pool's
+actual fee/APY figures it was given, confirming it's reasoning over the real
+JSON rather than echoing a template. The resulting mint tx
+(`0xe2b46783...`) was independently confirmed on-chain (`status: 1`, a real
+NFT `Transfer` at the NonfungiblePositionManager address) via `cast
+receipt`, not just the API's own response.
+
+Two real bugs were caught and fixed by this live test rather than assumed
+away: Haiku 4.5 rejects `output_config.effort` (Anthropic API error,
+`invalid_request_error`) — removed; and Haiku sometimes wraps its JSON
+reply in a ` ```json ` fence despite being told not to — now stripped
+before `JSON.parse`.
+
+The rationale is threaded all the way to the kiosk: `POST
+/agent/open-position`'s response includes `rationale`, and
+`device-agent/public/app.js` logs it (`agent: "..."`) right after the
+position-opened line.

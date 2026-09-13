@@ -2,13 +2,20 @@ import { Router } from "express";
 import { z } from "zod";
 import { store } from "../store.js";
 import { positionSubname, registerSubname } from "../ens.js";
-import { proposeOpenPosition } from "../agent.js";
+import { proposeOpenPosition, getPoolsInfo } from "../agent.js";
 import { asyncHandler } from "../asyncHandler.js";
 
 /// POST /agent/open-position — PRD §6.4 + §7.9. Routes idle USDC into the
 /// Claude Haiku agent's risk-tiered Uniswap v3/v4 position management, then
 /// registers the position's own ENS v2 subname (`uniswap-{positionId}.wantest.eth`).
 export const agentRouter = Router();
+
+/// GET /agent/pools — public Uniswap v3 pool metadata per risk tier, so the
+/// kiosk's "get yield" screen can show the actual pair/pool a deposit goes
+/// into before the user commits to a risk level.
+agentRouter.get("/agent/pools", (_req, res) => {
+  res.json({ pools: getPoolsInfo() });
+});
 
 const OpenPositionBody = z.object({
   userId: z.string().min(1),
@@ -54,5 +61,6 @@ agentRouter.post("/agent/open-position", asyncHandler(async (req, res) => {
     apyBps: position.apyBps,
     nftTokenId: proposal.tokenId,
     txHash: proposal.txHash,
+    rationale: proposal.rationale,
   });
 }));

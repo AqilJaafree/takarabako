@@ -15,6 +15,8 @@ const state = {
   ensName: null,
   balance: 0,
   position: null,
+  lastPulseTs: 0,
+  pulsePollTimer: null,
 };
 
 function log(msg) {
@@ -34,6 +36,68 @@ async function api(path, body) {
   return json;
 }
 
+// GET /agent/pools — the real Uniswap v3 pool + asset each risk tier deposits
+// into (PRD §7.6). Kicked off once at load so it's already resolved by the
+// time the account screen needs it.
+let poolsPromise = null;
+function loadPools() {
+  if (!poolsPromise) {
+    poolsPromise = fetch(`${BACKEND_URL}/agent/pools`)
+      .then((res) => res.json())
+      .then((json) => json.pools)
+      .catch(() => []);
+  }
+  return poolsPromise;
+}
+loadPools();
+
+// Bill acceptor bridge (device-agent/server.js): polls for a real pulse-
+// triggered deposit landing while this screen is up, the same way the
+// fallback button's own POST /deposit already updates the screen — just
+// without a click. Runs only while an account screen showing a balance is
+// visible; stopped on logout, receipt, or the yield page.
+function startPulsePolling() {
+  if (state.pulsePollTimer) return;
+  state.pulsePollTimer = setInterval(async () => {
+    try {
+      // Same-origin call to device-agent/server.js itself (not BACKEND_URL) —
+      // it holds the bridge state and already talks to the real backend.
+      const res = await fetch(`/pulse-deposit/latest?since=${state.lastPulseTs}`);
+      const deposit = await res.json();
+      if (deposit.ts && deposit.ts > state.lastPulseTs) {
+        state.lastPulseTs = deposit.ts;
+        state.balance = deposit.balance;
+        log(`bill acceptor: $${deposit.amount} accepted — tx ${deposit.txHash}`);
+        screenAccount();
+      }
+    } catch {
+      // bridge or backend briefly unreachable — next poll retries
+    }
+  }, 2000);
+}
+
+function stopPulsePolling() {
+  if (state.pulsePollTimer) {
+    clearInterval(state.pulsePollTimer);
+    state.pulsePollTimer = null;
+  }
+}
+
+// Tell device-agent/server.js which account is currently verified, so a
+// pulse arriving later knows whose /deposit to call — fire-and-forget, since
+// a transient failure here just means the fallback button still works.
+function registerSession() {
+  fetch("/session", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ userId: state.userId, ensName: state.ensName, balance: state.balance }),
+  }).catch(() => {});
+}
+
+function clearSession() {
+  fetch("/session/end", { method: "POST" }).catch(() => {});
+}
+
 function render(html) {
   screenEl.innerHTML = html;
 }
@@ -51,6 +115,50 @@ function screenAuth() {
   });
 }
 
+function formatRange(pool) {
+  if (pool.fullRange) return "Full range (0 → ∞)";
+  const fmt = (n) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  return `${fmt(pool.priceLowUsdc)} – ${fmt(pool.priceHighUsdc)}`;
+}
+
+function yieldOptionHtml(pool) {
+  const pair = pool.pair.replace("/", " / ");
+  const apy = (pool.apyBps / 100).toFixed(1);
+  const fee = (pool.feeBps / 100).toFixed(2);
+  return `
+    <button class="yield-option risk-${pool.riskTier}" id="btn-${pool.riskTier}">
+      <div class="yield-option-top">
+        <span class="yield-tier">${pool.riskTier}</span>
+        <span class="yield-pair">${pair}</span>
+        <span class="yield-apy">${apy}% APY</span>
+      </div>
+      <div class="yield-option-bottom">
+        <span>${fee}% fee</span>
+        <span class="yield-range">${formatRange(pool)}</span>
+      </div>
+    </button>
+  `;
+}
+
+// Dedicated yield page — its own screen (not a section bolted onto the
+// account view), showing each real Uniswap v3 pool's fee tier and price
+// range alongside the pair and APY, so the risk choice is fully informed.
+async function screenYield() {
+  const pools = await loadPools();
+  render(`
+    <button class="back-link" id="btn-yield-back">← Back to account</button>
+    <p class="section-label">Get yield — real Uniswap v3 pools</p>
+    <p class="sub">Every option below mints a real concentrated-liquidity position on Sepolia.</p>
+    <div class="yield-list">
+      ${pools.map(yieldOptionHtml).join("")}
+    </div>
+  `);
+  document.getElementById("btn-yield-back").onclick = screenAccount;
+  for (const pool of pools) {
+    document.getElementById(`btn-${pool.riskTier}`).onclick = () => onOpenPosition(pool.riskTier);
+  }
+}
+
 function screenAccount() {
   const positionHtml = state.position
     ? `<p class="sub">Active: <span class="ens">${state.position.ensName}</span> — ${state.position.pair} @ ${(state.position.apyBps / 100).toFixed(1)}% APY</p>`
@@ -59,21 +167,13 @@ function screenAccount() {
   const canWithdraw = state.balance > 0 || !!state.position;
 
   const yieldHtml = state.balance > 0
-    ? `
-      <p class="sub">Get yield:</p>
-      <div class="row">
-        <button class="risk-low" id="btn-low">Low</button>
-        <button class="risk-medium" id="btn-medium">Medium</button>
-        <button class="risk-high" id="btn-high">High</button>
-      </div>
-    `
+    ? `<div class="section-divider"></div><button id="btn-get-yield">Get yield →</button>`
     : "";
 
   render(`
     <div class="ens">${state.ensName}</div>
     <div class="balance">$${state.balance.toLocaleString()}</div>
     ${positionHtml}
-    <p class="sub">Transaction type — ⚠️ deposit is a fallback for "insert $1,000" until the bill acceptor is wired:</p>
     <div class="row">
       <button class="primary" id="btn-deposit">Deposit</button>
       <button class="tx-withdraw" id="btn-withdraw" ${canWithdraw ? "" : "disabled"}>Withdraw</button>
@@ -84,11 +184,7 @@ function screenAccount() {
   document.getElementById("btn-deposit").onclick = onDeposit;
   document.getElementById("btn-done").onclick = onDone;
   if (canWithdraw) document.getElementById("btn-withdraw").onclick = onWithdraw;
-  if (state.balance > 0) {
-    document.getElementById("btn-low").onclick = () => onOpenPosition("low");
-    document.getElementById("btn-medium").onclick = () => onOpenPosition("medium");
-    document.getElementById("btn-high").onclick = () => onOpenPosition("high");
-  }
+  if (state.balance > 0) document.getElementById("btn-get-yield").onclick = screenYield;
 }
 
 function screenReceipt(receipt) {
@@ -102,7 +198,9 @@ function screenReceipt(receipt) {
 }
 
 function onDone() {
-  Object.assign(state, { userId: null, ensName: null, balance: 0, position: null });
+  stopPulsePolling();
+  clearSession();
+  Object.assign(state, { userId: null, ensName: null, balance: 0, position: null, lastPulseTs: 0 });
   screenAuth();
 }
 
@@ -121,6 +219,8 @@ async function onVerify() {
     state.balance = res.balance;
     log(`verified — user ${res.userId}, ${res.ensName}`);
     if (res.fundingTxHash) log(`new wallet funded with 0.001 ETH — tx ${res.fundingTxHash}`);
+    registerSession();
+    startPulsePolling();
     screenAccount();
   } catch (e) {
     log(`verify failed: ${e.message}`);
@@ -148,6 +248,7 @@ async function onOpenPosition(riskLevel) {
     });
     state.position = res;
     log(`agent opened ${res.pair} — ${res.ensName}`);
+    if (res.rationale) log(`agent: "${res.rationale}"`);
     screenAccount();
   } catch (e) {
     log(`open-position failed: ${e.message}`);
