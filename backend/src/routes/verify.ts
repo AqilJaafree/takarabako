@@ -1,20 +1,21 @@
 import { Router } from "express";
 import { z } from "zod";
-import { store } from "../store.js";
+import { store, deriveBoundAddress } from "../store.js";
 import { getOrCreateUserWallet } from "../privy.js";
+import { deriveEnsLabel, walletSubname, registerSubname } from "../ens.js";
 import { asyncHandler } from "../asyncHandler.js";
 
-/// POST /verify — PRD §6.2. Identity via Privy: the kiosk takes an email
-/// on-screen, we look up (or create) that person's Privy user + embedded
-/// wallet server-side, and bind the resulting Privy user id to the wallet
-/// created in §6.1 — this is the sybil gate for the whole system (PRD §10).
-/// No phone, no QR, no bridge/polling — this used to be World ID Selfie
-/// Check, but its bridge handoff never got a phone to actually connect in
-/// testing, so it was replaced.
+/// POST /verify — PRD §6.1 (ATM-style: identity first, cash second). Takes
+/// an email on the kiosk screen, resolves (or creates) that person's real
+/// Privy user + embedded wallet server-side, and — for a brand-new
+/// account — registers their ENS v2 subname right here, before any cash
+/// has been inserted. This is the sybil gate for the whole system (PRD
+/// §10): like a real ATM, you identify yourself before the machine knows
+/// which account to credit, rather than depositing blind and hoping the
+/// right person claims it afterward.
 export const verifyRouter = Router();
 
 const VerifyBody = z.object({
-  handle: z.string().min(1).default("machina"),
   email: z.string().email(),
 });
 
@@ -24,33 +25,46 @@ verifyRouter.post("/verify", asyncHandler(async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const { handle, email } = parsed.data;
-
-  const wallet = store.getWallet(handle);
-  if (!wallet) {
-    res.status(404).json({ error: "no wallet for this box — deposit before verifying" });
-    return;
-  }
+  const { email } = parsed.data;
 
   const { userId, walletAddress, fundingTxHash } = await getOrCreateUserWallet(email);
 
-  const isNewUser = !store.getUser(userId);
-  store.createUser({
+  const existing = store.getAccount(userId);
+  if (existing) {
+    res.json({
+      verified: true,
+      userId,
+      ensName: existing.ensName,
+      boundAddress: existing.boundAddress,
+      privyWalletAddress: existing.privyWalletAddress,
+      balance: existing.idleBalance,
+      reused: true,
+    });
+    return;
+  }
+
+  const boundAddress = deriveBoundAddress(userId);
+  const ensName = walletSubname(deriveEnsLabel(email));
+  const { txHash: ensTxHash } = await registerSubname(ensName, boundAddress);
+
+  store.createAccount({
     privyUserId: userId,
-    handle,
-    boundAddress: wallet.boundAddress,
+    ensName,
+    boundAddress,
     privyWalletAddress: walletAddress,
-    ensName: wallet.ensName,
-    createdAt: isNewUser ? Date.now() : store.getUser(userId)!.createdAt,
+    idleBalance: 0,
+    createdAt: Date.now(),
   });
-  store.bindWalletToUser(handle, userId);
 
   res.json({
     verified: true,
-    ensName: wallet.ensName,
     userId,
+    ensName,
+    boundAddress,
     privyWalletAddress: walletAddress,
-    reused: !isNewUser,
+    balance: 0,
+    reused: false,
     fundingTxHash,
+    ensTxHash,
   });
 }));

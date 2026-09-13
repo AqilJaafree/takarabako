@@ -1,7 +1,7 @@
 import express from "express";
 import { config } from "./config.js";
-import { depositRouter } from "./routes/deposit.js";
 import { verifyRouter } from "./routes/verify.js";
+import { depositRouter } from "./routes/deposit.js";
 import { agentRouter } from "./routes/agentRoutes.js";
 import { withdrawRouter } from "./routes/withdraw.js";
 import { positionRouter } from "./routes/position.js";
@@ -21,8 +21,8 @@ app.use((_req, res, next) => {
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
-app.use(depositRouter);
 app.use(verifyRouter);
+app.use(depositRouter);
 app.use(agentRouter);
 app.use(withdrawRouter);
 app.use(positionRouter);

@@ -4,12 +4,22 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Takarabako Kiosk</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <main class="kiosk">
-    <h1>宝箱 Takarabako</h1>
-    <p class="sub">Physical module — Raspberry Pi 4 kiosk (PRD §6, §7.2)</p>
+    <div class="kiosk-badge" aria-hidden="true">宝箱</div>
+    <header class="kiosk-header">
+      <h1>Takarabako</h1>
+      <p class="sub">Physical module — Raspberry Pi 4 kiosk (PRD §6, §7.2)</p>
+    </header>
+    <div class="seam" aria-hidden="true"></div>
     <div id="screen" class="screen"></div>
     <div id="log" class="log"></div>
   </main>

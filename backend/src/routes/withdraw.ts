@@ -27,9 +27,9 @@ withdrawRouter.post("/withdraw", asyncHandler(async (req, res) => {
   }
   const { userId } = parsed.data;
 
-  const user = store.getUser(userId);
-  if (!user) {
-    res.status(404).json({ error: "unknown user — complete /verify first" });
+  const account = store.getAccount(userId);
+  if (!account) {
+    res.status(404).json({ error: "unknown account — complete /verify first" });
     return;
   }
   if (!chainReady || !treasuryAddress) {
@@ -42,11 +42,10 @@ withdrawRouter.post("/withdraw", asyncHandler(async (req, res) => {
   store.clearPositions(userId);
 
   const { txHash: vaultTxHash, amount: vaultUsdc } = await withdrawAllOnChain(
-    user.boundAddress as Address,
+    account.boundAddress as Address,
     treasuryAddress,
   );
-  const wallet = store.getWallet(user.handle);
-  if (wallet) wallet.idleBalance = 0;
+  account.idleBalance = 0;
 
   const grossUsdc = simulatedPositionsUsdc + vaultUsdc;
   const feeBps = config.withdrawFeeBps;

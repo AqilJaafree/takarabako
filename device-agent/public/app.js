@@ -1,16 +1,19 @@
 // Device agent kiosk UI — PRD §7.2. Talks to the backend over HTTPS/HTTP,
 // holds no private keys and no Privy/agent credentials of its own.
 // On the real Pi, point this at the backend's LAN address instead of localhost.
+//
+// ATM-style flow (PRD §6.1/§6.2): identify yourself first (email), then the
+// machine knows which account any cash you insert gets credited to — not
+// the other way around.
 const BACKEND_URL = window.BACKEND_URL || "http://localhost:4000";
 
 const screenEl = document.getElementById("screen");
 const logEl = document.getElementById("log");
 
 const state = {
-  handle: "machina",
+  userId: null,
   ensName: null,
   balance: 0,
-  userId: null,
   position: null,
 };
 
@@ -35,19 +38,9 @@ function render(html) {
   screenEl.innerHTML = html;
 }
 
-function screenIdle() {
+function screenAuth() {
   render(`
-    <p class="sub">No wallet yet — insert cash to begin.</p>
-    <button class="primary" id="btn-deposit">⚠️ Fallback: insert $1,000</button>
-  `);
-  document.getElementById("btn-deposit").onclick = onDeposit;
-}
-
-function screenDeposited() {
-  render(`
-    <div class="ens">${state.ensName}</div>
-    <div class="balance">$${state.balance.toLocaleString()}</div>
-    <p class="sub">Wallet created. Enter your email to claim it.</p>
+    <p class="sub">Enter your email to begin — like a card at an ATM.</p>
     <input type="email" id="email-input" placeholder="you@example.com" autofocus />
     <button class="primary" id="btn-verify">Continue</button>
     <p class="sub" id="verify-status"></p>
@@ -58,27 +51,44 @@ function screenDeposited() {
   });
 }
 
-function screenHandleWallet() {
+function screenAccount() {
   const positionHtml = state.position
     ? `<p class="sub">Active: <span class="ens">${state.position.ensName}</span> — ${state.position.pair} @ ${(state.position.apyBps / 100).toFixed(1)}% APY</p>`
-    : `<p class="sub">Idle in wallet — no open position.</p>`;
+    : "";
+
+  const canWithdraw = state.balance > 0 || !!state.position;
+
+  const yieldHtml = state.balance > 0
+    ? `
+      <p class="sub">Get yield:</p>
+      <div class="row">
+        <button class="risk-low" id="btn-low">Low</button>
+        <button class="risk-medium" id="btn-medium">Medium</button>
+        <button class="risk-high" id="btn-high">High</button>
+      </div>
+    `
+    : "";
 
   render(`
     <div class="ens">${state.ensName}</div>
     <div class="balance">$${state.balance.toLocaleString()}</div>
     ${positionHtml}
-    <p class="sub">Get yield:</p>
+    <p class="sub">Transaction type — ⚠️ deposit is a fallback for "insert $1,000" until the bill acceptor is wired:</p>
     <div class="row">
-      <button class="risk-low" id="btn-low">Low</button>
-      <button class="risk-medium" id="btn-medium">Medium</button>
-      <button class="risk-high" id="btn-high">High</button>
+      <button class="primary" id="btn-deposit">Deposit</button>
+      <button class="tx-withdraw" id="btn-withdraw" ${canWithdraw ? "" : "disabled"}>Withdraw</button>
     </div>
-    <button id="btn-withdraw">Withdraw</button>
+    ${yieldHtml}
+    <button id="btn-done">Done — log out</button>
   `);
-  document.getElementById("btn-low").onclick = () => onOpenPosition("low");
-  document.getElementById("btn-medium").onclick = () => onOpenPosition("medium");
-  document.getElementById("btn-high").onclick = () => onOpenPosition("high");
-  document.getElementById("btn-withdraw").onclick = onWithdraw;
+  document.getElementById("btn-deposit").onclick = onDeposit;
+  document.getElementById("btn-done").onclick = onDone;
+  if (canWithdraw) document.getElementById("btn-withdraw").onclick = onWithdraw;
+  if (state.balance > 0) {
+    document.getElementById("btn-low").onclick = () => onOpenPosition("low");
+    document.getElementById("btn-medium").onclick = () => onOpenPosition("medium");
+    document.getElementById("btn-high").onclick = () => onOpenPosition("high");
+  }
 }
 
 function screenReceipt(receipt) {
@@ -86,24 +96,14 @@ function screenReceipt(receipt) {
     <p class="sub">Withdraw complete.</p>
     <div class="balance">${receipt.receipt}</div>
     <p class="sub">USDC settled to the dev/treasury wallet — cash payout is a redemption receipt in v1 (PRD §6.6).</p>
-    <button class="primary" id="btn-reset">New deposit</button>
+    <button class="primary" id="btn-reset">Done</button>
   `);
-  document.getElementById("btn-reset").onclick = () => {
-    Object.assign(state, { ensName: null, balance: 0, userId: null, position: null });
-    screenIdle();
-  };
+  document.getElementById("btn-reset").onclick = onDone;
 }
 
-async function onDeposit() {
-  try {
-    const res = await api("/deposit", { amount: 1000, handle: state.handle });
-    state.ensName = res.ensName;
-    state.balance = res.balance;
-    log(`deposit ok — ${res.ensName}, tx ${res.txHash}`);
-    screenDeposited();
-  } catch (e) {
-    log(`deposit failed: ${e.message}`);
-  }
+function onDone() {
+  Object.assign(state, { userId: null, ensName: null, balance: 0, position: null });
+  screenAuth();
 }
 
 async function onVerify() {
@@ -115,14 +115,27 @@ async function onVerify() {
   }
   statusEl.textContent = "Verifying…";
   try {
-    const res = await api("/verify", { handle: state.handle, email });
+    const res = await api("/verify", { email });
     state.userId = res.userId;
-    log(`verified — user ${res.userId}, wallet ${res.privyWalletAddress}`);
+    state.ensName = res.ensName;
+    state.balance = res.balance;
+    log(`verified — user ${res.userId}, ${res.ensName}`);
     if (res.fundingTxHash) log(`new wallet funded with 0.001 ETH — tx ${res.fundingTxHash}`);
-    screenHandleWallet();
+    screenAccount();
   } catch (e) {
     log(`verify failed: ${e.message}`);
     statusEl.textContent = `Failed: ${e.message}`;
+  }
+}
+
+async function onDeposit() {
+  try {
+    const res = await api("/deposit", { userId: state.userId, amount: 1000 });
+    state.balance = res.balance;
+    log(`deposit ok — ${res.ensName}, tx ${res.txHash}`);
+    screenAccount();
+  } catch (e) {
+    log(`deposit failed: ${e.message}`);
   }
 }
 
@@ -135,7 +148,7 @@ async function onOpenPosition(riskLevel) {
     });
     state.position = res;
     log(`agent opened ${res.pair} — ${res.ensName}`);
-    screenHandleWallet();
+    screenAccount();
   } catch (e) {
     log(`open-position failed: ${e.message}`);
   }
@@ -151,4 +164,4 @@ async function onWithdraw() {
   }
 }
 
-screenIdle();
+screenAuth();

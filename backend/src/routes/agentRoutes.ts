@@ -24,9 +24,9 @@ agentRouter.post("/agent/open-position", asyncHandler(async (req, res) => {
   }
   const { userId, riskLevel, amount } = parsed.data;
 
-  const user = store.getUser(userId);
-  if (!user) {
-    res.status(404).json({ error: "unknown user — complete /verify first" });
+  const account = store.getAccount(userId);
+  if (!account) {
+    res.status(404).json({ error: "unknown account — complete /verify first" });
     return;
   }
 
@@ -45,7 +45,7 @@ agentRouter.post("/agent/open-position", asyncHandler(async (req, res) => {
 
   const ensName = positionSubname(position.positionId);
   position.ensName = ensName;
-  await registerSubname(ensName, user.boundAddress);
+  await registerSubname(ensName, account.boundAddress);
 
   res.json({
     positionId: position.positionId,

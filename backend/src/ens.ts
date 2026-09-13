@@ -1,4 +1,4 @@
-import type { Address } from "viem";
+import { keccak256, toBytes, type Address } from "viem";
 import { config } from "./config.js";
 import { chainReady, registerEnsLabelOnChain } from "./chain.js";
 
@@ -14,8 +14,20 @@ const WANTEST_SUBREGISTRY: Address = "0x786441fDe1a4006EadD745A8b90d8621F7a99916
 // renewing wantest.eth for real would need bumping this too.
 const SUBNAME_EXPIRY = 1820728524n;
 
-export function walletSubname(handle: string): string {
-  return `${handle}.${config.ens.parentName}`;
+/// ATM-style flow: identity (email) comes before any per-box "handle" now,
+/// so the wallet's ENS label is derived from the email itself — the local
+/// part, sanitized to valid label characters, plus a short disambiguator so
+/// two different domains with the same local part (alice@gmail.com vs
+/// alice@yahoo.com) don't collide into the same subname.
+export function deriveEnsLabel(email: string): string {
+  const [localPart] = email.toLowerCase().split("@");
+  const sanitized = (localPart ?? "user").replace(/[^a-z0-9-]/g, "").slice(0, 20) || "user";
+  const disambiguator = keccak256(toBytes(email)).slice(2, 6);
+  return `${sanitized}-${disambiguator}`;
+}
+
+export function walletSubname(label: string): string {
+  return `${label}.${config.ens.parentName}`;
 }
 
 export function positionSubname(positionId: number): string {

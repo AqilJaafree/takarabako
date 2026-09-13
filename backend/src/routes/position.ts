@@ -6,9 +6,9 @@ export const positionRouter = Router();
 
 positionRouter.get("/position/:userId", (req, res) => {
   const { userId } = req.params;
-  const user = store.getUser(userId);
-  if (!user) {
-    res.status(404).json({ error: "unknown user" });
+  const account = store.getAccount(userId);
+  if (!account) {
+    res.status(404).json({ error: "unknown account" });
     return;
   }
 
@@ -21,5 +21,5 @@ positionRouter.get("/position/:userId", (req, res) => {
     value: p.amount, // Phase 1: read live value via vault.previewValue / position math
   }));
 
-  res.json({ ensName: user.ensName, positions });
+  res.json({ ensName: account.ensName, positions });
 });

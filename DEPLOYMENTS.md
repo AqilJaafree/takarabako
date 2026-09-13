@@ -171,6 +171,29 @@ A funding failure (e.g. treasury low on ETH) is caught and logged without
 failing the account creation itself — the user still gets a real wallet,
 just no gas yet.
 
+## ATM-style flow reorder (verify-then-deposit)
+
+Backend now authenticates before it accepts cash, matching a real ATM
+instead of the original "cash in blind, identify after" order:
+
+- `POST /verify { email }` runs **first**: resolves/creates the Privy user,
+  and — new-account only — derives an ENS label from the email
+  (`deriveEnsLabel` in `ens.ts`, collision-avoiding hash suffix, e.g.
+  `alice-4f2a.wantest.eth`) and registers it immediately, before any money
+  has moved. Returns `{ userId, ensName, balance: 0 }` synchronously.
+- `POST /deposit { userId, amount }` runs **second**: credits the account
+  identified by `userId` (already known from `/verify`), no more inline
+  `{handle, email}`/ENS-registration-on-deposit path.
+- `backend/src/store.ts` was rewritten to match: `User`+`Wallet` merged into
+  one `Account` type keyed by `privyUserId`, with `deriveBoundAddress`
+  exported for the deterministic bookkeeping address. `routes/withdraw.ts`,
+  `routes/agentRoutes.ts`, `routes/position.ts` updated to look accounts up
+  by `userId` through this single store.
+- Verified end-to-end via curl and a Playwright kiosk run (email →
+  `atm-ui-test-2-feb1.wantest.eth` registered and new wallet funded with
+  0.001 ETH at verify-time, deposit afterward credited the same account) —
+  see PRD §6.1/§6.2/§8 for the updated flow and sequence diagram.
+
 ## Not yet real (still stubbed in the backend)
 
 - **Claude Haiku *decision-making*** (`backend/src/agent.ts`) — pool
