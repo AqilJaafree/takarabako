@@ -31,3 +31,9 @@ contracts/broadcast/
 
 # Local Claude Code plugin/session settings
 .claude/
+
+# Local Netlify folder
+.netlify
+
+# Per-deployment kiosk backend URL — copy device-agent/public/config.example.js
+device-agent/public/config.js
