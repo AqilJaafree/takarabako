@@ -32,11 +32,10 @@ subname registry deployed via that factory. Full addresses, how each was
 independently confirmed on-chain (not just trusting a tx receipt), and the
 per-risk-tier pool addresses are all in [`DEPLOYMENTS.md`](./DEPLOYMENTS.md).
 
-Live app deployments:
+Live app deployment:
 
 | Component | URL |
 |---|---|
-| Backend API | https://backend-production-c70bc.up.railway.app |
 | Kiosk demo | https://takarabako-kiosk.netlify.app |
 
 ## Layout
