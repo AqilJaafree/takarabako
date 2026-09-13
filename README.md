@@ -3,12 +3,41 @@
 An ATM-style cash-in kiosk: verify your identity with just an email (Privy —
 real embedded wallet, no seed phrase, no app), *then* insert cash, and it's
 credited to an ENS-named on-chain wallet (`*.wantest.eth`) with optional
-risk-tiered yield on real Uniswap v3 pools. Built for ETHGlobal Online 2026.
-Full product spec lives in `takarabako-prd.md` (gitignored, local-only).
+risk-tiered yield on real Uniswap v3 pools, chosen with a real Claude Haiku
+4.5 call. Built for ETHGlobal Online 2026. Full product spec lives in
+`takarabako-prd.md` (gitignored, local-only).
 
 Nearly everything below is real, on Ethereum Sepolia — not a stub. See
-[`DEPLOYMENTS.md`](./DEPLOYMENTS.md) for the live contract addresses and an
-up-to-date account of exactly what's real vs. what's still a hardcoded map.
+[`DEPLOYMENTS.md`](./DEPLOYMENTS.md) for the full deployment history and
+independent on-chain verification of each piece, and
+[`FEEDBACK.md`](./FEEDBACK.md) for integration notes gathered along the way.
+
+## Live deployments (Ethereum Sepolia, chain 11155111)
+
+Our own four contracts are deployed **and independently verified on
+Etherscan** (exact-match source, not just a bytecode match) — click through
+to confirm:
+
+| Contract | Address | Etherscan |
+|---|---|---|
+| `MockUSDC` | `0x6cc5f175810e61A56508049f0527BC75EB7e77e4` | [Verified ✅](https://sepolia.etherscan.io/address/0x6cc5f175810e61A56508049f0527BC75EB7e77e4#code) |
+| `TakarabakoVault` | `0xD069D36Af7DF950EE87002Fc120B90eF5Ea3ce3D` | [Verified ✅](https://sepolia.etherscan.io/address/0xD069D36Af7DF950EE87002Fc120B90eF5Ea3ce3D#code) |
+| `MockRiskToken (mAAVE)` | `0x9c57968055d77d765e4EF1E4F138e9089295eD04` | [Verified ✅](https://sepolia.etherscan.io/address/0x9c57968055d77d765e4EF1E4F138e9089295eD04#code) |
+| `MockRiskToken (mDOGE)` | `0x071436DC66a7C86a7c12Bc7E337A05fb46908c38` | [Verified ✅](https://sepolia.etherscan.io/address/0x071436DC66a7C86a7c12Bc7E337A05fb46908c38#code) |
+
+Everything else the app talks to is a canonical, already-verified deployment
+we don't own — real Uniswap v3 (Factory/NPM/WETH9), real ENS v2 Beta
+(ETHRegistry/ETHRegistrar/VerifiableFactory), and our own `wantest.eth`
+subname registry deployed via that factory. Full addresses, how each was
+independently confirmed on-chain (not just trusting a tx receipt), and the
+per-risk-tier pool addresses are all in [`DEPLOYMENTS.md`](./DEPLOYMENTS.md).
+
+Live app deployments:
+
+| Component | URL |
+|---|---|
+| Backend API | https://backend-production-c70bc.up.railway.app |
+| Kiosk demo | https://takarabako-kiosk.netlify.app |
 
 ## Layout
 
@@ -16,10 +45,51 @@ up-to-date account of exactly what's real vs. what's still a hardcoded map.
   and `TakarabakoVault` (mock-yield ERC-4626-flavored vault).
 - **`backend/`** — Node/TypeScript orchestrator: real Privy identity, real
   ENS v2 subname registration, real vault deposit/withdraw, real per-user
-  Uniswap v3 position open/exit. Pool *selection* is currently a
-  deterministic risk-tier map, not yet a live Claude Haiku call.
-- **`device-agent/`** — zero-dependency kiosk page for the Raspberry Pi 4
-  touchscreen (currently being wired to a real TB74 pulse bill acceptor).
+  Uniswap v3 position open/exit, real Claude Haiku 4.5 pool-selection
+  rationale.
+- **`device-agent/`** — kiosk page for the Raspberry Pi 4 touchscreen, plus
+  the software bridge for a real TB74 pulse bill acceptor (`gpio/`).
+
+## System flow
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Kiosk as device-agent (kiosk)
+    participant API as backend
+    participant Privy
+    participant Claude as Claude Haiku 4.5
+    participant Uniswap as Uniswap v3
+    participant ENS as ENS v2 (wantest.eth)
+    participant Vault as TakarabakoVault
+
+    User->>Kiosk: enter email
+    Kiosk->>API: POST /verify {email}
+    API->>Privy: getByEmailAddress / create
+    Privy-->>API: userId + embedded wallet
+    API->>ENS: register <label>.wantest.eth (new account only)
+    API-->>Kiosk: {userId, ensName, balance: 0}
+
+    User->>Kiosk: insert cash (or fallback button)
+    Kiosk->>API: POST /deposit {userId, amount}
+    API->>Vault: depositFor(boundAddress, amount)
+    API-->>Kiosk: {balance, txHash}
+
+    User->>Kiosk: pick a risk tier
+    Kiosk->>API: POST /agent/open-position {riskLevel, amount}
+    API->>Claude: confirm tier against live pool data
+    Claude-->>API: rationale (tier is never overridden)
+    API->>Uniswap: mint concentrated-liquidity position
+    Uniswap-->>API: LP NFT tokenId
+    API->>ENS: register uniswap-<id>.wantest.eth
+    API-->>Kiosk: {ensName, pair, apyBps, rationale}
+
+    User->>Kiosk: withdraw
+    Kiosk->>API: POST /withdraw {userId}
+    API->>Uniswap: decreaseLiquidity + collect
+    API->>Vault: withdrawTo(treasury, shares)
+    API-->>Kiosk: {netUsdc, receipt} (2% fee)
+```
 
 ## Quickstart
 
@@ -31,26 +101,8 @@ cd contracts && forge install --no-git && forge test
 cd backend && npm install && cp .env.example .env && npm run dev
 
 # kiosk (separate shell)
-cd device-agent && node server.js   # http://localhost:8080
+cd device-agent && cp public/config.example.js public/config.js && node server.js   # http://localhost:8080
 ```
-
-The kiosk flow, in order: enter an email (`POST /verify`, creates/resolves a
-real Privy account + ENS subname) → insert cash or press the fallback button
-(`POST /deposit`, real vault deposit) → optionally pick a risk tier on the
-dedicated yield page (real Uniswap v3 pool, shown with its actual fee % and
-price range) → withdraw (real position exit + vault redemption, 2% fee).
-
-## Status
-
-- **Real and tested**: vault deposit/withdraw, all three Uniswap v3 pools
-  (open + exit per user), ENS v2 parent name + subname registrar, Privy
-  identity with new-account Sepolia ETH funding, the ATM-style verify-then-
-  deposit flow.
-- **Not yet real**: Claude Haiku pool *selection* (needs `ANTHROPIC_API_KEY`;
-  minting/exiting the chosen pool is already real).
-- **In progress**: Raspberry Pi 4 + TB74 pulse bill acceptor hardware —
-  kiosk UI is hardware-ready, GPIO wiring and the pulse-debounce listener
-  script are the remaining piece before the fallback button can retire.
 
 Treasury wallet is a testnet-only burner key — check its Sepolia ETH
 balance before running anything that spends gas; it runs dry easily at

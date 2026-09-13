@@ -6,14 +6,22 @@ for `backend/.env`, not the other way around.
 
 ## Takarabako contracts
 
-Deployed via `contracts/script/Deploy.s.sol`.
+Deployed via `contracts/script/Deploy.s.sol`. All four are **verified on
+Sepolia Etherscan as an exact source-code match** (`forge verify-contract`,
+independently re-confirmed by fetching each Etherscan page directly rather
+than trusting the CLI's own success message):
 
-| Contract | Address |
-|---|---|
-| `MockUSDC` | `0x6cc5f175810e61A56508049f0527BC75EB7e77e4` |
-| `TakarabakoVault` | `0xD069D36Af7DF950EE87002Fc120B90eF5Ea3ce3D` |
-| `MockRiskToken (mAAVE)` | `0x9c57968055d77d765e4EF1E4F138e9089295eD04` |
-| `MockRiskToken (mDOGE)` | `0x071436DC66a7C86a7c12Bc7E337A05fb46908c38` |
+| Contract | Address | Etherscan |
+|---|---|---|
+| `MockUSDC` | `0x6cc5f175810e61A56508049f0527BC75EB7e77e4` | [Verified](https://sepolia.etherscan.io/address/0x6cc5f175810e61A56508049f0527BC75EB7e77e4#code) |
+| `TakarabakoVault` | `0xD069D36Af7DF950EE87002Fc120B90eF5Ea3ce3D` | [Verified](https://sepolia.etherscan.io/address/0xD069D36Af7DF950EE87002Fc120B90eF5Ea3ce3D#code) |
+| `MockRiskToken (mAAVE)` | `0x9c57968055d77d765e4EF1E4F138e9089295eD04` | [Verified](https://sepolia.etherscan.io/address/0x9c57968055d77d765e4EF1E4F138e9089295eD04#code) |
+| `MockRiskToken (mDOGE)` | `0x071436DC66a7C86a7c12Bc7E337A05fb46908c38` | [Verified](https://sepolia.etherscan.io/address/0x071436DC66a7C86a7c12Bc7E337A05fb46908c38#code) |
+
+Compiler `0.8.28+commit.7893614a`, optimizer on (200 runs). Constructor args
+were re-derived from `Deploy.s.sol` with `cast abi-encode` rather than
+guessed — e.g. `MockUSDC(address)` takes the treasury address
+`0x9205DcCC081D896edeAB423d88665660d61d5bfE` as `initialOwner`.
 
 Vault's yield reserve was topped up with 100 mUSDC (tx `0x17b9fe848b...`)
 so `withdrawTo` can actually pay out accrued mock yield — see PRD §7.6.
