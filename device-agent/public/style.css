@@ -86,20 +86,16 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .row { display: flex; gap: 10px; flex-wrap: wrap; }
 .row > button { flex: 1; }
 
-.qr {
-  align-self: center;
-  width: 140px;
-  height: 140px;
-  border: 1px dashed var(--border);
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted);
-  font-size: 12px;
-  text-align: center;
-  padding: 8px;
+input[type="email"] {
+  font: inherit;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #0d1117;
+  color: var(--text);
 }
+input[type="email"]::placeholder { color: var(--muted); }
+input[type="email"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .log {
   margin-top: 18px;

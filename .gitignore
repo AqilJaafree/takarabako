@@ -11,6 +11,7 @@ takarabako-prd.md
 secrets.json
 **/*private-key*
 **/*privkey*
+**/*signing-key*
 **/.deployer.*
 
 # Node

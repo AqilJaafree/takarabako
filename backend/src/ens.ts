@@ -22,7 +22,7 @@ export function positionSubname(positionId: number): string {
   return `uniswap-${positionId}.${config.ens.parentName}`;
 }
 
-export async function registerSubname(subname: string, owner: string): Promise<{ txHash: string }> {
+export async function registerSubname(subname: string, owner: string): Promise<{ txHash: string | null }> {
   const label = subname.slice(0, subname.length - config.ens.parentName.length - 1);
 
   if (!chainReady) {
@@ -31,6 +31,10 @@ export async function registerSubname(subname: string, owner: string): Promise<{
   }
 
   const { txHash } = await registerEnsLabelOnChain(WANTEST_SUBREGISTRY, label, owner as Address, SUBNAME_EXPIRY);
-  console.log(`[ens] registered ${subname} -> ${owner} (tx ${txHash})`);
+  if (txHash === null) {
+    console.log(`[ens] ${subname} already registered — skipping`);
+  } else {
+    console.log(`[ens] registered ${subname} -> ${owner} (tx ${txHash})`);
+  }
   return { txHash };
 }

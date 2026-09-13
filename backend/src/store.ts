@@ -9,9 +9,10 @@ import { keccak256, toBytes, getAddress } from "viem";
 export type RiskTier = "low" | "medium" | "high";
 
 export interface User {
-  worldIdNullifier: string; // PK
+  privyUserId: string; // PK — Privy's user id, our sybil-resistance signal (one email -> one Privy user)
   handle: string;
-  boundAddress: string;
+  boundAddress: string; // deterministic bookkeeping address the treasury moves vault/position funds for
+  privyWalletAddress: string; // the user's real embedded wallet (Privy), for reference/future use
   ensName: string;
   createdAt: number;
 }
@@ -19,7 +20,7 @@ export interface User {
 export interface Position {
   positionId: number;
   ensName: string;
-  user: string; // worldIdNullifier
+  user: string; // privyUserId
   riskTier: RiskTier;
   pair: string;
   amount: number; // USDC principal, demo units
@@ -30,7 +31,7 @@ export interface Position {
 
 export interface DepositEvent {
   id: string;
-  nullifier: string | null;
+  privyUserId: string | null;
   denomination: number;
   txHash: string;
   ts: number;
@@ -38,7 +39,7 @@ export interface DepositEvent {
 
 export interface WithdrawEvent {
   id: string;
-  nullifier: string;
+  privyUserId: string;
   grossUsdc: number;
   feeBps: number;
   netUsdc: number;
@@ -50,10 +51,10 @@ export interface Wallet {
   ensName: string;
   boundAddress: string;
   idleBalance: number; // USDC not yet routed into a position
-  nullifier: string | null; // set once §6.2 signup/login binds a human
+  privyUserId: string | null; // set once §6.2 signup/login binds a human
 }
 
-const usersByNullifier = new Map<string, User>();
+const usersByPrivyId = new Map<string, User>();
 const walletsByHandle = new Map<string, Wallet>();
 const positionsByUser = new Map<string, Position[]>();
 const depositEvents: DepositEvent[] = [];
@@ -62,14 +63,14 @@ const withdrawEvents: WithdrawEvent[] = [];
 let nextPositionId = 1;
 
 export const store = {
-  users: usersByNullifier,
+  users: usersByPrivyId,
 
   createUser(user: User) {
-    usersByNullifier.set(user.worldIdNullifier, user);
+    usersByPrivyId.set(user.privyUserId, user);
   },
 
-  getUser(nullifier: string): User | undefined {
-    return usersByNullifier.get(nullifier);
+  getUser(privyUserId: string): User | undefined {
+    return usersByPrivyId.get(privyUserId);
   },
 
   getOrCreateWallet(handle: string, ensName: string): Wallet {
@@ -82,12 +83,11 @@ export const store = {
       // and stable across restarts, but not one anyone holds the key to.
       // That's fine: only the treasury ever moves vault shares for it
       // (onlyOwner in TakarabakoVault.sol), so this is purely a bookkeeping
-      // key on-chain. Phase 1+ swaps this for a real generated/derived
-      // signer or smart-account address once the box needs the user to
-      // hold their own key.
+      // key on-chain. The user's own real wallet (Privy) is tracked
+      // separately on the User record once they verify.
       boundAddress: getAddress(`0x${keccak256(toBytes(handle)).slice(-40)}`),
       idleBalance: 0,
-      nullifier: null,
+      privyUserId: null,
     };
     walletsByHandle.set(handle, wallet);
     return wallet;
@@ -97,9 +97,9 @@ export const store = {
     return walletsByHandle.get(handle);
   },
 
-  bindWalletToNullifier(handle: string, nullifier: string) {
+  bindWalletToUser(handle: string, privyUserId: string) {
     const wallet = walletsByHandle.get(handle);
-    if (wallet) wallet.nullifier = nullifier;
+    if (wallet) wallet.privyUserId = privyUserId;
   },
 
   addPosition(position: Omit<Position, "positionId">): Position {
@@ -110,12 +110,12 @@ export const store = {
     return full;
   },
 
-  getPositions(nullifier: string): Position[] {
-    return positionsByUser.get(nullifier) ?? [];
+  getPositions(privyUserId: string): Position[] {
+    return positionsByUser.get(privyUserId) ?? [];
   },
 
-  clearPositions(nullifier: string) {
-    positionsByUser.set(nullifier, []);
+  clearPositions(privyUserId: string) {
+    positionsByUser.set(privyUserId, []);
   },
 
   logDeposit(event: DepositEvent) {

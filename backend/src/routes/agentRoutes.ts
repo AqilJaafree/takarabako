@@ -11,7 +11,7 @@ import { asyncHandler } from "../asyncHandler.js";
 export const agentRouter = Router();
 
 const OpenPositionBody = z.object({
-  nullifier: z.string().min(1),
+  userId: z.string().min(1),
   riskLevel: z.enum(["low", "medium", "high"]),
   amount: z.number().positive(),
 });
@@ -22,9 +22,9 @@ agentRouter.post("/agent/open-position", asyncHandler(async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const { nullifier, riskLevel, amount } = parsed.data;
+  const { userId, riskLevel, amount } = parsed.data;
 
-  const user = store.getUser(nullifier);
+  const user = store.getUser(userId);
   if (!user) {
     res.status(404).json({ error: "unknown user — complete /verify first" });
     return;
@@ -34,7 +34,7 @@ agentRouter.post("/agent/open-position", asyncHandler(async (req, res) => {
 
   const position = store.addPosition({
     ensName: "", // filled in below once the id is assigned
-    user: nullifier,
+    user: userId,
     riskTier: riskLevel,
     pair: proposal.pair,
     amount,

@@ -61,7 +61,7 @@ valuing the non-USDC side at each pool's fixed init price (not a live
 oracle) to fold into the receipt. Verified end-to-end for all three tiers,
 both directions (`chain.ts`, `agent.ts`):
 
-| Test | Nullifier | Open tx | Position NFT | Exit result |
+| Test | Privy user id | Open tx | Position NFT | Exit result |
 |---|---|---|---|---|
 | Low | `0xuni-low` | `0x6b1de330...` | `#231960` | liquidity → 0, gross ≈ $2.00 (1 USDC + 0.000333 WETH) |
 | Medium | `0xuni-med` | `0x868eae43...` | `#231961` | gross ≈ $20.00 (10 USDC + 0.1 mAAVE) |
@@ -137,10 +137,42 @@ on our registry matches exactly):
 `chain.ts`) — `POST /deposit` and `POST /agent/open-position` both mint
 genuine subnames, no stub path left for the happy case.
 
+## Identity: World ID → Privy (swapped)
+
+World ID Selfie Check (`backend/src/worldId.ts`, now deleted) was replaced
+with Privy (`backend/src/privy.ts`) after its bridge/QR handoff never got a
+scanned phone to actually connect — repeated real attempts (with the SDK's
+own `getDebugReport()` logged) sat at `waiting_for_connection` forever, even
+after registering the missing World ID action via the
+`worldcoin-developer-portal` MCP. Privy needs no phone, no QR, no bridge:
+the kiosk takes an email on-screen, the backend calls `users().create()` /
+`users().getByEmailAddress()` directly (server-to-server, app secret auth)
+and gets back a real embedded wallet synchronously. Sybil-resistance signal
+is now "one email → one Privy user" — weaker than World ID's biometric
+uniqueness proof, a deliberate trade for something that actually works in
+the time available.
+
+`PRIVY_APP_ID` / `PRIVY_APP_SECRET` are set in `backend/.env` (from
+dashboard.privy.io) and **verified working end-to-end**: real Privy user +
+embedded wallet returned synchronously (no polling), same email correctly
+reuses the same user (`reused: true`, no duplicate wallet), backend stayed
+alive throughout.
+
+**New-account funding:** every brand-new Privy user (first-time
+`users().create()` only — not repeat logins) gets **0.001 real Sepolia ETH**
+sent from the treasury to their embedded wallet, so they have gas for
+anything they do with it themselves later (`fundWalletWithEthOnChain` in
+`chain.ts`, gated in `privy.ts`). Verified: a fresh test wallet
+(`0xEe411b45...`) received exactly 0.001 ETH (tx `0x9d6c4ba1...`); a
+second `/verify` with the *same* email correctly returned `reused: true`
+with no `fundingTxHash` and no balance change — confirmed via independent
+`cast balance` checks both times, not just trusting the API response.
+A funding failure (e.g. treasury low on ETH) is caught and logged without
+failing the account creation itself — the user still gets a real wallet,
+just no gas yet.
+
 ## Not yet real (still stubbed in the backend)
 
-- **World ID Selfie Check** (`backend/src/worldId.ts`) — needs a World
-  Developer Portal app + Selfie Check enablement (`developers@toolsforhumanity.com`).
 - **Claude Haiku *decision-making*** (`backend/src/agent.ts`) — pool
   *selection* is still a hardcoded risk-tier map, not an LLM call; needs
   its own `ANTHROPIC_API_KEY` (`config.agent.model` is wired but unused).

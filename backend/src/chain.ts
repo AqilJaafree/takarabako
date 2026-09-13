@@ -1,4 +1,4 @@
-import { createPublicClient, createWalletClient, http, parseAbi, parseUnits, formatUnits, type Address } from "viem";
+import { createPublicClient, createWalletClient, http, parseAbi, parseUnits, parseEther, formatUnits, type Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { sepolia } from "viem/chains";
 import { config } from "./config.js";
@@ -120,6 +120,21 @@ export async function currentApyBpsOnChain(): Promise<number> {
   return Number(bps);
 }
 
+/// Sends real Sepolia ETH from the treasury to a freshly-created Privy
+/// embedded wallet so the user has gas for anything they do with it
+/// themselves later. Real capital, not a mock token — see privy.ts for
+/// where this is gated to first-time account creation only, not every
+/// login, to keep spend bounded.
+export async function fundWalletWithEthOnChain(recipient: Address, amountEth: number) {
+  if (!walletClient) throw new Error("chain not configured — set TREASURY_PRIVATE_KEY/USDC_ADDRESS/VAULT_ADDRESS");
+  const hash = await walletClient.sendTransaction({
+    to: recipient,
+    value: parseEther(amountEth.toString()),
+  });
+  await publicClient.waitForTransactionReceipt({ hash });
+  return { txHash: hash };
+}
+
 const userRegistryAbi = parseAbi([
   "function register(string label, address owner, address registry, address resolver, uint256 roleBitmap, uint64 expiry) returns (uint256)",
   "function findOwner(string label) view returns (address)",
@@ -134,6 +149,21 @@ const userRegistryAbi = parseAbi([
 export async function registerEnsLabelOnChain(registryAddress: Address, label: string, owner: Address, expiry: bigint) {
   if (!walletClient) throw new Error("chain not configured — set TREASURY_PRIVATE_KEY/USDC_ADDRESS/VAULT_ADDRESS");
   const zero: Address = "0x0000000000000000000000000000000000000000";
+
+  // register() reverts outright if the label is taken — idempotent by
+  // design, not just defensive: our in-memory "is this new?" tracking
+  // (store.ts) doesn't survive a backend restart, but the chain's own
+  // state does, so a restart replaying an already-registered label must
+  // not crash the whole deposit/open-position flow.
+  const existingOwner = await publicClient.readContract({
+    address: registryAddress,
+    abi: userRegistryAbi,
+    functionName: "findOwner",
+    args: [label],
+  });
+  if (existingOwner !== zero) {
+    return { tokenId: null, txHash: null };
+  }
 
   const { result: tokenId } = await publicClient.simulateContract({
     account: walletClient.account,

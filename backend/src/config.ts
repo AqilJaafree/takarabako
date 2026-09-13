@@ -4,12 +4,11 @@ export const config = {
   treasuryPrivateKey: process.env.TREASURY_PRIVATE_KEY ?? "",
   usdcAddress: process.env.USDC_ADDRESS ?? "",
   vaultAddress: process.env.VAULT_ADDRESS ?? "",
-  world: {
-    appId: process.env.WORLD_APP_ID ?? "",
-    actionId: process.env.WORLD_ACTION_ID ?? "takarabako-verify",
-    // "staging" points IDKit at the World ID Sandbox simulator (PRD §7.8)
-    // so the demo doesn't depend on a judge holding a pre-verified account.
-    environment: process.env.WORLD_ENVIRONMENT ?? "staging",
+  // PRD §7.8 (revised) — Privy replaces World ID Selfie Check: email in,
+  // real embedded wallet + a stable user id out, no phone/QR/bridge needed.
+  privy: {
+    appId: process.env.PRIVY_APP_ID ?? "",
+    appSecret: process.env.PRIVY_APP_SECRET ?? "",
   },
   ens: {
     parentName: process.env.ENS_PARENT_NAME ?? "wantest.eth",

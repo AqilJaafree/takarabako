@@ -16,7 +16,7 @@ import { asyncHandler } from "../asyncHandler.js";
 export const withdrawRouter = Router();
 
 const WithdrawBody = z.object({
-  nullifier: z.string().min(1),
+  userId: z.string().min(1),
 });
 
 withdrawRouter.post("/withdraw", asyncHandler(async (req, res) => {
@@ -25,9 +25,9 @@ withdrawRouter.post("/withdraw", asyncHandler(async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const { nullifier } = parsed.data;
+  const { userId } = parsed.data;
 
-  const user = store.getUser(nullifier);
+  const user = store.getUser(userId);
   if (!user) {
     res.status(404).json({ error: "unknown user — complete /verify first" });
     return;
@@ -37,9 +37,9 @@ withdrawRouter.post("/withdraw", asyncHandler(async (req, res) => {
     return;
   }
 
-  const positions = store.getPositions(nullifier);
+  const positions = store.getPositions(userId);
   const { grossUsdc: simulatedPositionsUsdc } = await proposeExitAll(positions);
-  store.clearPositions(nullifier);
+  store.clearPositions(userId);
 
   const { txHash: vaultTxHash, amount: vaultUsdc } = await withdrawAllOnChain(
     user.boundAddress as Address,
@@ -55,7 +55,7 @@ withdrawRouter.post("/withdraw", asyncHandler(async (req, res) => {
 
   store.logWithdraw({
     id: crypto.randomUUID(),
-    nullifier,
+    privyUserId: userId,
     grossUsdc,
     feeBps,
     netUsdc,

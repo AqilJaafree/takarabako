@@ -9,14 +9,13 @@ import { asyncHandler } from "../asyncHandler.js";
 /// POST /deposit — PRD §6.1 + §7.3. Cash lands in the box, backend fronts
 /// USDC from the treasury via a real on-chain `depositFor` call (see
 /// contracts/src/TakarabakoVault.sol, wired up in chain.ts) and
-/// registers/reuses the wallet's ENS v2 subname under `wantest.eth`
-/// (still stubbed — ens.ts — pending a deployed registrar; PRD §7.7).
+/// registers/reuses the wallet's real ENS v2 subname under `wantest.eth`.
 export const depositRouter = Router();
 
 const DepositBody = z.object({
   amount: z.number().positive(),
   // Demo convenience: one box == one wallet handle for now. Phase 2 derives
-  // this from the bound World ID nullifier once a user has signed up.
+  // this from the bound Privy user id once a user has signed up.
   handle: z.string().min(1).default("machina"),
 });
 
@@ -30,9 +29,9 @@ depositRouter.post("/deposit", asyncHandler(async (req, res) => {
 
   const ensName = walletSubname(handle);
   const wallet = store.getOrCreateWallet(handle, ensName);
-  const wasNew = wallet.idleBalance === 0 && !wallet.nullifier;
+  const wasNew = wallet.idleBalance === 0 && !wallet.privyUserId;
 
-  let ensTxHash: string | undefined;
+  let ensTxHash: string | null = null;
   if (wasNew) {
     ({ txHash: ensTxHash } = await registerSubname(ensName, wallet.boundAddress));
   }
@@ -47,7 +46,7 @@ depositRouter.post("/deposit", asyncHandler(async (req, res) => {
 
   store.logDeposit({
     id: crypto.randomUUID(),
-    nullifier: wallet.nullifier,
+    privyUserId: wallet.privyUserId,
     denomination: amount,
     txHash,
     ts: Date.now(),

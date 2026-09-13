@@ -1,5 +1,5 @@
 // Device agent kiosk UI — PRD §7.2. Talks to the backend over HTTPS/HTTP,
-// holds no private keys and no World ID/agent credentials of its own.
+// holds no private keys and no Privy/agent credentials of its own.
 // On the real Pi, point this at the backend's LAN address instead of localhost.
 const BACKEND_URL = window.BACKEND_URL || "http://localhost:4000";
 
@@ -10,7 +10,7 @@ const state = {
   handle: "machina",
   ensName: null,
   balance: 0,
-  nullifier: null,
+  userId: null,
   position: null,
 };
 
@@ -47,11 +47,15 @@ function screenDeposited() {
   render(`
     <div class="ens">${state.ensName}</div>
     <div class="balance">$${state.balance.toLocaleString()}</div>
-    <p class="sub">Wallet created. Prove you're human to unlock it.</p>
-    <div class="qr">World ID<br/>Selfie Check QR<br/>(Sandbox simulator)</div>
-    <button class="primary" id="btn-verify">Simulate Selfie Check (Sandbox)</button>
+    <p class="sub">Wallet created. Enter your email to claim it.</p>
+    <input type="email" id="email-input" placeholder="you@example.com" autofocus />
+    <button class="primary" id="btn-verify">Continue</button>
+    <p class="sub" id="verify-status"></p>
   `);
   document.getElementById("btn-verify").onclick = onVerify;
+  document.getElementById("email-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") onVerify();
+  });
 }
 
 function screenHandleWallet() {
@@ -85,7 +89,7 @@ function screenReceipt(receipt) {
     <button class="primary" id="btn-reset">New deposit</button>
   `);
   document.getElementById("btn-reset").onclick = () => {
-    Object.assign(state, { ensName: null, balance: 0, nullifier: null, position: null });
+    Object.assign(state, { ensName: null, balance: 0, userId: null, position: null });
     screenIdle();
   };
 }
@@ -103,28 +107,29 @@ async function onDeposit() {
 }
 
 async function onVerify() {
+  const email = document.getElementById("email-input").value.trim();
+  const statusEl = document.getElementById("verify-status");
+  if (!email) {
+    statusEl.textContent = "Enter an email first.";
+    return;
+  }
+  statusEl.textContent = "Verifying…";
   try {
-    const res = await api("/verify", {
-      handle: state.handle,
-      worldIdProof: {
-        nullifier_hash: `0xdemo-${state.handle}`,
-        merkle_root: "0xroot",
-        proof: "0xproof",
-        verification_level: "device",
-      },
-    });
-    state.nullifier = res.nullifierHash;
-    log(`verified — nullifier ${res.nullifierHash}`);
+    const res = await api("/verify", { handle: state.handle, email });
+    state.userId = res.userId;
+    log(`verified — user ${res.userId}, wallet ${res.privyWalletAddress}`);
+    if (res.fundingTxHash) log(`new wallet funded with 0.001 ETH — tx ${res.fundingTxHash}`);
     screenHandleWallet();
   } catch (e) {
     log(`verify failed: ${e.message}`);
+    statusEl.textContent = `Failed: ${e.message}`;
   }
 }
 
 async function onOpenPosition(riskLevel) {
   try {
     const res = await api("/agent/open-position", {
-      nullifier: state.nullifier,
+      userId: state.userId,
       riskLevel,
       amount: state.balance,
     });
@@ -138,7 +143,7 @@ async function onOpenPosition(riskLevel) {
 
 async function onWithdraw() {
   try {
-    const res = await api("/withdraw", { nullifier: state.nullifier });
+    const res = await api("/withdraw", { userId: state.userId });
     log(`withdraw ok — ${res.receipt}`);
     screenReceipt(res);
   } catch (e) {
