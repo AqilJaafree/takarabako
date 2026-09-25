@@ -1,26 +1,10 @@
 import { keccak256, toBytes, getAddress } from "viem";
 
-/// In-memory store for the hackathon build. PRD §9 data model.
-/// ATM-style flow (§6.1/§6.2 swapped): identity comes first now — /verify
-/// creates the Account, /deposit just credits it — so there's no more
-/// separate per-box "handle"/"Wallet" concept sitting ahead of identity.
-/// One Account per Privy user, keyed by `privyUserId`.
-///
-/// Phase 1 (done): `depositOnChain`/`withdrawAllOnChain` (chain.ts) read and
-/// write real vault state keyed by `Account.boundAddress` below. Still
-/// local: the event log and the Uniswap-position records — those move to a
-/// small Postgres/SQLite table whenever Phase 3 makes them real.
+/// In-memory store for what hasn't moved to Postgres yet: Uniswap position
+/// records and withdraw events. Accounts, sessions and deposits live in
+/// Postgres (accounts.ts, sessions.ts), so a restart doesn't forget them.
 
 export type RiskTier = "low" | "medium" | "high";
-
-export interface Account {
-  privyUserId: string; // PK — Privy's user id, our sybil-resistance signal (one email -> one Privy user)
-  ensName: string;
-  boundAddress: string; // deterministic bookkeeping address the treasury moves vault/position funds for
-  privyWalletAddress: string; // the user's real embedded wallet (Privy), for reference/future use
-  idleBalance: number; // USDC not yet routed into a position
-  createdAt: number;
-}
 
 export interface Position {
   positionId: number;
@@ -34,16 +18,6 @@ export interface Position {
   nftTokenId?: string; // real Uniswap v3 position NFT id, once minted (chain.ts)
 }
 
-export interface DepositEvent {
-  id: string;
-  privyUserId: string;
-  denomination: number; // face value of the cash, in `currency`
-  currency: "USD" | "MYR";
-  usdAmount: number; // what the vault was actually credited
-  txHash: string;
-  ts: number;
-}
-
 export interface WithdrawEvent {
   id: string;
   privyUserId: string;
@@ -53,9 +27,7 @@ export interface WithdrawEvent {
   ts: number;
 }
 
-const accountsByPrivyId = new Map<string, Account>();
 const positionsByUser = new Map<string, Position[]>();
-const depositEvents: DepositEvent[] = [];
 const withdrawEvents: WithdrawEvent[] = [];
 
 let nextPositionId = 1;
@@ -70,16 +42,6 @@ export function deriveBoundAddress(privyUserId: string): string {
 }
 
 export const store = {
-  accounts: accountsByPrivyId,
-
-  createAccount(account: Account) {
-    accountsByPrivyId.set(account.privyUserId, account);
-  },
-
-  getAccount(privyUserId: string): Account | undefined {
-    return accountsByPrivyId.get(privyUserId);
-  },
-
   addPosition(position: Omit<Position, "positionId">): Position {
     const full: Position = { ...position, positionId: nextPositionId++ };
     const existing = positionsByUser.get(position.user) ?? [];
@@ -94,10 +56,6 @@ export const store = {
 
   clearPositions(privyUserId: string) {
     positionsByUser.set(privyUserId, []);
-  },
-
-  logDeposit(event: DepositEvent) {
-    depositEvents.push(event);
   },
 
   logWithdraw(event: WithdrawEvent) {

@@ -37,3 +37,9 @@ contracts/broadcast/
 
 # Per-deployment kiosk backend URL — copy device-agent/public/config.example.js
 device-agent/public/config.js
+
+# Brainstorming visual companion mockups
+.superpowers/
+
+# Local Postgres/Redis data when running without Docker (npm run services)
+backend/.devservices/

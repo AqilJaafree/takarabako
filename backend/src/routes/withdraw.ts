@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { Address } from "viem";
 import { config } from "../config.js";
 import { store } from "../store.js";
+import { findByPrivyUserId } from "../accounts.js";
+import { requireSession } from "../sessions.js";
 import { proposeExitAll } from "../agent.js";
 import { chainReady, withdrawAllOnChain, treasuryAddress } from "../chain.js";
 import { asyncHandler } from "../asyncHandler.js";
@@ -16,18 +18,22 @@ import { asyncHandler } from "../asyncHandler.js";
 export const withdrawRouter = Router();
 
 const WithdrawBody = z.object({
-  userId: z.string().min(1),
+  // "cash": USDC to the treasury and the customer collects cash (2% fee).
+  // "wallet": USDC straight to the customer's Privy wallet (no cash handling, no fee).
+  destination: z.enum(["cash", "wallet"]).default("cash"),
 });
 
-withdrawRouter.post("/withdraw", asyncHandler(async (req, res) => {
+// Full-access sessions only (email login). A wallet-QR session is deposit-only.
+withdrawRouter.post("/withdraw", requireSession("full"), asyncHandler(async (req, res) => {
   const parsed = WithdrawBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const { userId } = parsed.data;
+  const { destination } = parsed.data;
+  const userId: string = res.locals.session.privyUserId;
 
-  const account = store.getAccount(userId);
+  const account = await findByPrivyUserId(userId);
   if (!account) {
     res.status(404).json({ error: "unknown account — complete /verify first" });
     return;
@@ -41,14 +47,11 @@ withdrawRouter.post("/withdraw", asyncHandler(async (req, res) => {
   const { grossUsdc: simulatedPositionsUsdc } = await proposeExitAll(positions);
   store.clearPositions(userId);
 
-  const { txHash: vaultTxHash, amount: vaultUsdc } = await withdrawAllOnChain(
-    account.boundAddress as Address,
-    treasuryAddress,
-  );
-  account.idleBalance = 0;
+  const recipient = destination === "wallet" ? (account.privyWallet as Address) : treasuryAddress;
+  const { txHash: vaultTxHash, amount: vaultUsdc } = await withdrawAllOnChain(account.boundAddress as Address, recipient);
 
   const grossUsdc = simulatedPositionsUsdc + vaultUsdc;
-  const feeBps = config.withdrawFeeBps;
+  const feeBps = destination === "wallet" ? 0 : config.withdrawFeeBps;
   const fee = (grossUsdc * feeBps) / 10_000;
   const netUsdc = grossUsdc - fee;
 
@@ -67,6 +70,10 @@ withdrawRouter.post("/withdraw", asyncHandler(async (req, res) => {
     grossUsdc,
     feeBps,
     netUsdc,
-    receipt: `$${grossUsdc.toFixed(2)} -> ${feeBps / 100}% fee -> $${netUsdc.toFixed(2)} ready for pickup`,
+    destination,
+    receipt:
+      destination === "wallet"
+        ? `$${grossUsdc.toFixed(2)} sent to your wallet ${account.privyWallet}`
+        : `$${grossUsdc.toFixed(2)} -> ${feeBps / 100}% fee -> $${netUsdc.toFixed(2)} ready for pickup`,
   });
 }));

@@ -1,8 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
-import { store, deriveBoundAddress } from "../store.js";
 import { getOrCreateUserWallet } from "../privy.js";
-import { deriveEnsLabel, walletSubname, registerSubname } from "../ens.js";
+import { loginFull } from "../accountsFlow.js";
 import { asyncHandler } from "../asyncHandler.js";
 
 /// POST /verify — PRD §6.1 (ATM-style: identity first, cash second). Takes
@@ -29,42 +28,5 @@ verifyRouter.post("/verify", asyncHandler(async (req, res) => {
 
   const { userId, walletAddress, fundingTxHash } = await getOrCreateUserWallet(email);
 
-  const existing = store.getAccount(userId);
-  if (existing) {
-    res.json({
-      verified: true,
-      userId,
-      ensName: existing.ensName,
-      boundAddress: existing.boundAddress,
-      privyWalletAddress: existing.privyWalletAddress,
-      balance: existing.idleBalance,
-      reused: true,
-    });
-    return;
-  }
-
-  const boundAddress = deriveBoundAddress(userId);
-  const ensName = walletSubname(deriveEnsLabel(email));
-  const { txHash: ensTxHash } = await registerSubname(ensName, boundAddress);
-
-  store.createAccount({
-    privyUserId: userId,
-    ensName,
-    boundAddress,
-    privyWalletAddress: walletAddress,
-    idleBalance: 0,
-    createdAt: Date.now(),
-  });
-
-  res.json({
-    verified: true,
-    userId,
-    ensName,
-    boundAddress,
-    privyWalletAddress: walletAddress,
-    balance: 0,
-    reused: false,
-    fundingTxHash,
-    ensTxHash,
-  });
+  res.json({ ...(await loginFull({ privyUserId: userId, email, walletAddress })), fundingTxHash });
 }));

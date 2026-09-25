@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
 import { store } from "../store.js";
+import { findByPrivyUserId } from "../accounts.js";
+import { requireSession } from "../sessions.js";
 import { positionSubname, registerSubname } from "../ens.js";
 import { proposeOpenPosition, getPoolsInfo } from "../agent.js";
 import { asyncHandler } from "../asyncHandler.js";
@@ -18,20 +20,20 @@ agentRouter.get("/agent/pools", (_req, res) => {
 });
 
 const OpenPositionBody = z.object({
-  userId: z.string().min(1),
   riskLevel: z.enum(["low", "medium", "high"]),
   amount: z.number().positive(),
 });
 
-agentRouter.post("/agent/open-position", asyncHandler(async (req, res) => {
+agentRouter.post("/agent/open-position", requireSession("full"), asyncHandler(async (req, res) => {
   const parsed = OpenPositionBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const { userId, riskLevel, amount } = parsed.data;
+  const { riskLevel, amount } = parsed.data;
+  const userId: string = res.locals.session.privyUserId;
 
-  const account = store.getAccount(userId);
+  const account = await findByPrivyUserId(userId);
   if (!account) {
     res.status(404).json({ error: "unknown account — complete /verify first" });
     return;
