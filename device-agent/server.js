@@ -38,6 +38,7 @@ const CONTENT_TYPES = {
 // at-a-time design (one box, one person standing in front of it).
 let session = null; // { userId, ensName, balance }
 let lastPulseDeposit = null; // { ensName, boundAddress, balance, txHash, amount, ts }
+let lastBillRejection = null; // { reason, ts } — serial listener only; pulses can't report rejects
 
 async function readJsonBody(req) {
   const chunks = [];
@@ -56,30 +57,52 @@ async function handleSessionStart(req, res) {
   if (!userId) return sendJson(res, 400, { error: "userId required" });
   session = { userId, ensName: ensName ?? null, balance: balance ?? 0 };
   lastPulseDeposit = null;
+  lastBillRejection = null;
   sendJson(res, 200, { ok: true });
 }
 
 async function handleSessionEnd(_req, res) {
   session = null;
   lastPulseDeposit = null;
+  lastBillRejection = null;
   sendJson(res, 200, { ok: true });
 }
 
+// The serial listener polls this so it can refuse a note held in escrow
+// when nobody is logged in, instead of taking cash it can't credit.
+function handleSessionStatus(res) {
+  sendJson(res, 200, { active: session !== null });
+}
+
+async function handleBillRejected(req, res) {
+  const { reason } = await readJsonBody(req);
+  lastBillRejection = { reason: reason || "note not recognised", ts: Date.now() };
+  sendJson(res, 200, lastBillRejection);
+}
+
+function handleBillRejectedLatest(url, res) {
+  const since = Number(url.searchParams.get("since") ?? 0);
+  if (lastBillRejection && lastBillRejection.ts > since) return sendJson(res, 200, lastBillRejection);
+  sendJson(res, 200, {});
+}
+
 async function handlePulseDeposit(req, res) {
-  const { amount } = await readJsonBody(req);
+  const { amount, currency } = await readJsonBody(req);
   if (!(amount > 0)) return sendJson(res, 400, { error: "amount must be a positive number" });
   if (!session) return sendJson(res, 409, { error: "no active session — insert cash after verifying" });
 
   const backendRes = await fetch(`${BACKEND_URL}/deposit`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ userId: session.userId, amount }),
+    // currency is passed through so the backend converts ringgit to USD;
+    // the pulse listener doesn't send one and stays on the backend's USD default.
+    body: JSON.stringify({ userId: session.userId, amount, currency: currency ?? undefined }),
   });
   const body = await backendRes.json();
   if (!backendRes.ok) return sendJson(res, backendRes.status, body);
 
   session.balance = body.balance;
-  lastPulseDeposit = { ...body, amount, ts: Date.now() };
+  lastPulseDeposit = { ...body, amount, currency: currency ?? null, ts: Date.now() };
   sendJson(res, 200, lastPulseDeposit);
 }
 
@@ -95,7 +118,10 @@ createServer(async (req, res) => {
 
   try {
     if (req.method === "POST" && url.pathname === "/session") return await handleSessionStart(req, res);
+    if (req.method === "GET" && url.pathname === "/session") return handleSessionStatus(res);
     if (req.method === "POST" && url.pathname === "/session/end") return await handleSessionEnd(req, res);
+    if (req.method === "POST" && url.pathname === "/bill-rejected") return await handleBillRejected(req, res);
+    if (req.method === "GET" && url.pathname === "/bill-rejected/latest") return handleBillRejectedLatest(url, res);
     if (req.method === "POST" && url.pathname === "/pulse-deposit") return await handlePulseDeposit(req, res);
     if (req.method === "GET" && url.pathname === "/pulse-deposit/latest") return handlePulseDepositLatest(url, res);
   } catch (err) {

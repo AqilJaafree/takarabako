@@ -53,3 +53,32 @@ know a physical device exists:
 
 See the TB74-to-Pi-4 wiring guide (linked from project notes) for the
 physical GPIO hookup.
+
+### Serial mode (recommended)
+
+With the TB74 switched to serial (4-position DIP block, switch 2 OFF), the
+acceptor reports each note before it is stacked, and reports notes it
+couldn't recognise. `serial/bill_acceptor_serial.py` replaces the pulse
+listener:
+
+- Talks ICT protocol on `/dev/serial0` at 9600 8E1 through the TB74's 8-pin
+  3.3V header (GND → Pi pin 14, TX1 → 1kΩ → pin 10, RX1 ← 1kΩ ← pin 8).
+- Accepts a note only while an account is logged in (`GET /session`),
+  otherwise refuses it so the acceptor hands it back.
+- Posts stacked notes to `POST /pulse-deposit` with `currency: "MYR"`, and
+  unrecognised or refused notes to `POST /bill-rejected`. The browser polls
+  `GET /bill-rejected/latest` and tells the customer to try again.
+- `--simulate` works without hardware: type a ringgit value, or `x` for a
+  rejected note.
+
+Pi setup: `enable_uart=1` and `dtoverlay=disable-bt` in
+`/boot/firmware/config.txt`, and `console=serial0,...` removed from
+`cmdline.txt`. The mini UART the Pi uses by default can't do parity.
+
+Note codes on this unit (ICT Malaysia sheet): `40` RM1, `41` RM2, `42` RM5,
+`43` RM10, `44` RM50, `45` RM100, `46` RM20.
+
+The backend converts ringgit to USD before crediting the vault
+(`backend/src/fx.ts`): the live rate from open.er-api.com, cached for an
+hour, or a fixed `MYR_USD_RATE` from `backend/.env`. At 0.2449, RM10 credits
+about 2.45 test USDC.

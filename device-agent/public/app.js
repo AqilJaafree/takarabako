@@ -16,6 +16,7 @@ const state = {
   balance: 0,
   position: null,
   lastPulseTs: 0,
+  lastRejectTs: 0,
   pulsePollTimer: null,
 };
 
@@ -67,8 +68,21 @@ function startPulsePolling() {
       if (deposit.ts && deposit.ts > state.lastPulseTs) {
         state.lastPulseTs = deposit.ts;
         state.balance = deposit.balance;
-        log(`bill acceptor: $${deposit.amount} accepted — tx ${deposit.txHash}`);
+        const shown =
+          deposit.currency === "MYR"
+            ? `RM${deposit.amount} → $${deposit.usdAmount} (1 MYR = $${deposit.fxRate})`
+            : `$${deposit.amount}`;
+        log(`bill acceptor: ${shown} accepted — tx ${deposit.txHash}`);
         screenAccount();
+      }
+
+      // Serial mode only: a note the acceptor pushed back out, or refused
+      // because nobody was logged in.
+      const rejectRes = await fetch(`/bill-rejected/latest?since=${state.lastRejectTs}`);
+      const rejection = await rejectRes.json();
+      if (rejection.ts && rejection.ts > state.lastRejectTs) {
+        state.lastRejectTs = rejection.ts;
+        log(`bill acceptor: note rejected (${rejection.reason}) — please try again`);
       }
     } catch {
       // bridge or backend briefly unreachable — next poll retries

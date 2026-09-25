@@ -37,7 +37,9 @@ export interface Position {
 export interface DepositEvent {
   id: string;
   privyUserId: string;
-  denomination: number;
+  denomination: number; // face value of the cash, in `currency`
+  currency: "USD" | "MYR";
+  usdAmount: number; // what the vault was actually credited
   txHash: string;
   ts: number;
 }

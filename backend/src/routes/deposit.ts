@@ -4,6 +4,7 @@ import type { Address } from "viem";
 import { store } from "../store.js";
 import { chainReady, depositOnChain } from "../chain.js";
 import { asyncHandler } from "../asyncHandler.js";
+import { toUsd } from "../fx.js";
 
 /// POST /deposit — PRD §6.2 (ATM-style: comes after /verify now). Cash
 /// lands in the box, backend fronts USDC from the treasury via a real
@@ -15,6 +16,9 @@ export const depositRouter = Router();
 const DepositBody = z.object({
   userId: z.string().min(1),
   amount: z.number().positive(),
+  // Currency of the cash inserted. The bill acceptor sends MYR; the vault is
+  // credited in USD(C) after conversion.
+  currency: z.enum(["USD", "MYR"]).default("USD"),
 });
 
 depositRouter.post("/deposit", asyncHandler(async (req, res) => {
@@ -23,7 +27,7 @@ depositRouter.post("/deposit", asyncHandler(async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const { userId, amount } = parsed.data;
+  const { userId, amount, currency } = parsed.data;
 
   const account = store.getAccount(userId);
   if (!account) {
@@ -35,13 +39,18 @@ depositRouter.post("/deposit", asyncHandler(async (req, res) => {
     return;
   }
 
-  const { txHash, value } = await depositOnChain(account.boundAddress as Address, amount);
+  const { usdAmount, rate, source } = await toUsd(amount, currency);
+  if (currency !== "USD") console.log(`[fx] ${currency} ${amount} -> USD ${usdAmount} at ${rate} (${source})`);
+
+  const { txHash, value } = await depositOnChain(account.boundAddress as Address, usdAmount);
   account.idleBalance = value;
 
   store.logDeposit({
     id: crypto.randomUUID(),
     privyUserId: userId,
     denomination: amount,
+    currency,
+    usdAmount,
     txHash,
     ts: Date.now(),
   });
@@ -51,5 +60,9 @@ depositRouter.post("/deposit", asyncHandler(async (req, res) => {
     boundAddress: account.boundAddress,
     balance: account.idleBalance,
     txHash,
+    currency,
+    usdAmount,
+    fxRate: rate,
+    fxSource: source,
   });
 }));

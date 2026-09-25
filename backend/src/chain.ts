@@ -55,17 +55,35 @@ function vaultAddress(): Address {
 /// Fronts `amount` (demo units, e.g. 1000 == "$1,000") from the treasury into
 /// the vault on behalf of `user`, returns the tx hash and `user`'s live
 /// on-chain value (principal — yield hasn't had time to accrue yet).
-export async function depositOnChain(user: Address, amount: number) {
+// Deposits run one at a time. The bill acceptor can stack two notes seconds
+// apart; sent concurrently, the second deposit's gas was estimated against
+// state the first one then changed, and it reverted out of gas (seen on
+// Sepolia, tx 0x1a8b57b1…, while testing the TB74 serial listener).
+let depositQueue: Promise<unknown> = Promise.resolve();
+
+export function depositOnChain(user: Address, amount: number) {
+  const run = depositQueue.then(() => depositOnChainNow(user, amount));
+  depositQueue = run.catch(() => {});
+  return run;
+}
+
+async function depositOnChainNow(user: Address, amount: number) {
   if (!walletClient) throw new Error("chain not configured — set TREASURY_PRIVATE_KEY/USDC_ADDRESS/VAULT_ADDRESS");
   const raw = parseUnits(amount.toString(), USDC_DECIMALS);
-
-  const hash = await walletClient.writeContract({
+  const request = {
     address: vaultAddress(),
     abi: vaultAbi,
     functionName: "depositFor",
     args: [user, raw],
-  });
-  await publicClient.waitForTransactionReceipt({ hash });
+    account: walletClient.account!,
+  } as const;
+
+  // 30% headroom over the estimate, so a small state change between
+  // estimation and inclusion can't push the call out of gas.
+  const estimate = await publicClient.estimateContractGas(request);
+  const hash = await walletClient.writeContract({ ...request, gas: (estimate * 13n) / 10n });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error(`deposit reverted on-chain (tx ${hash})`);
 
   const value = await previewValueOnChain(user);
   return { txHash: hash, value };

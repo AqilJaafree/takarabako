@@ -2,7 +2,7 @@
 """TB74 pulse bill acceptor listener for the Takarabako kiosk (PRD §7.1/§7.2,
 Phase 4 — see the TB74-to-Pi-4 wiring guide for the physical hookup).
 
-Wiring recap: PULSE+ (harness pin 7) -> Pi physical pin 11 (GPIO17);
+Wiring recap: PULSE+ (harness pin 7) -> Pi physical pin 13 (GPIO27);
 PULSE- (harness pin 8) -> any Pi GND. The pull-up is enabled here in
 software, not by wiring 5V/12V onto the pin — see the wiring guide's
 safety note before touching the harness.
@@ -30,7 +30,8 @@ import time
 import urllib.error
 import urllib.request
 
-GPIO_PIN = 17
+# GPIO17 (pin 11) on the bench Pi is damaged (stuck low) — use GPIO27 (pin 13).
+GPIO_PIN = 27
 
 # How long to wait after the last pulse before treating a burst as finished.
 # Not sourced from the TB74 manual (its inter-pulse timing isn't documented
