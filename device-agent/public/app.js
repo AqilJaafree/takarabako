@@ -15,8 +15,8 @@ const state = {
   ensName: null,
   balance: 0,
   position: null,
-  lastPulseTs: 0,
-  lastRejectTs: 0,
+  lastEventSeq: 0,
+  pending: {}, // bill-acceptor deposits stacked but not yet mined: id -> { amount, currency, estUsd }
   pulsePollTimer: null,
 };
 
@@ -52,42 +52,53 @@ function loadPools() {
 }
 loadPools();
 
-// Bill acceptor bridge (device-agent/server.js): polls for a real pulse-
-// triggered deposit landing while this screen is up, the same way the
-// fallback button's own POST /deposit already updates the screen — just
-// without a click. Runs only while an account screen showing a balance is
-// visible; stopped on logout, receipt, or the yield page.
+// Bill acceptor bridge (device-agent/server.js): polls its event feed while
+// the account screen is up. A stacked note shows as pending within a poll
+// (under a second), with an estimated USD amount; the balance updates when
+// the deposit transaction is mined. Stopped on logout, receipt, or the yield
+// page.
+function moneyLabel(amount, currency) {
+  return currency === "MYR" ? `RM${amount}` : `$${amount}`;
+}
+
+function onBridgeEvent(e) {
+  if (e.type === "rejected") {
+    log(`bill acceptor: note rejected (${e.reason}) — please try again`);
+    return;
+  }
+  const cash = moneyLabel(e.amount, e.currency);
+  if (e.status === "pending") {
+    state.pending[e.id] = e;
+    log(`bill acceptor: ${cash} received${e.estUsd != null ? ` → ≈$${e.estUsd}` : ""}, confirming on-chain…`);
+  } else if (e.status === "confirmed") {
+    delete state.pending[e.id];
+    state.balance = e.balance;
+    const usd = e.currency === "MYR" ? ` → $${e.usdAmount} (1 MYR = $${e.fxRate})` : "";
+    log(`bill acceptor: ${cash}${usd} credited — tx ${e.txHash}`);
+  } else if (e.status === "failed") {
+    delete state.pending[e.id];
+    log(`bill acceptor: ${cash} NOT credited (${e.error}) — please ask staff`);
+  }
+}
+
 function startPulsePolling() {
   if (state.pulsePollTimer) return;
   state.pulsePollTimer = setInterval(async () => {
     try {
       // Same-origin call to device-agent/server.js itself (not BACKEND_URL) —
       // it holds the bridge state and already talks to the real backend.
-      const res = await fetch(`/pulse-deposit/latest?since=${state.lastPulseTs}`);
-      const deposit = await res.json();
-      if (deposit.ts && deposit.ts > state.lastPulseTs) {
-        state.lastPulseTs = deposit.ts;
-        state.balance = deposit.balance;
-        const shown =
-          deposit.currency === "MYR"
-            ? `RM${deposit.amount} → $${deposit.usdAmount} (1 MYR = $${deposit.fxRate})`
-            : `$${deposit.amount}`;
-        log(`bill acceptor: ${shown} accepted — tx ${deposit.txHash}`);
-        screenAccount();
+      const res = await fetch(`/events?since=${state.lastEventSeq}`);
+      const { events } = await res.json();
+      if (!events.length) return;
+      for (const e of events) {
+        state.lastEventSeq = Math.max(state.lastEventSeq, e.seq);
+        onBridgeEvent(e);
       }
-
-      // Serial mode only: a note the acceptor pushed back out, or refused
-      // because nobody was logged in.
-      const rejectRes = await fetch(`/bill-rejected/latest?since=${state.lastRejectTs}`);
-      const rejection = await rejectRes.json();
-      if (rejection.ts && rejection.ts > state.lastRejectTs) {
-        state.lastRejectTs = rejection.ts;
-        log(`bill acceptor: note rejected (${rejection.reason}) — please try again`);
-      }
+      screenAccount();
     } catch {
       // bridge or backend briefly unreachable — next poll retries
     }
-  }, 2000);
+  }, 750);
 }
 
 function stopPulsePolling() {
@@ -173,6 +184,14 @@ async function screenYield() {
   }
 }
 
+function pendingHtml() {
+  const items = Object.values(state.pending);
+  if (!items.length) return "";
+  const est = items.reduce((sum, e) => sum + (e.estUsd ?? 0), 0);
+  const cash = items.map((e) => moneyLabel(e.amount, e.currency)).join(" + ");
+  return `<p class="sub pending">+ ≈$${est.toFixed(2)} confirming (${cash})</p>`;
+}
+
 function screenAccount() {
   const positionHtml = state.position
     ? `<p class="sub">Active: <span class="ens">${state.position.ensName}</span> — ${state.position.pair} @ ${(state.position.apyBps / 100).toFixed(1)}% APY</p>`
@@ -187,6 +206,7 @@ function screenAccount() {
   render(`
     <div class="ens">${state.ensName}</div>
     <div class="balance">$${state.balance.toLocaleString()}</div>
+    ${pendingHtml()}
     ${positionHtml}
     <div class="row">
       <button class="primary" id="btn-deposit">Deposit</button>
@@ -214,7 +234,7 @@ function screenReceipt(receipt) {
 function onDone() {
   stopPulsePolling();
   clearSession();
-  Object.assign(state, { userId: null, ensName: null, balance: 0, position: null, lastPulseTs: 0 });
+  Object.assign(state, { userId: null, ensName: null, balance: 0, position: null, lastEventSeq: 0, pending: {} });
   screenAuth();
 }
 

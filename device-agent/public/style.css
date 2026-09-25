@@ -152,6 +152,22 @@ h1 {
   letter-spacing: -0.3px;
 }
 
+/* Bill-acceptor deposits stacked but not yet mined. */
+.sub.pending {
+  color: var(--warn);
+  margin: 4px 0 12px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sub.pending {
+    animation: pending-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes pending-pulse {
+  50% { opacity: 0.55; }
+}
+
 button {
   font: inherit;
   font-weight: 600;

@@ -4,7 +4,7 @@ import type { Address } from "viem";
 import { store } from "../store.js";
 import { chainReady, depositOnChain } from "../chain.js";
 import { asyncHandler } from "../asyncHandler.js";
-import { toUsd } from "../fx.js";
+import { toUsd, usdPerUnit } from "../fx.js";
 
 /// POST /deposit — PRD §6.2 (ATM-style: comes after /verify now). Cash
 /// lands in the box, backend fronts USDC from the treasury via a real
@@ -20,6 +20,14 @@ const DepositBody = z.object({
   // credited in USD(C) after conversion.
   currency: z.enum(["USD", "MYR"]).default("USD"),
 });
+
+/// GET /fx?currency=MYR — the rate /deposit will use, so the kiosk can show
+/// an estimated USD amount the moment a note is stacked, before the deposit
+/// transaction is mined.
+depositRouter.get("/fx", asyncHandler(async (req, res) => {
+  const currency = req.query.currency === "MYR" ? "MYR" : "USD";
+  res.json({ currency, ...(await usdPerUnit(currency)) });
+}));
 
 depositRouter.post("/deposit", asyncHandler(async (req, res) => {
   const parsed = DepositBody.safeParse(req.body);

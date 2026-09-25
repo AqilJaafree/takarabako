@@ -48,8 +48,10 @@ know a physical device exists:
   Python script posts a settled amount here; the server resolves the
   session's `userId` and calls the real backend `/deposit` — the Python
   script never sees `userId` or talks to the backend directly), and
-  `GET /pulse-deposit/latest` (the browser polls this while on the account
-  screen so a hardware deposit updates the balance live, no click needed).
+  `GET /events` (the browser polls this every 0.75s while on the account
+  screen: each note appears as *pending* with an estimated USD amount as
+  soon as it's stacked, then *confirmed* with the new balance once the
+  deposit transaction is mined).
 
 See the TB74-to-Pi-4 wiring guide (linked from project notes) for the
 physical GPIO hookup.
@@ -66,8 +68,8 @@ listener:
 - Accepts a note only while an account is logged in (`GET /session`),
   otherwise refuses it so the acceptor hands it back.
 - Posts stacked notes to `POST /pulse-deposit` with `currency: "MYR"`, and
-  unrecognised or refused notes to `POST /bill-rejected`. The browser polls
-  `GET /bill-rejected/latest` and tells the customer to try again.
+  unrecognised or refused notes to `POST /bill-rejected`, which shows up in
+  the same `GET /events` feed so the kiosk tells the customer to try again.
 - `--simulate` works without hardware: type a ringgit value, or `x` for a
   rejected note.
 

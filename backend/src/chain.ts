@@ -1,5 +1,5 @@
 import { createPublicClient, createWalletClient, http, parseAbi, parseUnits, parseEther, formatUnits, type Address } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { privateKeyToAccount, nonceManager } from "viem/accounts";
 import { sepolia } from "viem/chains";
 import { config } from "./config.js";
 
@@ -30,7 +30,13 @@ const npmAbi = parseAbi([
   "function positions(uint256 tokenId) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)",
 ]);
 
-const account = config.treasuryPrivateKey ? privateKeyToAccount(config.treasuryPrivateKey as `0x${string}`) : undefined;
+// The nonce manager tracks the treasury's nonce locally, so several
+// transactions can be in flight at once (e.g. two bill-acceptor deposits)
+// without each waiting for the previous one to be mined. viem resets it if a
+// send fails, so a failed send can't leave a nonce gap.
+const account = config.treasuryPrivateKey
+  ? privateKeyToAccount(config.treasuryPrivateKey as `0x${string}`, { nonceManager })
+  : undefined;
 
 export const chainReady = Boolean(account && config.usdcAddress && config.vaultAddress);
 export const treasuryAddress = account?.address;
@@ -55,19 +61,21 @@ function vaultAddress(): Address {
 /// Fronts `amount` (demo units, e.g. 1000 == "$1,000") from the treasury into
 /// the vault on behalf of `user`, returns the tx hash and `user`'s live
 /// on-chain value (principal — yield hasn't had time to accrue yet).
-// Deposits run one at a time. The bill acceptor can stack two notes seconds
-// apart; sent concurrently, the second deposit's gas was estimated against
-// state the first one then changed, and it reverted out of gas (seen on
-// Sepolia, tx 0x1a8b57b1…, while testing the TB74 serial listener).
-let depositQueue: Promise<unknown> = Promise.resolve();
+// Deposit *sends* run one at a time; waiting for the receipt does not. The
+// bill acceptor can stack two notes seconds apart. Sent fully concurrently,
+// the second deposit's gas was estimated against state the first then
+// changed, and it reverted out of gas (Sepolia tx 0x1a8b57b1…). Queueing
+// only estimate+send keeps nonces in order while letting both deposits land
+// in the same block, instead of the second waiting ~12s for the first.
+let sendQueue: Promise<unknown> = Promise.resolve();
 
-export function depositOnChain(user: Address, amount: number) {
-  const run = depositQueue.then(() => depositOnChainNow(user, amount));
-  depositQueue = run.catch(() => {});
+function queueSend<T>(send: () => Promise<T>): Promise<T> {
+  const run = sendQueue.then(send);
+  sendQueue = run.catch(() => {});
   return run;
 }
 
-async function depositOnChainNow(user: Address, amount: number) {
+export async function depositOnChain(user: Address, amount: number) {
   if (!walletClient) throw new Error("chain not configured — set TREASURY_PRIVATE_KEY/USDC_ADDRESS/VAULT_ADDRESS");
   const raw = parseUnits(amount.toString(), USDC_DECIMALS);
   const request = {
@@ -80,9 +88,11 @@ async function depositOnChainNow(user: Address, amount: number) {
 
   // 30% headroom over the estimate, so a small state change between
   // estimation and inclusion can't push the call out of gas.
-  const estimate = await publicClient.estimateContractGas(request);
-  const hash = await walletClient.writeContract({ ...request, gas: (estimate * 13n) / 10n });
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  const hash = await queueSend(async () => {
+    const estimate = await publicClient.estimateContractGas(request);
+    return walletClient.writeContract({ ...request, gas: (estimate * 13n) / 10n });
+  });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash, pollingInterval: 1_000 });
   if (receipt.status !== "success") throw new Error(`deposit reverted on-chain (tx ${hash})`);
 
   const value = await previewValueOnChain(user);

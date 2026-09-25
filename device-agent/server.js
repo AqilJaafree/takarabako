@@ -30,15 +30,33 @@ const CONTENT_TYPES = {
 //      (not the Python script) calls the real backend's POST /deposit using
 //      the session's userId — the GPIO script never sees userId or talks to
 //      the backend directly.
-//   3. app.js polls for a new deposit while showing the account screen and
-//      re-renders when one lands, the same way the fallback button already
-//      updates the screen after its own POST /deposit.
+//   3. app.js polls GET /events while showing the account screen. Each
+//      stacked note appears there immediately as "pending", with an estimated
+//      USD amount, then flips to "confirmed" (or "failed") once the deposit
+//      transaction is mined. The customer sees the note register within a
+//      second instead of after a Sepolia block.
 //
 // In-memory only, single active session — matches this kiosk's single-user-
 // at-a-time design (one box, one person standing in front of it).
 let session = null; // { userId, ensName, balance }
-let lastPulseDeposit = null; // { ensName, boundAddress, balance, txHash, amount, ts }
-let lastBillRejection = null; // { reason, ts } — serial listener only; pulses can't report rejects
+
+// Event feed for the browser. Every change bumps `seq`, and the browser asks
+// for everything newer than the last seq it saw, so an update to an event
+// (pending -> confirmed) is delivered again under its new seq.
+//   { seq, id, type: "deposit", status: "pending"|"confirmed"|"failed",
+//     amount, currency, estUsd, usdAmount?, balance?, txHash?, error? }
+//   { seq, id, type: "rejected", reason }
+let events = [];
+let seqCounter = 0;
+let idCounter = 0;
+
+function putEvent(event) {
+  event.seq = ++seqCounter;
+  events = events.filter((e) => e.id !== event.id);
+  events.push(event);
+  if (events.length > 50) events = events.slice(-50);
+  return event;
+}
 
 async function readJsonBody(req) {
   const chunks = [];
@@ -56,15 +74,13 @@ async function handleSessionStart(req, res) {
   const { userId, ensName, balance } = await readJsonBody(req);
   if (!userId) return sendJson(res, 400, { error: "userId required" });
   session = { userId, ensName: ensName ?? null, balance: balance ?? 0 };
-  lastPulseDeposit = null;
-  lastBillRejection = null;
+  events = [];
   sendJson(res, 200, { ok: true });
 }
 
 async function handleSessionEnd(_req, res) {
   session = null;
-  lastPulseDeposit = null;
-  lastBillRejection = null;
+  events = [];
   sendJson(res, 200, { ok: true });
 }
 
@@ -76,40 +92,62 @@ function handleSessionStatus(res) {
 
 async function handleBillRejected(req, res) {
   const { reason } = await readJsonBody(req);
-  lastBillRejection = { reason: reason || "note not recognised", ts: Date.now() };
-  sendJson(res, 200, lastBillRejection);
+  sendJson(res, 200, putEvent({ id: `r${++idCounter}`, type: "rejected", reason: reason || "note not recognised" }));
 }
 
-function handleBillRejectedLatest(url, res) {
+function handleEvents(url, res) {
   const since = Number(url.searchParams.get("since") ?? 0);
-  if (lastBillRejection && lastBillRejection.ts > since) return sendJson(res, 200, lastBillRejection);
-  sendJson(res, 200, {});
+  sendJson(res, 200, { events: events.filter((e) => e.seq > since) });
+}
+
+// Best-effort USD estimate for the pending event; the confirmed amount comes
+// from the backend's /deposit response. A slow or failed rate lookup only
+// means the pending line shows the ringgit amount without a USD estimate.
+async function estimateUsd(amount, currency) {
+  if (!currency || currency === "USD") return amount;
+  try {
+    const r = await fetch(`${BACKEND_URL}/fx?currency=${currency}`, { signal: AbortSignal.timeout(1500) });
+    const { rate } = await r.json();
+    return rate > 0 ? Math.round(amount * rate * 100) / 100 : null;
+  } catch {
+    return null;
+  }
 }
 
 async function handlePulseDeposit(req, res) {
   const { amount, currency } = await readJsonBody(req);
   if (!(amount > 0)) return sendJson(res, 400, { error: "amount must be a positive number" });
   if (!session) return sendJson(res, 409, { error: "no active session — insert cash after verifying" });
+  const { userId } = session;
 
-  const backendRes = await fetch(`${BACKEND_URL}/deposit`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    // currency is passed through so the backend converts ringgit to USD;
-    // the pulse listener doesn't send one and stays on the backend's USD default.
-    body: JSON.stringify({ userId: session.userId, amount, currency: currency ?? undefined }),
+  const event = putEvent({
+    id: `d${++idCounter}`,
+    type: "deposit",
+    status: "pending",
+    amount,
+    currency: currency ?? "USD",
+    estUsd: await estimateUsd(amount, currency),
   });
-  const body = await backendRes.json();
-  if (!backendRes.ok) return sendJson(res, backendRes.status, body);
 
-  session.balance = body.balance;
-  lastPulseDeposit = { ...body, amount, currency: currency ?? null, ts: Date.now() };
-  sendJson(res, 200, lastPulseDeposit);
-}
+  let body;
+  try {
+    const backendRes = await fetch(`${BACKEND_URL}/deposit`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      // currency is passed through so the backend converts ringgit to USD;
+      // the pulse listener doesn't send one and stays on the backend's USD default.
+      body: JSON.stringify({ userId, amount, currency: currency ?? undefined }),
+    });
+    body = await backendRes.json();
+    if (!backendRes.ok) throw new Error(typeof body.error === "string" ? body.error : JSON.stringify(body.error));
+  } catch (err) {
+    const error = err instanceof Error ? err.message : "deposit failed";
+    putEvent({ ...event, status: "failed", error });
+    return sendJson(res, 502, { error });
+  }
 
-function handlePulseDepositLatest(url, res) {
-  const since = Number(url.searchParams.get("since") ?? 0);
-  if (lastPulseDeposit && lastPulseDeposit.ts > since) return sendJson(res, 200, lastPulseDeposit);
-  sendJson(res, 200, {});
+  if (session?.userId === userId) session.balance = body.balance;
+  sendJson(res, 200, putEvent({ ...event, ...body, status: "confirmed" }));
 }
 // ---------------------------------------------------------------------------
 
@@ -121,9 +159,8 @@ createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/session") return handleSessionStatus(res);
     if (req.method === "POST" && url.pathname === "/session/end") return await handleSessionEnd(req, res);
     if (req.method === "POST" && url.pathname === "/bill-rejected") return await handleBillRejected(req, res);
-    if (req.method === "GET" && url.pathname === "/bill-rejected/latest") return handleBillRejectedLatest(url, res);
     if (req.method === "POST" && url.pathname === "/pulse-deposit") return await handlePulseDeposit(req, res);
-    if (req.method === "GET" && url.pathname === "/pulse-deposit/latest") return handlePulseDepositLatest(url, res);
+    if (req.method === "GET" && url.pathname === "/events") return handleEvents(url, res);
   } catch (err) {
     return sendJson(res, 502, { error: err instanceof Error ? err.message : "bridge error" });
   }
