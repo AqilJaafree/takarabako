@@ -67,15 +67,29 @@ export function mbError(err: unknown): Error {
   return err instanceof Error ? err : new Error(String(err));
 }
 
+/// Retries a call that never got an answer (DNS hiccup, timeout, reset) —
+/// seen against the hosted deployment. An HTTP error response is final, and
+/// nothing that broadcasts a transaction goes through here.
+async function retryNetwork<T>(run: () => Promise<T>, attempts = 3): Promise<T> {
+  for (let i = 1; ; i++) {
+    try {
+      return await run();
+    } catch (err) {
+      const noResponse = !(err as { response?: unknown })?.response && Boolean((err as { code?: string })?.code);
+      if (!noResponse || i >= attempts) throw err;
+      await new Promise((r) => setTimeout(r, 500 * i));
+    }
+  }
+}
+
 /// A view call. Numbers come back as decimal strings (formatInts: "as_strings"),
 /// so 6-decimal USDC amounts never lose precision in a JS number.
 export async function mbCall<T = unknown>(addressOrAlias: string, label: string, method: string, args: unknown[] = []): Promise<T> {
   requireReady();
   try {
-    const { data } = await mb.contracts.callContractFunction(addressOrAlias, label, method, {
-      args,
-      formatInts: "as_strings",
-    });
+    const { data } = await retryNetwork(() =>
+      mb.contracts.callContractFunction(addressOrAlias, label, method, { args, formatInts: "as_strings" }),
+    );
     const result = data.result as { kind: string; output?: unknown };
     if (result.kind !== "MethodCallResponse") throw new Error(`${method} is not a view function`);
     return result.output as T;
@@ -93,11 +107,10 @@ export async function mbSend(addressOrAlias: string, label: string, method: stri
   const hash = await queueTreasurySend(async () => {
     let tx: TransactionToSignTx;
     try {
-      const { data } = await mb.contracts.callContractFunction(addressOrAlias, label, method, {
-        args,
-        from: treasuryAddress,
-        formatInts: "as_strings",
-      });
+      // Building the transaction has no side effects, so it may be retried.
+      const { data } = await retryNetwork(() =>
+        mb.contracts.callContractFunction(addressOrAlias, label, method, { args, from: treasuryAddress, formatInts: "as_strings" }),
+      );
       const result = data.result as { kind: string; tx?: TransactionToSignTx };
       if (result.kind !== "TransactionToSignResponse" || !result.tx) throw new Error(`${method} did not return a transaction`);
       tx = result.tx;
@@ -138,7 +151,7 @@ export async function mbQuery<Row = Record<string, unknown>>(name: string, limit
   requireReady();
   try {
     return await paged(async (offset, n) => {
-      const { data } = await mb.queries.executeEventQuery(name, offset, n);
+      const { data } = await retryNetwork(() => mb.queries.executeEventQuery(name, offset, n));
       return (data.result as { rows: Row[] }).rows;
     }, limit);
   } catch (err) {
@@ -151,7 +164,7 @@ export async function mbArbitraryQuery<Row = Record<string, unknown>>(query: Eve
   requireReady();
   try {
     return await paged(async (offset, n) => {
-      const { data } = await mb.queries.executeArbitraryEventQuery(query, offset, n);
+      const { data } = await retryNetwork(() => mb.queries.executeArbitraryEventQuery(query, offset, n));
       return (data.result as { rows: Row[] }).rows;
     }, limit);
   } catch (err) {
