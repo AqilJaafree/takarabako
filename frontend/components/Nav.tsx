@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/qr", label: "My QR" },
   { href: "/yield", label: "Yield" },
   { href: "/withdraw", label: "Withdraw" },
+  { href: "/history", label: "History" },
 ] as const;
 
 export function Nav() {

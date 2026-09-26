@@ -87,7 +87,49 @@ export type LiveEvent =
       balance: number;
       ts: number;
     }
-  | { type: "deposit.failed"; depositId: string; amount: number; currency: string; error: string; ts: number };
+  | { type: "deposit.failed"; depositId: string; amount: number; currency: string; error: string; ts: number }
+  | { type: "deposit.refused"; reason: "unsupported" | "bad_condition"; sessionId: string | null; ts: number };
+
+/// A deposit session's receipt (backend history.ts).
+export interface ReceiptNote {
+  id: string;
+  amount: number;
+  currency: string;
+  usdAmount: number | null;
+  txHash: string | null;
+  status: "queued" | "sending" | "confirmed" | "failed";
+  at: string;
+}
+
+export interface Receipt {
+  id: string;
+  status: "open" | "finished";
+  startedAt: string;
+  finishedAt: string | null;
+  notes: ReceiptNote[];
+  totalAmount: number;
+  currency: string;
+  totalUsdConfirmed: number;
+  settled: boolean;
+}
+
+export type HistoryItem =
+  | ({ kind: "deposit_session"; at: string } & Receipt)
+  | { kind: "withdrawal"; at: string; id: string; destination: "cash" | "wallet"; grossUsd: number; feeBps: number; netUsd: number; txHash: string | null }
+  | {
+      kind: "yield";
+      at: string;
+      id: string;
+      action: "open" | "close";
+      riskTier: string | null;
+      pair: string | null;
+      apyBps: number | null;
+      amountUsd: number | null;
+      rationale: string | null;
+      ensName: string | null;
+      txHash: string | null;
+    }
+  | { kind: "refused"; at: string; id: string; reason: "unsupported" | "bad_condition" | "no_session"; sessionId: string | null };
 
 /// What a kiosk login hands the browser. The backend session token stays in
 /// the httpOnly cookie; the browser only gets what it displays.
@@ -99,4 +141,5 @@ export interface KioskLogin {
   qrFallback: string | null;
   qrEmailed: boolean;
   bridge: "ok" | "skipped" | "failed";
+  depositSessionId: string | null;
 }
