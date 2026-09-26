@@ -473,17 +473,19 @@ export function KioskApp({
         {screen === "yield" && (
           <section className="card">
             <button className="btn btn-ghost small" onClick={() => setScreen("account")}>← Back</button>
-            <h2 style={{ marginTop: 12 }}>Get yield — real Uniswap v3 pools</h2>
-            <p className="muted small">Your {usd(balance)} goes into the pool you pick. The agent explains its choice.</p>
+            <h2 style={{ marginTop: 12 }}>Get yield — 1inch Aqua on ETH/USDC</h2>
+            <p className="muted small">Your {usd(balance)} becomes ETH/USDC liquidity. The agent explains its choice. Draw your own range in the web app.</p>
             {message && <div className="notice error">{message}</div>}
             <div className="tiers">
               {pools.map((p) => (
                 <button key={p.riskTier} className="btn tier" data-tier={p.riskTier} disabled={busy} onClick={() => onOpenPosition(p.riskTier)}>
                   <span className="spread">
-                    <span className="tier-name">{p.riskTier} risk</span>
-                    <span className="amount" style={{ color: "var(--gold)" }}>{apy(p.apyBps)} APY</span>
+                    <span className="tier-name">{p.label} · {p.riskTier} risk</span>
+                    <span className="amount" style={{ color: "var(--gold)" }}>~{apy(p.apyBps)} APY</span>
                   </span>
-                  <span className="small muted">{p.pair.replace("/", " / ")} · {(p.feeBps / 100).toFixed(2)}% fee</span>
+                  <span className="small muted">
+                    {p.fullRange || p.priceLowUsd === null || p.priceHighUsd === null ? "Full range" : `${usd(p.priceLowUsd, 0)} – ${usd(p.priceHighUsd, 0)}`} · {(p.feeBps / 100).toFixed(2)}% fee
+                  </span>
                 </button>
               ))}
             </div>

@@ -6,13 +6,19 @@ export type RiskTier = "low" | "medium" | "high";
 export interface Position {
   positionId: string;
   ensName: string;
-  riskTier: RiskTier;
+  riskTier: RiskTier; // for the 3D box's gems (advanced counts as high)
+  mode: RiskTier | "advanced";
+  shape: Shape;
   pair: string;
-  amount: number;
-  apyBps: number;
-  openedAt: number;
-  nftTokenId?: string | null;
+  label: string;
+  amount: number; // live value, USD
+  apyBps: number; // estimate
+  inRange: boolean | null;
+  priceMin: number | null;
+  priceMax: number | null;
 }
+
+export type Shape = "full" | "spot" | "curve" | "bidask";
 
 /// GET /me
 export interface Me {
@@ -56,13 +62,72 @@ export type CashReceipts =
 /// GET /agent/pools
 export interface Pool {
   riskTier: RiskTier;
+  label: string;
+  description: string;
   pair: string;
-  apyBps: number;
-  poolAddress: string;
+  apyBps: number; // estimate
   feeBps: number;
   fullRange: boolean;
-  priceLowUsdc: number | null;
-  priceHighUsdc: number | null;
+  rangePct: number | null;
+  priceLowUsd: number | null;
+  priceHighUsd: number | null;
+}
+
+/// GET /yield/market
+export interface Candle {
+  t: number;
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+}
+
+export interface Market {
+  spot: number;
+  candles: Candle[];
+  tiers: Pool[];
+  advanced: { minPrice: number; maxPrice: number; feeBps: number; apyEstBps: number; bins: number };
+}
+
+/// POST /yield/preview
+export interface PreviewBin {
+  min: number | null;
+  max: number | null;
+  weight: number;
+  usd: number;
+  eth: number;
+  usdc: number;
+}
+
+export interface Preview {
+  spot: number;
+  side: "usdc" | "eth" | "both";
+  bins: PreviewBin[];
+}
+
+/// GET /yield/positions (one entry)
+export interface PositionView {
+  id: string;
+  mode: RiskTier | "advanced";
+  shape: Shape;
+  label: string;
+  priceMin: number | null;
+  priceMax: number | null;
+  spotOpen: number;
+  amountUsd: number;
+  apyEstBps: number;
+  rationale: string | null;
+  status: "open" | "closed";
+  valueUsd: number | null;
+  pnlUsd: number | null;
+  inRange: boolean | null;
+  spot: number;
+  eth: number;
+  usdc: number;
+  bins: Array<{ min: number | null; max: number | null; weight: number; eth: number; usdc: number; valueUsd: number }>;
+  createdAt: string;
+  closedAt: string | null;
+  closeValue: number | null;
 }
 
 /// POST /agent/open-position

@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { relay } from "@/lib/backend";
 
-/// POST /api/yield { riskLevel, amount } — the Claude agent opens a real
-/// Uniswap v3 position for the chosen tier.
+/// POST /api/yield { riskLevel, amount } — opens a beginner-tier 1inch Aqua
+/// position, with the agent's one-line rationale.
 export async function POST(req: NextRequest) {
   const { riskLevel, amount } = (await req.json().catch(() => ({}))) as { riskLevel?: string; amount?: number };
   if (!riskLevel || !(Number(amount) > 0)) {
