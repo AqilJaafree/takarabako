@@ -146,6 +146,12 @@ export function DepositFlow({
             <span>Total {cash(receipt.totalAmount, receipt.currency)}</span>
             <b>{usd(receipt.totalUsdConfirmed)}</b>
           </div>
+          {receipt.notes.some((n) => n.tkcashTxHash) && (
+            <p className="receipt-tk">
+              + {usd(receipt.notes.filter((n) => n.tkcashTxHash).reduce((s, n) => s + (n.usdAmount ?? 0), 0))} tkCASH — a token
+              for your cash in this box
+            </p>
+          )}
           <p className="receipt-foot">
             {receipt.settled
               ? "All confirmed on Sepolia. A copy is on its way to your email and in your History."

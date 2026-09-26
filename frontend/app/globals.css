@@ -1945,3 +1945,37 @@ code,
   font-size: 18px;
   color: var(--gold);
 }
+
+/* ---------- tkCASH cash receipts (My box, kiosk receipt) ---------- */
+.tk-card .tk-balance {
+  margin-top: 10px;
+  font-family: var(--font-serif);
+}
+
+.tk-card .tk-balance .amount {
+  font-size: 28px;
+  color: var(--gold);
+}
+
+.tk-symbol {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.tk-proof {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.receipt-tk {
+  margin: 8px 0 0;
+  font-size: 13px;
+  text-align: center;
+  opacity: 0.8;
+}

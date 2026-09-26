@@ -32,11 +32,26 @@ export interface Deposit {
   amount: number;
   usdAmount: number | null;
   txHash: string | null;
+  tkcashTxHash?: string | null; // the tkCASH receipt token minted for this note
   status: "queued" | "sending" | "confirmed" | "failed";
   attempts: number;
   error: string | null;
   createdAt: string;
 }
+
+/// GET /me/cash-receipts — the customer's tkCASH and its backing.
+export type CashReceipts =
+  | { configured: false }
+  | {
+      configured: true;
+      contract: string;
+      wallet: string;
+      balance: number;
+      kiosk: { kioskId: string; reserve: number; active: boolean; frozen: boolean; lastAuditAt: number | null };
+      supply: number;
+      reserve: number;
+      backed: boolean;
+    };
 
 /// GET /agent/pools
 export interface Pool {
@@ -70,6 +85,8 @@ export interface WithdrawResult {
   netUsdc: number;
   destination: "cash" | "wallet";
   receipt: string;
+  tkcashBurned?: number;
+  tkcashTxHash?: string | null;
 }
 
 /// Live events from GET /events/stream (backend/src/events.ts).
@@ -88,7 +105,8 @@ export type LiveEvent =
       ts: number;
     }
   | { type: "deposit.failed"; depositId: string; amount: number; currency: string; error: string; ts: number }
-  | { type: "deposit.refused"; reason: "unsupported" | "bad_condition"; sessionId: string | null; ts: number };
+  | { type: "deposit.refused"; reason: "unsupported" | "bad_condition"; sessionId: string | null; ts: number }
+  | { type: "tkcash.minted"; depositId: string; amount: number; txHash: string; ts: number };
 
 /// A deposit session's receipt (backend history.ts).
 export interface ReceiptNote {
@@ -97,6 +115,7 @@ export interface ReceiptNote {
   currency: string;
   usdAmount: number | null;
   txHash: string | null;
+  tkcashTxHash?: string | null;
   status: "queued" | "sending" | "confirmed" | "failed";
   at: string;
 }
@@ -115,7 +134,18 @@ export interface Receipt {
 
 export type HistoryItem =
   | ({ kind: "deposit_session"; at: string } & Receipt)
-  | { kind: "withdrawal"; at: string; id: string; destination: "cash" | "wallet"; grossUsd: number; feeBps: number; netUsd: number; txHash: string | null }
+  | {
+      kind: "withdrawal";
+      at: string;
+      id: string;
+      destination: "cash" | "wallet";
+      grossUsd: number;
+      feeBps: number;
+      netUsd: number;
+      txHash: string | null;
+      tkcashBurned?: number;
+      tkcashTxHash?: string | null;
+    }
   | {
       kind: "yield";
       at: string;
