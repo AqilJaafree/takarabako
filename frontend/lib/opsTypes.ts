@@ -95,17 +95,20 @@ export interface Flows {
 }
 
 export interface Positions {
+  spot: number | null;
+  aqua: string;
+  router: string;
   tiers: Array<{
-    riskTier: string;
-    pair: string;
-    pool: string;
+    mode: string;
+    label: string;
+    range: string;
     apyBps: number;
-    opened: number;
+    open: number;
+    strategies: number;
     amountUsd: number;
-    inRange: boolean | null;
-    lastOpenedAt: string | null;
+    valueUsd: number;
+    inRange: number;
   }>;
-  nfts: Array<{ tokenId: string; mintedAt: string; liquidity: string | null; fee: number | null }>;
 }
 
 export interface ChainEvent {
