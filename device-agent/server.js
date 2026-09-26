@@ -4,6 +4,7 @@
 // which holds no backend credentials of its own) and the backend's real
 // POST /deposit — see the "Bill acceptor bridge" section below.
 import { createServer } from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +13,9 @@ import { deviceInfo, signNote } from "./machine.js";
 const PORT = process.env.KIOSK_PORT || 8080;
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:4000";
 const PUBLIC_DIR = join(fileURLToPath(new URL(".", import.meta.url)), "public");
+// Shared with the web app's server (its BRIDGE_SECRET) when the bridge is
+// reached through a tunnel. Unset: only this Pi and the local network get in.
+const BRIDGE_SECRET = process.env.BRIDGE_SECRET ?? "";
 
 const CONTENT_TYPES = {
   ".html": "text/html",
@@ -239,8 +243,38 @@ async function handlePulseDeposit(req, res) {
 }
 // ---------------------------------------------------------------------------
 
+// Who may call the bridge. A tunnel (cloudflared) connects from localhost too,
+// so a request only counts as this Pi's own when it also carries no proxy
+// headers; Cloudflare always adds cf-connecting-ip, and clients can't remove it.
+const PROXY_HEADERS = ["cf-connecting-ip", "cf-ray", "x-forwarded-for", "forwarded"];
+function isLocal(req) {
+  const ip = req.socket.remoteAddress ?? "";
+  const loopback = ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+  return loopback && !PROXY_HEADERS.some((h) => req.headers[h] !== undefined);
+}
+const viaProxy = (req) => PROXY_HEADERS.some((h) => req.headers[h] !== undefined);
+function hasSecret(req) {
+  const got = Buffer.from(String(req.headers["x-bridge-secret"] ?? ""));
+  const want = Buffer.from(BRIDGE_SECRET);
+  return BRIDGE_SECRET !== "" && got.length === want.length && timingSafeEqual(got, want);
+}
+// Notes are only ever reported by the serial listener on this Pi; a remote
+// caller reaching these could have the Pi sign deposits for cash it never took.
+const LOCAL_ONLY = new Set(["POST /pulse-deposit", "POST /bill-rejected"]);
+// Starting, ending and following a session: the web app's server, from the
+// local network, or through the tunnel with the shared secret.
+const CONTROL = new Set(["POST /session", "POST /session/end", "GET /events"]);
+function allowed(req, route) {
+  if (isLocal(req)) return true;
+  if (LOCAL_ONLY.has(route)) return false;
+  if (!CONTROL.has(route)) return true;
+  if (BRIDGE_SECRET) return hasSecret(req);
+  return !viaProxy(req);
+}
+
 createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
+  if (!allowed(req, `${req.method} ${url.pathname}`)) return sendJson(res, 403, { error: "not allowed" });
 
   try {
     if (req.method === "POST" && url.pathname === "/session") return await handleSessionStart(req, res);

@@ -8,11 +8,16 @@ import type { DailyLimit, KioskLogin } from "./types";
 /// notes stacked by the serial listener are deposited into that account.
 /// Unset = no bridge (bench testing without the box).
 export const PI_BRIDGE_URL = process.env.PI_BRIDGE_URL ?? "";
+// Required by the bridge when it's reached through a tunnel (device-agent/server.js).
+const BRIDGE_SECRET = process.env.BRIDGE_SECRET ?? "";
 
 async function bridge(path: string, body?: unknown): Promise<Response> {
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers["content-type"] = "application/json";
+  if (BRIDGE_SECRET) headers["x-bridge-secret"] = BRIDGE_SECRET;
   return fetch(`${PI_BRIDGE_URL}${path}`, {
     method: body === undefined ? "GET" : "POST",
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
     cache: "no-store",
     signal: AbortSignal.timeout(3000),
