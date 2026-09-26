@@ -62,17 +62,19 @@ function requireReady() {
 export function mbError(err: unknown): Error {
   const response = (err as { response?: { status?: number; data?: { message?: string } } })?.response;
   if (response) return new Error(`MultiBaas ${response.status ?? "?"}: ${response.data?.message ?? (err as Error).message}`);
+  const code = (err as { code?: string })?.code;
+  if (code) return new Error(`MultiBaas unreachable (${code})`); // network error: no response at all
   return err instanceof Error ? err : new Error(String(err));
 }
 
-/// A view call. Numbers come back as decimal strings (formatInts: "string"),
+/// A view call. Numbers come back as decimal strings (formatInts: "as_strings"),
 /// so 6-decimal USDC amounts never lose precision in a JS number.
 export async function mbCall<T = unknown>(addressOrAlias: string, label: string, method: string, args: unknown[] = []): Promise<T> {
   requireReady();
   try {
     const { data } = await mb.contracts.callContractFunction(addressOrAlias, label, method, {
       args,
-      formatInts: "string",
+      formatInts: "as_strings",
     });
     const result = data.result as { kind: string; output?: unknown };
     if (result.kind !== "MethodCallResponse") throw new Error(`${method} is not a view function`);
@@ -94,7 +96,7 @@ export async function mbSend(addressOrAlias: string, label: string, method: stri
       const { data } = await mb.contracts.callContractFunction(addressOrAlias, label, method, {
         args,
         from: treasuryAddress,
-        formatInts: "string",
+        formatInts: "as_strings",
       });
       const result = data.result as { kind: string; tx?: TransactionToSignTx };
       if (result.kind !== "TransactionToSignResponse" || !result.tx) throw new Error(`${method} did not return a transaction`);
@@ -116,12 +118,29 @@ export async function mbSend(addressOrAlias: string, label: string, method: stri
   return hash;
 }
 
+/// MultiBaas returns at most 50 rows per request (a larger `limit` is a bare
+/// 400 "invalid request"), so longer results are read page by page.
+export const MB_PAGE = 50;
+
+async function paged<Row>(fetchPage: (offset: number, limit: number) => Promise<Row[]>, limit: number): Promise<Row[]> {
+  const rows: Row[] = [];
+  while (rows.length < limit) {
+    const want = Math.min(MB_PAGE, limit - rows.length);
+    const page = await fetchPage(rows.length, want);
+    rows.push(...page);
+    if (page.length < want) break;
+  }
+  return rows;
+}
+
 /// Runs a saved Event Query (created by scripts/multibaas-setup.ts).
 export async function mbQuery<Row = Record<string, unknown>>(name: string, limit = 500): Promise<Row[]> {
   requireReady();
   try {
-    const { data } = await mb.queries.executeEventQuery(name, 0, limit);
-    return (data.result as { rows: Row[] }).rows;
+    return await paged(async (offset, n) => {
+      const { data } = await mb.queries.executeEventQuery(name, offset, n);
+      return (data.result as { rows: Row[] }).rows;
+    }, limit);
   } catch (err) {
     throw mbError(err);
   }
@@ -131,8 +150,10 @@ export async function mbQuery<Row = Record<string, unknown>>(name: string, limit
 export async function mbArbitraryQuery<Row = Record<string, unknown>>(query: EventQuery, limit = 500): Promise<Row[]> {
   requireReady();
   try {
-    const { data } = await mb.queries.executeArbitraryEventQuery(query, 0, limit);
-    return (data.result as { rows: Row[] }).rows;
+    return await paged(async (offset, n) => {
+      const { data } = await mb.queries.executeArbitraryEventQuery(query, offset, n);
+      return (data.result as { rows: Row[] }).rows;
+    }, limit);
   } catch (err) {
     throw mbError(err);
   }
@@ -154,7 +175,7 @@ export async function mbEvents(opts: { contractLabel?: string; limit?: number } 
   try {
     const { data } = await mb.events.listEvents(
       undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-      opts.contractLabel, undefined, opts.limit ?? 50,
+      opts.contractLabel, undefined, Math.min(opts.limit ?? MB_PAGE, MB_PAGE),
     );
     return (data.result as Array<{
       triggeredAt: string;

@@ -25,10 +25,16 @@ const UNISWAP_NPM = "0x1238536071E1c677A632429e3655c799b22cDA52";
 const ENS_USER_REGISTRY = "0x786441fDe1a4006EadD745A8b90d8621F7a99916";
 const VERSION = "1.0";
 
-async function foundryAbi(contract: string): Promise<Abi> {
+interface Artifact {
+  abi: Abi;
+  bin: string; // MultiBaas rejects a contract without bytecode, though the SDK type marks it optional
+}
+
+async function foundryArtifact(contract: string): Promise<Artifact> {
   const path = new URL(`../../contracts/out/${contract}.sol/${contract}.json`, import.meta.url);
   try {
-    return JSON.parse(await readFile(path, "utf8")).abi;
+    const json = JSON.parse(await readFile(path, "utf8"));
+    return { abi: json.abi, bin: json.bytecode.object };
   } catch {
     throw new Error(`missing ${path.pathname} — run \`forge build\` in contracts/ first`);
   }
@@ -48,12 +54,16 @@ const ensAbi = parseAbi([
   "function findOwner(string label) view returns (address)",
 ]);
 
-const contracts: Array<{ label: string; name: string; alias: string; address: string; abi: () => Promise<Abi> }> = [
-  { label: LABELS.vault, name: "TakarabakoVault", alias: ALIASES.vault, address: config.vaultAddress, abi: () => foundryAbi("TakarabakoVault") },
-  { label: LABELS.cashReceipt, name: "TakarabakoCashReceipt", alias: ALIASES.tkcash, address: config.cashReceiptAddress, abi: () => foundryAbi("TakarabakoCashReceipt") },
-  { label: LABELS.usdc, name: "MockUSDC", alias: ALIASES.musdc, address: config.usdcAddress, abi: () => foundryAbi("MockUSDC") },
-  { label: LABELS.uniswapNpm, name: "NonfungiblePositionManager", alias: "uniswap-npm", address: UNISWAP_NPM, abi: async () => npmAbi },
-  { label: LABELS.ensRegistry, name: "UserRegistry", alias: "ens-wantest", address: ENS_USER_REGISTRY, abi: async () => ensAbi },
+// Third-party contracts: only the ABI subset; we never deploy them, so a
+// placeholder bytecode satisfies MultiBaas.
+const external = (abi: Abi) => async (): Promise<Artifact> => ({ abi, bin: "0x00" });
+
+const contracts: Array<{ label: string; name: string; alias: string; address: string; artifact: () => Promise<Artifact> }> = [
+  { label: LABELS.vault, name: "TakarabakoVault", alias: ALIASES.vault, address: config.vaultAddress, artifact: () => foundryArtifact("TakarabakoVault") },
+  { label: LABELS.cashReceipt, name: "TakarabakoCashReceipt", alias: ALIASES.tkcash, address: config.cashReceiptAddress, artifact: () => foundryArtifact("TakarabakoCashReceipt") },
+  { label: LABELS.usdc, name: "MockUSDC", alias: ALIASES.musdc, address: config.usdcAddress, artifact: () => foundryArtifact("MockUSDC") },
+  { label: LABELS.uniswapNpm, name: "NonfungiblePositionManager", alias: "uniswap-npm", address: UNISWAP_NPM, artifact: external(npmAbi) },
+  { label: LABELS.ensRegistry, name: "UserRegistry", alias: "ens-wantest", address: ENS_USER_REGISTRY, artifact: external(ensAbi) },
 ];
 
 const status = (err: unknown) => (err as { response?: { status?: number } })?.response?.status;
@@ -72,10 +82,12 @@ async function step(what: string, run: () => Promise<unknown>, okIfConflict = tr
 }
 
 console.log("1. Contract ABIs");
+const abis: Record<string, Abi> = {};
 for (const c of contracts) {
-  const abi = await c.abi();
+  const { abi, bin } = await c.artifact();
+  abis[c.label] = abi;
   await step(`${c.label} (${c.name})`, () =>
-    mb.contracts.createContract(c.label, { label: c.label, contractName: c.name, version: VERSION, rawAbi: JSON.stringify(abi) }),
+    mb.contracts.createContract(c.label, { label: c.label, contractName: c.name, version: VERSION, rawAbi: JSON.stringify(abi), bin }),
   );
 }
 
@@ -94,41 +106,59 @@ for (const c of contracts) {
 
 console.log("3. Event Queries");
 const onlyContract = (label: string) => ({ rule: "and" as const, children: [{ fieldType: "contract_label" as const, operator: "equal" as const, value: label }] });
-const input = (name: string, aggregator?: "add" | "subtract", alias?: string) => ({
-  type: "input" as const,
-  name,
-  alias: alias ?? name,
-  ...(aggregator ? { aggregator } : {}),
-});
+// MultiBaas needs each input field's position (inputIndex); a name alone is
+// rejected. Look it up in the event's ABI so the queries read by name here.
+function inputOf(label: string, event: string) {
+  const entry = abis[label]?.find((e) => e.type === "event" && e.name === event.split("(")[0]);
+  if (!entry || entry.type !== "event") throw new Error(`event ${event} not in ${label}'s ABI`);
+  return (name: string, aggregator?: "add" | "subtract", alias?: string) => {
+    const inputIndex = entry.inputs.findIndex((i) => i.name === name);
+    if (inputIndex < 0) throw new Error(`${event} has no input ${name}`);
+    return { type: "input" as const, name, inputIndex, alias: alias ?? name, ...(aggregator ? { aggregator } : {}) };
+  };
+}
 
 const CASH_IN = "CashIn(bytes32,address,uint256,uint32,bytes3)";
+const TRANSFER = "Transfer(address,address,uint256)";
+const DEPOSITED = "Deposited(address,uint256,uint256)";
+const WITHDRAWN = "Withdrawn(address,address,uint256,uint256)";
+const ATTESTED = "ReserveAttested(bytes32,uint256,uint256,int256,bytes32)";
+const cashIn = inputOf(LABELS.cashReceipt, CASH_IN);
+const transfer = inputOf(LABELS.cashReceipt, TRANSFER);
+const deposited = inputOf(LABELS.vault, DEPOSITED);
+const withdrawn = inputOf(LABELS.vault, WITHDRAWN);
+const attested = inputOf(LABELS.cashReceipt, ATTESTED);
+// An aggregated query must name its group-by field explicitly.
 const queries: Record<string, EventQuery> = {
   // Proof of reserve: USD minted per kiosk.
   cash_in_by_kiosk: {
-    events: [{ eventName: CASH_IN, select: [input("kioskId"), input("amount", "add", "total")], filter: onlyContract(LABELS.cashReceipt) }],
+    events: [{ eventName: CASH_IN, select: [cashIn("kioskId"), cashIn("amount", "add", "total")], filter: onlyContract(LABELS.cashReceipt) }],
+    groupBy: "kioskId",
   },
   // Banknote mix: how much came in per face value.
   cash_in_by_denomination: {
-    events: [{ eventName: CASH_IN, select: [input("denomination"), input("amount", "add", "total")], filter: onlyContract(LABELS.cashReceipt) }],
+    events: [{ eventName: CASH_IN, select: [cashIn("denomination"), cashIn("amount", "add", "total")], filter: onlyContract(LABELS.cashReceipt) }],
+    groupBy: "denomination",
   },
   // tkCASH holders: + what each address received, − what it sent.
   tkcash_holders: {
     events: [
-      { eventName: "Transfer(address,address,uint256)", select: [input("to", undefined, "holder"), input("value", "add", "balance")], filter: onlyContract(LABELS.cashReceipt) },
-      { eventName: "Transfer(address,address,uint256)", select: [input("from", undefined, "holder"), input("value", "subtract", "balance")], filter: onlyContract(LABELS.cashReceipt) },
+      { eventName: TRANSFER, select: [transfer("to", undefined, "holder"), transfer("value", "add", "balance")], filter: onlyContract(LABELS.cashReceipt) },
+      { eventName: TRANSFER, select: [transfer("from", undefined, "holder"), transfer("value", "subtract", "balance")], filter: onlyContract(LABELS.cashReceipt) },
     ],
     groupBy: "holder",
   },
   // Vault principal deposited per (bound) address.
   deposits_by_user: {
-    events: [{ eventName: "Deposited(address,uint256,uint256)", select: [input("user"), input("usdcAmount", "add", "total")], filter: onlyContract(LABELS.vault) }],
+    events: [{ eventName: DEPOSITED, select: [deposited("user"), deposited("usdcAmount", "add", "total")], filter: onlyContract(LABELS.vault) }],
+    groupBy: "user",
   },
   // Every withdrawal, for the flows chart.
   withdrawals: {
     events: [
       {
-        eventName: "Withdrawn(address,address,uint256,uint256)",
-        select: [input("owner"), input("recipient"), input("usdcAmount"), { type: "triggered_at", alias: "at" }, { type: "tx_hash", alias: "txHash" }],
+        eventName: WITHDRAWN,
+        select: [withdrawn("owner"), withdrawn("recipient"), withdrawn("usdcAmount"), { type: "triggered_at", alias: "at" }, { type: "tx_hash", alias: "txHash" }],
         filter: onlyContract(LABELS.vault),
       },
     ],
@@ -139,8 +169,8 @@ const queries: Record<string, EventQuery> = {
   reserve_attestations: {
     events: [
       {
-        eventName: "ReserveAttested(bytes32,uint256,uint256,int256,bytes32)",
-        select: [input("kioskId"), input("counted"), input("onChain"), input("delta"), input("auditRef"), { type: "triggered_at", alias: "at" }],
+        eventName: ATTESTED,
+        select: [attested("kioskId"), attested("counted"), attested("onChain"), attested("delta"), attested("auditRef"), { type: "triggered_at", alias: "at" }],
         filter: onlyContract(LABELS.cashReceipt),
       },
     ],
