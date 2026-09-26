@@ -13,6 +13,7 @@ import { registryAbi } from "../ensV2.js";
 import { confirmTkcashSend, ensureGas, holdsDeed, lookup, reconcileDeeds, sendBalance } from "../ensTransfers.js";
 import { listPositions } from "../aqua.js";
 import { isVerifiedHuman } from "../worldId.js";
+import { allowanceJson, assertWithinLimit, dailyAllowance, DailyLimitError } from "../limits.js";
 
 /// Sending by ENS name (web app). Customer-signed transfers are prepared here
 /// — recipient resolved and checked, gas topped up — and the browser has the
@@ -75,6 +76,7 @@ ensRouter.get("/me/wallet", requireSession("full"), asyncHandler(async (_req, re
     tkcash: tk,
     chainId: SEPOLIA,
     worldId: { verified: isVerifiedHuman(account), credential: account.worldCredential },
+    limit: allowanceJson(await dailyAllowance(account)),
   });
 }));
 
@@ -93,6 +95,7 @@ ensRouter.post("/send/balance", requireSession("full"), asyncHandler(async (req,
     const r = await sendBalance(account, parsed.data.to, parsed.data.amount);
     res.json({ to: r.to, txHash: r.txHash, amount: parsed.data.amount });
   } catch (err) {
+    if (err instanceof DailyLimitError) throw err;
     res.status(422).json({ error: err instanceof Error ? err.message : "send failed" });
   }
 }));
@@ -106,10 +109,7 @@ ensRouter.post("/send/tkcash/prepare", requireSession("full"), asyncHandler(asyn
   }
   const account = await me(res);
   if (!account) return;
-  if (!isVerifiedHuman(account)) {
-    res.status(403).json({ error: "verify you're human with World ID before sending tkCASH" });
-    return;
-  }
+  await assertWithinLimit(account, parsed.data.amount, "this tkCASH send");
   const target = await lookup(parsed.data.to);
   if (!target) {
     res.status(422).json({ error: `${parsed.data.to} doesn't resolve to an address` });
@@ -161,6 +161,7 @@ ensRouter.post("/yield/positions/:id/give/prepare", requireSession("full"), asyn
     res.status(409).json({ error: "your wallet doesn't hold this position's deed any more" });
     return;
   }
+  await assertWithinLimit(account, row.amountUsd, "giving this position");
   const target = await lookup(String(req.body?.to ?? ""));
   if (!target) {
     res.status(422).json({ error: `${req.body?.to} doesn't resolve to an address` });

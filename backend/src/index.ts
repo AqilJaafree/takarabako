@@ -59,9 +59,10 @@ app.use(dashboardRouter);
 // without this, an unhandled rejection in an async route takes the whole
 // process down instead of just failing that one request.
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error(err);
+  const status = (err as { status?: number })?.status;
+  if (!status) console.error(err);
   const message = err instanceof Error ? err.message : "internal error";
-  res.status(500).json({ error: message });
+  res.status(status ?? 500).json({ error: message, code: (err as { code?: string })?.code });
 });
 
 try {

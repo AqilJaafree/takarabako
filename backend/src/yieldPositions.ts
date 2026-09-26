@@ -3,6 +3,7 @@ import { recordYieldEvent } from "./history.js";
 import { issueName, positionSubname } from "./ens.js";
 import { closePosition, ethUsd, listPositions, openPosition, viewPosition, type OpenRequest, type PositionRow, type PositionView } from "./aqua.js";
 import { TIERS } from "./aquaMath.js";
+import { assertWithinLimit } from "./limits.js";
 
 /// The customer-facing side of Aqua yield: opening a position records it in
 /// History and gives it an ENS name; closing records that too. Shared by the
@@ -14,6 +15,7 @@ export interface OpenedPosition {
 }
 
 export async function openForCustomer(account: Account, req: Omit<OpenRequest, "privyUserId" | "boundAddress">): Promise<OpenedPosition> {
+  await assertWithinLimit(account, req.amount, "this position");
   const row = await openPosition({ ...req, privyUserId: account.privyUserId, boundAddress: account.boundAddress });
   const ensName = positionSubname(row.id);
   // The name is the position's deed: an ENS v2 token in the customer's own

@@ -3,11 +3,12 @@ import { z } from "zod";
 import type { Address } from "viem";
 import { config } from "../config.js";
 import { store } from "../store.js";
-import { closeAllForCustomer } from "../yieldPositions.js";
+import { closeAllForCustomer, positionSummaries } from "../yieldPositions.js";
+import { assertWithinLimit } from "../limits.js";
 import { findByPrivyUserId } from "../accounts.js";
 import { requireSession } from "../sessions.js";
 import { recordWithdrawal } from "../history.js";
-import { chainReady, withdrawAllOnChain, treasuryAddress } from "../chain.js";
+import { chainReady, previewValueOnChain, withdrawAllOnChain, treasuryAddress } from "../chain.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { redeemAll } from "../cashReceipt.js";
 
@@ -44,6 +45,11 @@ withdrawRouter.post("/withdraw", requireSession("full"), asyncHandler(async (req
     res.status(503).json({ error: "chain not configured — set TREASURY_PRIVATE_KEY/USDC_ADDRESS/VAULT_ADDRESS in backend/.env" });
     return;
   }
+
+  // Withdraw takes everything: the box plus open positions.
+  const inBox = await previewValueOnChain(account.boundAddress as Address);
+  const inPositions = (await positionSummaries(account.privyUserId)).reduce((sum, p) => sum + (p.amount ?? 0), 0);
+  await assertWithinLimit(account, inBox + inPositions, "this withdrawal");
 
   // Close every 1inch Aqua position first: their value (at today's ETH
   // price) goes back into the vault, so the vault withdrawal below includes it.

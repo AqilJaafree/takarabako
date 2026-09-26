@@ -7,6 +7,7 @@ import { positionSummaries } from "../yieldPositions.js";
 import { chainReady, previewValueOnChain, currentApyBpsOnChain } from "../chain.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { config } from "../config.js";
+import { allowanceJson, dailyAllowance } from "../limits.js";
 import { ALIASES, LABELS, mbCall } from "../multibaas.js";
 import { cashReceiptReady, fromTkUnits, kioskState, tkSupply } from "../cashReceipt.js";
 
@@ -32,6 +33,7 @@ meRouter.get("/me", requireSession("full"), asyncHandler(async (_req, res) => {
     apyBps,
     positions: await positionSummaries(userId).catch(() => []),
     worldId: { verified: Boolean(account.worldVerifiedAt), credential: account.worldCredential, verifiedAt: account.worldVerifiedAt },
+    limit: allowanceJson(await dailyAllowance(account)),
     expiresAt: res.locals.session.expiresAt,
   });
 }));

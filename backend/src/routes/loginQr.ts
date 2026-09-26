@@ -6,6 +6,7 @@ import { createSession, endSession, requireSession } from "../sessions.js";
 import { parseWalletFromQr } from "../qr.js";
 import { chainReady, previewValueOnChain } from "../chain.js";
 import { asyncHandler } from "../asyncHandler.js";
+import { allowanceJson, dailyAllowance } from "../limits.js";
 
 /// POST /login/qr — quick login for returning customers: the kiosk camera
 /// reads their Privy wallet QR and they get a deposit-only session.
@@ -39,7 +40,8 @@ loginQrRouter.post("/login/qr", asyncHandler(async (req, res) => {
     token: session.token,
     scope: session.scope,
     expiresAt: session.expiresAt,
-    worldVerified: Boolean(account.worldVerifiedAt), // the deposit terminal offers World ID if not
+    worldVerified: Boolean(account.worldVerifiedAt),
+    limit: allowanceJson(await dailyAllowance(account)), // the deposit terminal shows what's left today
   });
 }));
 

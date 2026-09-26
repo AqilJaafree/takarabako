@@ -13,6 +13,8 @@ import {
 import { maybeSendReceipt } from "../receiptEmail.js";
 import { publishUserEvent } from "../events.js";
 import { asyncHandler } from "../asyncHandler.js";
+import { findByPrivyUserId } from "../accounts.js";
+import { dailyAllowance } from "../limits.js";
 
 /// Deposit sessions (a visit to the cash slot, ending in a receipt), refused
 /// notes, and the customer's History.
@@ -20,8 +22,19 @@ export const depositSessionsRouter = Router();
 
 /// POST /deposit-sessions — start a visit; every note deposited until it is
 /// finished belongs to it. Any login (wallet QR or email) may open one.
+/// An unverified customer who has used today's limit can't start a new visit
+/// (notes already in the acceptor are always credited).
 depositSessionsRouter.post("/deposit-sessions", requireSession("deposit"), asyncHandler(async (_req, res) => {
   const session: Session = res.locals.session;
+  const account = await findByPrivyUserId(session.privyUserId);
+  const allowance = account ? await dailyAllowance(account) : null;
+  if (allowance?.limited && allowance.leftUsd <= 0) {
+    res.status(403).json({
+      error: `You've reached today's $${allowance.limitUsd.toLocaleString("en-US")} limit for unverified accounts. Verify with a World ID selfie in the Takarabako app to deposit more.`,
+      code: "daily_limit",
+    });
+    return;
+  }
   res.json(await openDepositSession(session.privyUserId));
 }));
 

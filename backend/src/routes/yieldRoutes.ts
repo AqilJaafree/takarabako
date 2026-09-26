@@ -7,6 +7,7 @@ import { getTiersInfo } from "../agent.js";
 import { ethCandles, ethUsd, listPositions, PAIR, planPosition, viewPosition } from "../aqua.js";
 import { ADVANCED, allocate } from "../aquaMath.js";
 import { closeForCustomer, openForCustomer } from "../yieldPositions.js";
+import { DailyLimitError } from "../limits.js";
 import { holdsDeed } from "../ensTransfers.js";
 
 /// 1inch Aqua yield for the web app: market data for the chart, a preview
@@ -75,6 +76,7 @@ yieldRouter.post("/yield/advanced", requireSession("full"), asyncHandler(async (
   try {
     res.json(await openForCustomer(account, { mode: "advanced", ...parsed.data }));
   } catch (err) {
+    if (err instanceof DailyLimitError) throw err;
     const msg = err instanceof Error ? err.message : "failed";
     // Range and balance problems are the customer's to fix; anything else is ours.
     if (/range|price|box|amount/i.test(msg)) res.status(422).json({ error: msg });

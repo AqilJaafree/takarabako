@@ -69,6 +69,9 @@ export const config = {
     // (Selfie Check, World ID 3 proofs) or "selfie-v4" (Selfie Check, World ID 4 only).
     preset: (process.env.WORLD_PRESET ?? "device") as "device" | "selfie" | "selfie-v4",
   },
+  // Customers who haven't verified with World ID can move this much a day
+  // (deposits, withdrawals, yield, sends — limits.ts).
+  unverifiedDailyLimitUsd: Number(process.env.UNVERIFIED_DAILY_LIMIT_USD ?? 1000),
   // Verifiable kiosks (machine.ts): "required" rejects deposits that aren't
   // signed by a kiosk whose ENS name resolves to the signer; "optional"
   // credits them but marks them unverified.
