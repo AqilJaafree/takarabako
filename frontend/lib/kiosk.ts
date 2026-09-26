@@ -9,7 +9,8 @@ import type { DailyLimit, KioskLogin } from "./types";
 /// Unset = no bridge (bench testing without the box).
 export const PI_BRIDGE_URL = process.env.PI_BRIDGE_URL ?? "";
 // Required by the bridge when it's reached through a tunnel (device-agent/server.js).
-const BRIDGE_SECRET = process.env.BRIDGE_SECRET ?? "";
+// Shared with the Pi bridge's BRIDGE_SECRET; PI_BRIDGE_SECRET is accepted too.
+const BRIDGE_SECRET = process.env.BRIDGE_SECRET || process.env.PI_BRIDGE_SECRET || "";
 
 async function bridge(path: string, body?: unknown): Promise<Response> {
   const headers: Record<string, string> = {};

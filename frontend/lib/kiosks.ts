@@ -23,7 +23,7 @@ export const KIOSKS: KioskLocation[] = [
     lng: 139.7491968121778,
     venue: "ETHTokyo hackathon venue",
     floor: "5F",
-    spot: "Hacking Space (north side), by the windows",
+    spot: "Hacking Space (south side), by the Partners and Mentor Station",
     hours: "Open during the hackathon",
     accepts: "Malaysian ringgit notes (RM1–RM100)",
   },

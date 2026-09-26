@@ -4,7 +4,7 @@ import { useState } from "react";
 
 /// The venue, indoors: a schematic of floors 5F and 4F (after the event's
 /// floor plan). 5F draws the walking route from the elevators and stairs to
-/// the kiosk in the north Hacking Space; 4F (main stage and judging) points
+/// the kiosk in the south Hacking Space; 4F (main stage and judging) points
 /// back up to 5F.
 
 type Floor = "5F" | "4F";
@@ -23,7 +23,7 @@ const FLOOR_5F: Room[] = [
   { x: 228, y: 140, w: 46, h: 66, label: "Snacks", kind: "service" },
   { x: 290, y: 140, w: 46, h: 66, label: "Photo", kind: "service" },
   { x: 352, y: 72, w: 142, h: 158, label: "Catering" },
-  { x: 502, y: 72, w: 210, h: 158, label: "Hacking Space", sub: "North", kind: "target" },
+  { x: 502, y: 72, w: 210, h: 158, label: "Hacking Space", sub: "North" },
   { x: 722, y: 92, w: 44, h: 138, label: "", kind: "seating" },
   { x: 800, y: 72, w: 104, h: 158, label: "Restrooms", kind: "service" },
   { x: 150, y: 238, w: 72, h: 48, label: "Registration", kind: "service" },
@@ -32,7 +32,7 @@ const FLOOR_5F: Room[] = [
   { x: 846, y: 342, w: 96, h: 56, label: "Workshop", kind: "service" },
   { x: 846, y: 410, w: 86, h: 56, label: "Chill space", kind: "service" },
   { x: 300, y: 492, w: 156, h: 26, label: "Spotlight", kind: "stage" },
-  { x: 300, y: 528, w: 432, h: 110, label: "Hacking Space", sub: "South" },
+  { x: 300, y: 528, w: 432, h: 110, label: "Hacking Space", sub: "South", kind: "target" },
   { x: 262, y: 652, w: 148, h: 22, label: "Partners", kind: "service" },
   { x: 420, y: 652, w: 108, h: 22, label: "Mentors", kind: "service" },
   { x: 538, y: 652, w: 168, h: 22, label: "Partners", kind: "service" },
@@ -52,7 +52,7 @@ const OUTLINE_5F = "190,62 880,62 960,420 880,690 190,690 104,560 104,316";
 const OUTLINE_4F = "150,210 220,70 480,40 700,60 900,80 910,380 150,380";
 
 // Walking routes (SVG path in the same coordinates).
-const ROUTE_5F = "M 350 372 L 370 372 L 370 258 L 662 258 L 662 128 L 684 106";
+const ROUTE_5F = "M 350 372 L 370 372 L 370 474 L 472 474 L 472 594";
 const ROUTE_4F = "M 578 244 L 578 300 L 300 300 L 285 262";
 
 export function FloorPlan({ kioskId }: { kioskId: string }) {
@@ -77,7 +77,7 @@ export function FloorPlan({ kioskId }: { kioskId: string }) {
         role="img"
         aria-label={
           floor === "5F"
-            ? `Floor 5F: from the elevators, walk up past the seating and turn right into the north Hacking Space. Kiosk ${kioskId} is by the windows.`
+            ? `Floor 5F: from the elevators, walk down past the Spotlight stage into the south Hacking Space. Kiosk ${kioskId} is by the Partners and Mentor Station.`
             : "Floor 4F: main stage and judging rooms. The kiosk is one floor up on 5F — take the stairs or elevator up."
         }
       >
@@ -94,7 +94,7 @@ export function FloorPlan({ kioskId }: { kioskId: string }) {
             )}
             {r.label && (
               <text
-                x={r.kind === "target" ? r.x + r.w * 0.4 : r.x + r.w / 2}
+                x={r.kind === "target" ? r.x + r.w * 0.64 : r.x + r.w / 2}
                 y={r.y + r.h / 2 + (r.sub ? -4 : 5)}
                 textAnchor="middle"
                 className={r.h < 30 || r.w < 60 ? "fp-label small" : "fp-label"}
@@ -103,7 +103,7 @@ export function FloorPlan({ kioskId }: { kioskId: string }) {
               </text>
             )}
             {r.sub && (
-              <text x={r.kind === "target" ? r.x + r.w * 0.4 : r.x + r.w / 2} y={r.y + r.h / 2 + 16} textAnchor="middle" className="fp-sub">
+              <text x={r.kind === "target" ? r.x + r.w * 0.64 : r.x + r.w / 2} y={r.y + r.h / 2 + 16} textAnchor="middle" className="fp-sub">
                 {r.sub}
               </text>
             )}
@@ -118,14 +118,14 @@ export function FloorPlan({ kioskId }: { kioskId: string }) {
             <path d={ROUTE_5F} className="fp-route-march" />
             <g className="fp-start" transform="translate(350 372)">
               <circle r="9" />
-              <text x="14" y="26" className="fp-sub">You arrive here</text>
+              <text x="-60" y="5" textAnchor="end" className="fp-sub">You arrive here</text>
             </g>
-            <g className="fp-kiosk" transform="translate(684 106)">
+            <g className="fp-kiosk" transform="translate(472 610)">
               <circle className="ring" r="14" />
               <circle className="ring r2" r="14" />
               <circle className="head" r="15" />
               <text y="6" textAnchor="middle" className="glyph">宝</text>
-              <text x="0" y="-52" textAnchor="middle" className="fp-kiosk-label">{kioskId} kiosk ▾</text>
+              <text x="-26" y="5" textAnchor="end" className="fp-kiosk-label">{kioskId} kiosk ▸</text>
             </g>
           </>
         ) : (
@@ -146,14 +146,14 @@ export function FloorPlan({ kioskId }: { kioskId: string }) {
         {floor === "5F" ? (
           <>
             <li>Take the elevator or stairs to <b>5F</b> (the hackathon floor).</li>
-            <li>Walk up past the seating toward <b>Catering</b>, then turn right along the corridor.</li>
-            <li>Enter the <b>north Hacking Space</b>: the kiosk is on the right, by the windows.</li>
+            <li>From the elevators, walk down past the <b>Spotlight</b> stage.</li>
+            <li>Enter the <b>south Hacking Space</b>: the kiosk is near the <b>Partners</b> and <b>Mentor Station</b>.</li>
           </>
         ) : (
           <>
             <li>You&apos;re on <b>4F</b>: main stage and judging (daytime only).</li>
             <li>Head to the stairs by the exit, or the elevators, and go <b>up one floor</b>.</li>
-            <li>On 5F, follow the route to the north Hacking Space.</li>
+            <li>On 5F, follow the route to the south Hacking Space.</li>
           </>
         )}
       </ol>
