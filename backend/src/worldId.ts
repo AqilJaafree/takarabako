@@ -32,6 +32,7 @@ export function requestContext(account: Account) {
     app_id: config.worldId.appId,
     action: config.worldId.action,
     environment: config.worldId.environment,
+    preset: config.worldId.preset,
     signal: account.privyWallet,
     rp_context: {
       rp_id: config.worldId.rpId,

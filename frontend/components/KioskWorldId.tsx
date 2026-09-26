@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
-import { deviceLegacy, useIDKitRequest, type RpContext } from "@worldcoin/idkit";
+import { deviceLegacy, selfieCheck, selfieCheckLegacy, useIDKitRequest, type RpContext } from "@worldcoin/idkit";
 
 interface WorldRequest {
   app_id: `app_${string}`;
   action: string;
   environment: "production" | "staging" | "sandbox";
+  preset?: "device" | "selfie" | "selfie-v4";
   signal: string;
   rp_context: RpContext;
 }
@@ -61,14 +62,20 @@ export function KioskWorldId({ onVerified }: { onVerified: () => void }) {
   );
 }
 
+/// The credential the backend asked for (WORLD_PRESET).
+function presetFor({ preset, signal }: WorldRequest) {
+  if (preset === "selfie-v4") return { allow_legacy_proofs: false, preset: selfieCheck({ signal }) };
+  if (preset === "selfie") return { allow_legacy_proofs: true, preset: selfieCheckLegacy({ signal }) };
+  return { allow_legacy_proofs: true, preset: deviceLegacy({ signal }) };
+}
+
 function WorldQr({ request, onVerified, onRestart }: { request: WorldRequest; onVerified: () => void; onRestart: () => void }) {
   const flow = useIDKitRequest({
     app_id: request.app_id,
     action: request.action,
     rp_context: request.rp_context,
     environment: request.environment,
-    allow_legacy_proofs: true,
-    preset: deviceLegacy({ signal: request.signal }),
+    ...presetFor(request),
   });
   const [qr, setQr] = useState<string | null>(null);
   const [status, setStatus] = useState<"scan" | "approve" | "checking" | "done" | "error">("scan");

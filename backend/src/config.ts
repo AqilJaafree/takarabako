@@ -65,6 +65,9 @@ export const config = {
     action: process.env.WORLD_ACTION ?? "",
     // (the variable is spelled WORLD_ENVIROMENT in existing .env files; both work)
     environment: (process.env.WORLD_ENVIRONMENT ?? process.env.WORLD_ENVIROMENT ?? "production") as "production" | "staging" | "sandbox",
+    // Which credential to ask for: "device" (any World App user), "selfie"
+    // (Selfie Check, World ID 3 proofs) or "selfie-v4" (Selfie Check, World ID 4 only).
+    preset: (process.env.WORLD_PRESET ?? "device") as "device" | "selfie" | "selfie-v4",
   },
   // Verifiable kiosks (machine.ts): "required" rejects deposits that aren't
   // signed by a kiosk whose ENS name resolves to the signer; "optional"
