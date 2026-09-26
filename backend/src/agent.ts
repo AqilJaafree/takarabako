@@ -55,7 +55,8 @@ export async function tierRationale(tier: Tier, amount: number, spot: number): P
         "You are the yield agent for Takarabako, a cash-in kiosk that puts savings into 1inch Aqua " +
         "liquidity strategies on ETH/USDC. The customer already picked a risk tier; you never change it. " +
         "Write ONE short, honest sentence for a DeFi beginner explaining why the given strategy fits that " +
-        "tier, mentioning the price range in dollars when there is one. Plain text only, no preamble.",
+        "tier, mentioning the price range in dollars when there is one. APY figures are rough estimates from " +
+        "the range width, not promises: if you mention one, say \"about\" or \"estimated\". Plain text only, no preamble.",
       messages: [
         {
           role: "user",
