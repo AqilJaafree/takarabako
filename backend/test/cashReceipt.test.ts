@@ -4,9 +4,9 @@ import { hexToString } from "viem";
 import { currencyBytes, fromTkUnits, kioskIdBytes, toTkUnits } from "../src/cashReceipt.js";
 
 test("kiosk ids are right-padded bytes32, like Solidity's bytes32(\"...\")", () => {
-  const id = kioskIdBytes("kl-sentral-01");
+  const id = kioskIdBytes("tokyo-01");
   assert.equal(id.length, 2 + 64);
-  assert.equal(hexToString(id, { size: 32 }), "kl-sentral-01");
+  assert.equal(hexToString(id, { size: 32 }), "tokyo-01");
   assert.ok(id.endsWith("00"));
 });
 

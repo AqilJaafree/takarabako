@@ -20,9 +20,10 @@ export async function loginFull(user: { privyUserId: string; email: string; wall
   if (!account) {
     const boundAddress = deriveBoundAddress(privyUserId);
     const ensName = walletSubname(deriveEnsLabel(email));
-    // Idempotent: an account registered before Postgres existed already owns
-    // its name, and registerSubname skips it.
-    ({ txHash: ensTxHash } = await registerSubname(ensName, boundAddress));
+    // The name is the customer's own: owned by (and resolving to) their
+    // Privy wallet on the official ENS v2 deployment. Not transferable — it's
+    // their identity. Idempotent: an existing name just gets its records set.
+    ({ txHash: ensTxHash } = await registerSubname(ensName, walletAddress, { texts: { "takarabako.kind": "customer" } }));
     account = await insertAccount({ privyUserId, email, privyWallet: walletAddress, boundAddress, ensName });
     onboardOnChain(ensName, walletAddress);
   }

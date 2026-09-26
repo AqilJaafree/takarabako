@@ -65,7 +65,7 @@ test("a failed execution is recorded, not retried", async () => {
 });
 
 test("reject discards a pending proposal and can't reject twice", async () => {
-  const created = await createProposal({ action: "pause_kiosk", args: { kioskId: "kl-sentral-01", reason: "audit" }, rationale: "r" });
+  const created = await createProposal({ action: "pause_kiosk", args: { kioskId: "tokyo-01", reason: "audit" }, rationale: "r" });
   assert.ok(created.ok);
   const rejected = await rejectProposal(created.proposal.id, "not needed");
   assert.ok(rejected.ok);

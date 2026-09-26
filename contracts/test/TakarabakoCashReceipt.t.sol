@@ -12,7 +12,7 @@ contract TakarabakoCashReceiptTest is Test {
     address treasury = address(this);
     address alice = address(0xA11CE);
     address bob = address(0xB0B);
-    bytes32 constant KIOSK = "kl-sentral-01";
+    bytes32 constant KIOSK = "tokyo-01";
     bytes32 constant OTHER = "penang-02";
     bytes3 constant MYR = "MYR";
 

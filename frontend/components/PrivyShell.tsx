@@ -1,6 +1,7 @@
 "use client";
 
 import { PrivyProvider } from "@privy-io/react-auth";
+import { sepolia } from "viem/chains";
 
 const APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
 
@@ -25,6 +26,9 @@ export function PrivyShell({ children }: { children: React.ReactNode }) {
         loginMethods: ["email", "google"],
         appearance: { theme: "dark", accentColor: "#e3b36a" },
         embeddedWallets: { ethereum: { createOnLogin: "off" } },
+        // Customers sign their own transfers (tkCASH, position deeds) on Sepolia.
+        defaultChain: sepolia,
+        supportedChains: [sepolia],
       }}
     >
       {children}

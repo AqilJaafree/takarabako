@@ -10,8 +10,12 @@ export const config = {
     appId: process.env.PRIVY_APP_ID ?? "",
     appSecret: process.env.PRIVY_APP_SECRET ?? "",
   },
+  // ENS v2 (official Sepolia deployment; scripts/ens-setup.ts). Our own
+  // UserRegistry holds the subnames, our own PermissionedResolver the records.
   ens: {
-    parentName: process.env.ENS_PARENT_NAME ?? "wantest.eth",
+    parentName: process.env.ENS_PARENT_NAME ?? "takarabako.eth",
+    registryAddress: process.env.ENS_REGISTRY_ADDRESS ?? "",
+    resolverAddress: process.env.ENS_RESOLVER_ADDRESS ?? "",
   },
   agent: {
     apiKey: process.env.ANTHROPIC_API_KEY ?? "",
@@ -42,13 +46,19 @@ export const config = {
   publicBackendUrl: (process.env.PUBLIC_BACKEND_URL ?? "").replace(/\/+$/, ""),
   // tkCASH (contracts/src/TakarabakoCashReceipt.sol) and this kiosk's id in it.
   cashReceiptAddress: process.env.CASH_RECEIPT_ADDRESS ?? "",
-  kioskId: process.env.KIOSK_ID ?? "kl-sentral-01",
+  kioskId: process.env.KIOSK_ID ?? "tokyo-01",
+  // Kiosks this backend used before (their tkCASH reserve is still redeemable).
+  previousKioskIds: (process.env.KIOSK_PREVIOUS_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
   // Treasury ops agent (opsAgent.ts): the model, and the token a human
   // sends to approve or reject its proposals.
   opsAgent: {
     model: process.env.OPS_AGENT_MODEL ?? "claude-opus-5",
     adminToken: process.env.OPS_ADMIN_TOKEN ?? "",
   },
+  // Verifiable kiosks (machine.ts): "required" rejects deposits that aren't
+  // signed by a kiosk whose ENS name resolves to the signer; "optional"
+  // credits them but marks them unverified.
+  machineSignature: (process.env.MACHINE_SIGNATURE === "required" ? "required" : "optional") as "required" | "optional",
   // 1inch Aqua yield (aqua.ts). Aqua and its SwapVM router are deployed on
   // Sepolia at the same addresses as mainnet (the router at its previous
   // address; the SDK doesn't list Sepolia). mETH is our mock ETH.

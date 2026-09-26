@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkPolicy, POLICY, type PolicyContext } from "../src/policy.js";
 
-const ctx: PolicyContext = { fundedToday: 0, mintedToday: 0, knownKiosks: ["kl-sentral-01"] };
+const ctx: PolicyContext = { fundedToday: 0, mintedToday: 0, knownKiosks: ["tokyo-01"] };
 
 test("APY must stay within 0–2000 bps and be whole", () => {
   assert.deepEqual(checkPolicy("set_apy", { bps: 450 }, ctx), { ok: true });
@@ -29,9 +29,9 @@ test("float minting has a daily cap", () => {
 });
 
 test("pausing needs a known kiosk and a reason", () => {
-  assert.deepEqual(checkPolicy("pause_kiosk", { kioskId: "kl-sentral-01", reason: "count mismatch" }, ctx), { ok: true });
+  assert.deepEqual(checkPolicy("pause_kiosk", { kioskId: "tokyo-01", reason: "count mismatch" }, ctx), { ok: true });
   assert.equal(checkPolicy("pause_kiosk", { kioskId: "nowhere", reason: "x" }, ctx).ok, false);
-  assert.equal(checkPolicy("pause_kiosk", { kioskId: "kl-sentral-01", reason: " " }, ctx).ok, false);
+  assert.equal(checkPolicy("pause_kiosk", { kioskId: "tokyo-01", reason: " " }, ctx).ok, false);
 });
 
 test("unknown actions (like unpausing) are rejected", () => {

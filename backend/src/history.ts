@@ -13,6 +13,8 @@ export interface ReceiptNote {
   usdAmount: number | null;
   txHash: string | null;
   tkcashTxHash: string | null; // the tkCASH minted for this note
+  machineName: string | null; // the kiosk that took it (ENS name), when its signature checked out
+  machineVerified: boolean;
   status: "queued" | "sending" | "confirmed" | "failed";
   at: Date;
 }
@@ -57,7 +59,18 @@ export type HistoryItem =
       ensName: string | null;
       txHash: string | null;
     }
-  | { kind: "refused"; at: Date; id: string; reason: RefusedReason; sessionId: string | null };
+  | { kind: "refused"; at: Date; id: string; reason: RefusedReason; sessionId: string | null }
+  | {
+      kind: "transfer";
+      at: Date;
+      id: string;
+      asset: "balance" | "tkcash" | "position";
+      direction: "sent" | "received";
+      counterparty: string | null; // the other side's ENS name, or address
+      amountUsd: number | null;
+      positionId: string | null;
+      txHash: string | null;
+    };
 
 export type HistoryKind = HistoryItem["kind"];
 
@@ -111,7 +124,7 @@ function buildReceipt(session: { id: string; privyUserId: string; status: "open"
   };
 }
 
-const NOTE_COLUMNS = `id, amount::float as amount, currency, usd_amount::float as "usdAmount", tx_hash as "txHash", tkcash_tx_hash as "tkcashTxHash", status,
+const NOTE_COLUMNS = `id, amount::float as amount, currency, usd_amount::float as "usdAmount", tx_hash as "txHash", tkcash_tx_hash as "tkcashTxHash", machine_name as "machineName", machine_verified as "machineVerified", status,
   created_at as at, session_id as "sessionId"`;
 
 export async function getReceipt(id: string): Promise<Receipt | null> {
@@ -219,6 +232,21 @@ export async function listHistory(privyUserId: string, opts: { limit: number; ki
       [privyUserId, limit],
     );
     for (const r of rows) items.push({ kind: "yield", ...r });
+  }
+
+  if (want("transfer")) {
+    const { rows } = await pool.query(
+      `select t.id, t.kind as asset, t.created_at as at, t.amount_usd::float as "amountUsd", t.position_id as "positionId", t.tx_hash as "txHash",
+              case when t.from_user = $1 then 'sent' else 'received' end as direction,
+              case when t.from_user = $1 then coalesce(t.to_name, rcv.ens_name, t.to_address) else snd.ens_name end as counterparty
+       from transfers t
+       left join accounts snd on snd.privy_user_id = t.from_user
+       left join accounts rcv on rcv.privy_user_id = t.to_user
+       where t.from_user = $1 or t.to_user = $1
+       order by t.created_at desc limit $2`,
+      [privyUserId, limit],
+    );
+    for (const r of rows) items.push({ kind: "transfer", ...r });
   }
 
   if (want("refused")) {

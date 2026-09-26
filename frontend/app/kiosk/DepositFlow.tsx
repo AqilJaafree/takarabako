@@ -146,6 +146,11 @@ export function DepositFlow({
             <span>Total {cash(receipt.totalAmount, receipt.currency)}</span>
             <b>{usd(receipt.totalUsdConfirmed)}</b>
           </div>
+          {receipt.notes.some((n) => n.machineVerified) && (
+            <p className="receipt-tk">
+              ✓ Verified machine · {receipt.notes.find((n) => n.machineVerified)?.machineName}
+            </p>
+          )}
           {receipt.notes.some((n) => n.tkcashTxHash) && (
             <p className="receipt-tk">
               + {usd(receipt.notes.filter((n) => n.tkcashTxHash).reduce((s, n) => s + (n.usdAmount ?? 0), 0))} tkCASH — a token

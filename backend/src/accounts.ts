@@ -55,12 +55,14 @@ export interface DepositRow {
   error: string | null;
   sessionId: string | null;
   tkcashTxHash: string | null;
+  machineName: string | null;
+  machineVerified: boolean;
   createdAt: Date;
 }
 
 const DEPOSIT_COLUMNS = `id, privy_user_id as "privyUserId", currency, amount::float as amount,
   usd_amount::float as "usdAmount", tx_hash as "txHash", status, attempts, error, session_id as "sessionId",
-  tkcash_tx_hash as "tkcashTxHash", created_at as "createdAt"`;
+  tkcash_tx_hash as "tkcashTxHash", machine_name as "machineName", machine_verified as "machineVerified", created_at as "createdAt"`;
 
 /// A deposit starts as a queued row; the deposit queue (depositQueue.ts)
 /// sends it and moves it to sending → confirmed | failed.
@@ -69,11 +71,14 @@ export async function createQueuedDeposit(d: {
   currency: string;
   amount: number;
   sessionId?: string | null; // the deposit session (history.ts) the note belongs to
+  machine?: { name: string; signer: string; nonce: string; signature: string } | null; // a verified kiosk signature
 }): Promise<DepositRow> {
+  const m = d.machine ?? null;
   const { rows } = await pool.query(
-    `insert into deposits (id, privy_user_id, currency, amount, status, session_id) values ($1, $2, $3, $4, 'queued', $5)
+    `insert into deposits (id, privy_user_id, currency, amount, status, session_id, machine_name, machine_signer, machine_nonce, machine_sig, machine_verified)
+     values ($1, $2, $3, $4, 'queued', $5, $6, $7, $8, $9, $10)
      returning ${DEPOSIT_COLUMNS}`,
-    [crypto.randomUUID(), d.privyUserId, d.currency, d.amount, d.sessionId ?? null],
+    [crypto.randomUUID(), d.privyUserId, d.currency, d.amount, d.sessionId ?? null, m?.name ?? null, m?.signer ?? null, m?.nonce ?? null, m?.signature ?? null, Boolean(m)],
   );
   return rows[0];
 }

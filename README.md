@@ -103,6 +103,38 @@ flowchart LR
 See the MultiBaas section of [`FEEDBACK.md`](./FEEDBACK.md#feedback-curvegrid-multibaas)
 for what worked, what tripped us up, and suggestions.
 
+## ENS v2: verifiable machines and sending by name
+
+Takarabako's names live under **`takarabako.eth` on the official ENS v2
+Sepolia deployment** (`npm run ens:setup`): the name points at our own
+UserRegistry (subnames are ERC-1155 tokens) and PermissionedResolver
+(records), so every name resolves through the official
+`UniversalResolverV2` — any ENS-aware app sees them.
+
+- **Verifiable machines.** Each kiosk is a name, e.g.
+  `tokyo-01.takarabako.eth`, whose address record is a signing key
+  generated on the Raspberry Pi itself (`device-agent/machine.js`). The Pi
+  signs every note it accepts (EIP-712 `NoteAccepted`: kiosk, amount,
+  currency, session hash, nonce, time). `/deposit` resolves the kiosk's name,
+  recovers the signer and credits the note as verified only if they match; a
+  fake box or a replayed signature can't mint deposits
+  (`MACHINE_SIGNATURE=required` rejects unsigned ones outright). The kiosk
+  screen, receipts and History show "✓ tokyo-01.takarabako.eth".
+- **Customer names** (`alice-1a2b.takarabako.eth`) are owned by, and resolve
+  to, the customer's own Privy wallet.
+- **Send by name.** Type a name, it resolves through ENS: box balance moves
+  between boxes (Takarabako does it), **tkCASH** is signed by the customer in
+  their own wallet, with the token's on-chain rules (both wallets
+  identity-verified, $500/day limit).
+- **Positions as deeds.** Each 1inch Aqua position has a transferable name
+  (`aqua-1a2b3c4d.takarabako.eth`) in its owner's wallet. Sending that name
+  token gives the position away; the backend follows the token (webhook from
+  MultiBaas, or on confirm), and only the deed's holder can close it.
+
+Scripts: `npm run ens:setup` (register the parent, deploy registry and
+resolver), `npm run ens:kiosk -- http://<pi>:8080` (publish a kiosk's device
+key), `npm run ens:migrate` (re-issue names).
+
 ## Yield on 1inch Aqua
 
 Customers put their box to work as ETH/USDC liquidity through
@@ -217,7 +249,7 @@ cd device-agent && cp public/config.example.js public/config.js && node server.j
 2. tkCASH is already deployed at `0x8023edf927c0a53f5620998f972b3d0740e04ea9`; set `CASH_RECEIPT_ADDRESS` to it. To deploy your own:
    ```bash
    cd contracts
-   KIOSK_ID=kl-sentral-01 forge script script/DeployCashReceipt.s.sol --rpc-url $RPC_URL --broadcast --private-key $PRIVATE_KEY
+   KIOSK_ID=tokyo-01 forge script script/DeployCashReceipt.s.sol --rpc-url $RPC_URL --broadcast --private-key $PRIVATE_KEY
    ```
 3. Expose the backend for webhooks, e.g. `cloudflared tunnel --url http://localhost:4000`,
    and set `PUBLIC_BACKEND_URL` to the tunnel URL.

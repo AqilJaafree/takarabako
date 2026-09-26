@@ -7,10 +7,10 @@ import {TakarabakoCashReceipt} from "../src/TakarabakoCashReceipt.sol";
 /// @notice Deploys tkCASH on its own, so the already-verified vault and
 /// mocks (Deploy.s.sol) aren't redeployed. Owned by the deployer — the
 /// backend's treasury signer — and registers the first kiosk.
-/// Run: `KIOSK_ID=kl-sentral-01 forge script script/DeployCashReceipt.s.sol --rpc-url <rpc> --broadcast --private-key <pk>`
+/// Run: `KIOSK_ID=tokyo-01 forge script script/DeployCashReceipt.s.sol --rpc-url <rpc> --broadcast --private-key <pk>`
 contract DeployCashReceipt is Script {
     function run() external {
-        string memory kioskId = vm.envOr("KIOSK_ID", string("kl-sentral-01"));
+        string memory kioskId = vm.envOr("KIOSK_ID", string("tokyo-01"));
 
         vm.startBroadcast();
         TakarabakoCashReceipt tk = new TakarabakoCashReceipt(msg.sender);

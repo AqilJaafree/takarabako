@@ -44,13 +44,13 @@ export function fromDelivery(d: WebhookDelivery): StoredEvent {
   };
 }
 
-/// 1inch Aqua and the ENS registry are shared with the rest of Sepolia, so
-/// MultiBaas delivers everyone's events for them. Keep only ours: Aqua
-/// strategies whose maker is the treasury, and names the treasury registered.
+/// 1inch Aqua is shared with the rest of Sepolia, so MultiBaas delivers
+/// everyone's events for it: keep only strategies whose maker is the
+/// treasury. Our ENS registry (takarabako.eth's subnames) is ours entirely.
 export async function isOurs(e: StoredEvent, treasury: string | undefined): Promise<boolean> {
   const t = treasury?.toLowerCase();
   const is = (v: string | undefined) => Boolean(t && v?.toLowerCase() === t);
-  if (e.contractLabel === LABELS.ensRegistry) return is(e.inputs.sender);
+  if (e.contractLabel === LABELS.ensRegistry) return true; // our own UserRegistry under takarabako.eth
   if (e.contractLabel === LABELS.aqua) return is(e.inputs.maker);
   return true;
 }
