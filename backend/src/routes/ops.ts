@@ -3,7 +3,10 @@ import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { config } from "../config.js";
 import { asyncHandler } from "../asyncHandler.js";
-import { askOpsAgent } from "../opsAgent.js";
+import { askOpsAgent, investigateKiosk } from "../opsAgent.js";
+import { checkAllKiosks, checkKiosk } from "../integrity.js";
+import { mandateStatus } from "../mandate.js";
+import { generateReport, getReport, listReports } from "../report.js";
 import { approveProposal, listProposals, recentAlerts, rejectProposal } from "../proposals.js";
 import { attestReserve, executeProposal, unfreezeKiosk } from "../treasury.js";
 
@@ -83,4 +86,42 @@ opsRouter.post("/ops/attest", requireOperator, asyncHandler(async (req, res) => 
 /// POST /ops/kiosks/:kioskId/unfreeze — a human cleared a count mismatch.
 opsRouter.post("/ops/kiosks/:kioskId/unfreeze", requireOperator, asyncHandler(async (req, res) => {
   res.json({ txHash: await unfreezeKiosk(req.params.kioskId) });
+}));
+
+/// GET /ops/integrity — every kiosk's cash-integrity check (the dashboard).
+opsRouter.get("/ops/integrity", asyncHandler(async (_req, res) => {
+  res.json({ kiosks: await checkAllKiosks() });
+}));
+
+/// POST /ops/integrity/:kioskId/investigate — the agent looks into a kiosk's
+/// findings and acts within its mandate.
+opsRouter.post("/ops/integrity/:kioskId/investigate", requireOperator, asyncHandler(async (req, res) => {
+  const report = await checkKiosk(req.params.kioskId);
+  res.json({ report, run: await investigateKiosk(report, "ask") });
+}));
+
+/// GET /ops/mandate — what the agent may do on its own, and today's usage.
+opsRouter.get("/ops/mandate", asyncHandler(async (_req, res) => {
+  res.json(await mandateStatus());
+}));
+
+/// GET /ops/reports — the agent's daily reports (public proof of reserve).
+opsRouter.get("/ops/reports", asyncHandler(async (_req, res) => {
+  res.json({ reports: await listReports() });
+}));
+
+/// GET /ops/reports/:id — one report with the exact canonical JSON whose
+/// keccak256 is anchored on-chain, for independent verification.
+opsRouter.get("/ops/reports/:id", asyncHandler(async (req, res) => {
+  const report = await getReport(req.params.id);
+  if (!report) {
+    res.status(404).json({ error: "no such report" });
+    return;
+  }
+  res.json({ report });
+}));
+
+/// POST /ops/reports — write and anchor a report now.
+opsRouter.post("/ops/reports", requireOperator, asyncHandler(async (_req, res) => {
+  res.json({ report: await generateReport() });
 }));
