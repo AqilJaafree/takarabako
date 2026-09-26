@@ -15,6 +15,7 @@ import { opsRouter } from "./routes/ops.js";
 import { dashboardRouter } from "./routes/dashboard.js";
 import { yieldRouter } from "./routes/yieldRoutes.js";
 import { startOpsMonitor } from "./opsMonitor.js";
+import { startAquaSimulator } from "./aquaSimulator.js";
 import { migrate } from "./db.js";
 import { startDepositWorker } from "./depositQueue.js";
 
@@ -68,6 +69,7 @@ try {
 }
 startDepositWorker();
 startOpsMonitor();
+startAquaSimulator();
 
 app.listen(config.port, () => {
   console.log(`takarabako backend listening on :${config.port}`);
