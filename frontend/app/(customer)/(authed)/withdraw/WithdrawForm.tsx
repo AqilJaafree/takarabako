@@ -53,6 +53,14 @@ export function WithdrawForm({ balance, positions, wallet }: { balance: number; 
             {shortHex(result.vaultTxHash)}
           </a>
         </p>
+        {result.tkcashTxHash && (
+          <p className="small muted" style={{ margin: "6px 0 0" }}>
+            {usd(result.tkcashBurned ?? 0)} of tkCASH cash receipts redeemed ·{" "}
+            <a href={SEPOLIA_TX(result.tkcashTxHash)} target="_blank" rel="noreferrer" className="mono">
+              {shortHex(result.tkcashTxHash)}
+            </a>
+          </p>
+        )}
       </section>
       </>
     );

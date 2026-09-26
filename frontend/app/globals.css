@@ -1541,3 +1541,477 @@ code,
   from { opacity: 1; transform: translate(-50%, -50%); }
   to { opacity: 0; transform: translate(-50%, -30%) scale(0.8); }
 }
+
+/* ---------- treasury ops dashboard (app/ops) ---------- */
+.ops {
+  /* Chart tokens, validated together on the lacquer surface (#1a0f0d):
+     amber for cash in, blue for cash out. Text never uses them. */
+  --series-in: #c98500;
+  --series-out: #3987e5;
+  --grid: rgba(244, 233, 218, 0.08);
+  --axis: rgba(244, 233, 218, 0.28);
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+
+.ops-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.ops-head p {
+  margin: 4px 0 0;
+}
+
+.ops-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.ops-grid > .card {
+  margin-bottom: 16px;
+}
+
+.ops h2 {
+  margin-bottom: 4px;
+}
+
+.ops .card > .muted.small {
+  margin-bottom: 14px;
+}
+
+.ops-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.ops-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+}
+
+.ops-tile .label {
+  font-size: 11px;
+}
+
+.ops-tile-value {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--cream);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.tone-ok { color: var(--ok); }
+.tone-warn { color: var(--warn); }
+.tone-bad { color: var(--bad); }
+
+.ops-allclear {
+  color: var(--ok);
+  margin: 0;
+}
+
+.ops-actions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.ops-actions li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.ops-actions li > div {
+  min-width: 0;
+}
+
+.ops-actions p {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.sev-badge {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 700;
+  border: 1.5px solid currentColor;
+}
+
+.sev-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.sev-critical .sev-badge, .sev-critical .sev-label { color: var(--bad); }
+.sev-serious .sev-badge, .sev-serious .sev-label { color: #f09a5a; }
+.sev-warning .sev-badge, .sev-warning .sev-label { color: var(--warn); }
+.sev-info .sev-badge, .sev-info .sev-label { color: var(--gold); }
+
+.ops-empty {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 8px 0;
+}
+
+.ops-table-wrap {
+  overflow-x: auto;
+}
+
+.ops-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ops-table th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ops-table td {
+  padding: 8px;
+  border-bottom: 1px solid rgba(58, 36, 32, 0.6);
+  white-space: nowrap;
+}
+
+/* charts */
+.ops-chart {
+  margin: 0;
+}
+
+.ops-legend {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.ops-legend span,
+.ops-tip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sw {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.sw.in { background: var(--series-in); }
+.sw.out { background: var(--series-out); }
+
+.ops-plot {
+  position: relative;
+  overflow-x: auto;
+}
+
+.ops-plot svg {
+  display: block;
+}
+
+.ops-plot .grid { stroke: var(--grid); stroke-width: 1; }
+.ops-plot .axis { stroke: var(--axis); stroke-width: 1; }
+.ops-plot .tick { fill: var(--muted); font-size: 11px; font-family: var(--font-sans); }
+.ops-plot .bar.in { fill: var(--series-in); }
+.ops-plot .bar.out { fill: var(--series-out); }
+.ops-plot .hover-band { fill: rgba(244, 233, 218, 0.05); }
+.ops-plot rect[tabindex]:focus { outline: none; }
+
+.ops-plot .ops-empty {
+  position: absolute;
+  inset: 0 0 26px 48px;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  pointer-events: none;
+}
+
+.ops-tip {
+  position: absolute;
+  top: 8px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(18, 8, 7, 0.95);
+  border: 1px solid var(--line);
+  color: var(--cream);
+  font-size: 13px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 2;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+}
+
+.ops-tip b { font-weight: 600; }
+
+.ops-tip.inline {
+  top: auto;
+  bottom: calc(100% + 4px);
+  left: 50%;
+}
+
+.ops-hbars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.ops-hbars li {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(80px, 34%) 1fr auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  padding: 2px 0;
+  border-radius: 6px;
+}
+
+.ops-hbars li.is-hover {
+  background: rgba(244, 233, 218, 0.04);
+}
+
+.hb-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--cream);
+}
+
+.hb-track {
+  height: 14px;
+}
+
+.hb-bar {
+  display: block;
+  height: 100%;
+  background: var(--series-in);
+  border-radius: 0 4px 4px 0;
+}
+
+.hb-value {
+  color: var(--cream);
+  font-variant-numeric: tabular-nums;
+}
+
+.ops-table-toggle {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.ops-table-toggle summary {
+  cursor: pointer;
+}
+
+.ops-table-toggle .ops-table {
+  margin-top: 8px;
+}
+
+/* feeds */
+.ops-feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.ops-feed li {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(58, 36, 32, 0.6);
+}
+
+.ops-feed-what {
+  font-size: 14px;
+}
+
+/* agent */
+.ops-question {
+  resize: vertical;
+  font: inherit;
+  min-height: 72px;
+}
+
+.ops-chip {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  min-height: 0;
+}
+
+.ops-answer {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.ops-answer-text {
+  white-space: pre-wrap;
+  line-height: 1.6;
+  margin: 6px 0 12px;
+}
+
+.ops-answer summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ops-trace {
+  font-size: 12px;
+  padding-left: 18px;
+}
+
+.ops-trace pre {
+  max-height: 180px;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ops-proposals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.ops-proposals li {
+  padding: 12px;
+  border: 1px solid rgba(240, 184, 90, 0.35);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.ops-proposals p {
+  margin: 4px 0 8px;
+}
+
+.ops-prop-args {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  color: var(--gold);
+}
+
+/* ---------- tkCASH cash receipts (My box, kiosk receipt) ---------- */
+.tk-card .tk-balance {
+  margin-top: 10px;
+  font-family: var(--font-serif);
+}
+
+.tk-card .tk-balance .amount {
+  font-size: 28px;
+  color: var(--gold);
+}
+
+.tk-symbol {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.tk-proof {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.receipt-tk {
+  margin: 8px 0 0;
+  font-size: 13px;
+  text-align: center;
+  opacity: 0.8;
+}
+
+.ops-count {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.ops-count form {
+  margin: 8px 0 4px;
+}
+
+.ops-count .input {
+  flex: 1 1 220px;
+  min-width: 0;
+  margin: 0;
+}
+
+.ops-count p.small {
+  margin: 6px 0 0;
+}
+
+.login-ops {
+  margin-top: 18px;
+  font-size: 13px;
+}
+
+.login-ops a {
+  color: var(--muted);
+}
+
+.app-foot {
+  margin-top: 28px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}

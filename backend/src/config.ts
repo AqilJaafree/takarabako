@@ -30,6 +30,25 @@ export const config = {
     apiKey: process.env.RESEND_API_KEY ?? "",
     from: process.env.RESEND_FROM ?? "",
   },
+  // Curvegrid MultiBaas (multibaas.ts): contract calls, event indexing,
+  // saved event queries and signed webhooks. Unset = everything that uses it
+  // falls back (direct viem reads, no dashboard aggregates).
+  multibaas: {
+    url: (process.env.MULTIBAAS_URL ?? "").replace(/\/+$/, ""), // https://<id>.multibaas.com
+    apiKey: process.env.MULTIBAAS_API_KEY ?? "", // admin key — backend only
+    webhookSecret: process.env.MULTIBAAS_WEBHOOK_SECRET ?? "",
+  },
+  // Where MultiBaas can reach this backend (a tunnel in dev), for the webhook.
+  publicBackendUrl: (process.env.PUBLIC_BACKEND_URL ?? "").replace(/\/+$/, ""),
+  // tkCASH (contracts/src/TakarabakoCashReceipt.sol) and this kiosk's id in it.
+  cashReceiptAddress: process.env.CASH_RECEIPT_ADDRESS ?? "",
+  kioskId: process.env.KIOSK_ID ?? "kl-sentral-01",
+  // Treasury ops agent (opsAgent.ts): the model, and the token a human
+  // sends to approve or reject its proposals.
+  opsAgent: {
+    model: process.env.OPS_AGENT_MODEL ?? "claude-opus-5",
+    adminToken: process.env.OPS_ADMIN_TOKEN ?? "",
+  },
   // USD per 1 MYR. Unset or 0 = use the live rate (see fx.ts).
   fx: {
     myrUsdRate: Number(process.env.MYR_USD_RATE ?? 0),

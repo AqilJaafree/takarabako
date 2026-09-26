@@ -12,6 +12,7 @@ import { toUsd } from "./fx.js";
 import { sendDepositTx, waitForDepositTx } from "./chain.js";
 import { publishUserEvent, type UserEvent } from "./events.js";
 import { maybeSendReceipt } from "./receiptEmail.js";
+import { recordCashIn } from "./cashReceipt.js";
 
 /// Durable deposits. The row in Postgres is the record; the BullMQ job is the
 /// work item. If the backend dies mid-job, BullMQ's stalled-job check hands
@@ -90,6 +91,14 @@ export async function processDeposit(depositId: string, deps: ProcessDeps = live
     balance,
   });
   if (row.sessionId) await sendReceiptIfDone(row.sessionId);
+
+  // tkCASH: the note is now in the box, so mint its receipt token. In the
+  // background — it must never hold up or fail a deposit that went through.
+  void recordCashIn({ depositId, wallet: account.privyWallet, usdAmount, denomination: row.amount, currency: row.currency })
+    .then(async (txHash) => {
+      if (txHash) await deps.publish(row.privyUserId, { type: "tkcash.minted", depositId, amount: usdAmount, txHash });
+    })
+    .catch((err) => console.error(`[tkcash] cash-in for deposit ${depositId}:`, err instanceof Error ? err.message : err));
 }
 
 // The receipt email must never fail (and so retry) a deposit that already went through.

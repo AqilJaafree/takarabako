@@ -17,6 +17,9 @@ export default function LoginPage() {
         <li><span aria-hidden="true">🌱</span>Grows with yield</li>
         <li><span aria-hidden="true">🏧</span>Out as cash or crypto</li>
       </ul>
+      <p className="login-ops">
+        <a href="/ops">Treasury dashboard for operators →</a>
+      </p>
     </main>
   );
 }

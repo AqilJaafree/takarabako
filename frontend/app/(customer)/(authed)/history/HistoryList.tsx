@@ -89,6 +89,11 @@ export function HistoryList({ items }: { items: HistoryItem[] }) {
                             {n.status === "confirmed" ? (
                               <>
                                 {usd(n.usdAmount)} · <TxLink hash={n.txHash} />
+                                {n.tkcashTxHash && (
+                                  <>
+                                    {" "}· tkCASH <TxLink hash={n.tkcashTxHash} />
+                                  </>
+                                )}
                               </>
                             ) : n.status === "failed" ? (
                               <span style={{ color: "var(--bad)" }}>not credited</span>
@@ -118,6 +123,13 @@ export function HistoryList({ items }: { items: HistoryItem[] }) {
                     <span className="amount">−{usd(item.grossUsd)}</span>
                     <br />
                     <TxLink hash={item.txHash} />
+                    {item.tkcashTxHash && (
+                      <>
+                        <br />
+                        <span className="small muted">{usd(item.tkcashBurned ?? 0)} tkCASH redeemed · </span>
+                        <TxLink hash={item.tkcashTxHash} />
+                      </>
+                    )}
                   </span>
                 </li>
               );

@@ -10,8 +10,18 @@ Foundry workspace for Takarabako's on-chain pieces (PRD §7.4).
   §7.4/§7.6): `depositFor` fronts USDC from the treasury, `withdrawTo`
   settles principal + accrued yield to an explicit recipient (the
   dev/treasury wallet on withdraw, per §6.6 — not back to the depositor).
-- `script/Deploy.s.sol` — deploys all of the above to a testnet, treasury
+- `src/TakarabakoCashReceipt.sol` — **tkCASH**, a tokenized receipt for
+  the banknotes in a kiosk (6 decimals, $1 each). The treasury mints on
+  `recordCashIn` and burns on `redeem`, moving that kiosk's reserve with
+  it, so supply always equals total reserve. `attestReserve` records an
+  operator's physical count and freezes the kiosk's minting on a mismatch
+  (`unfreezeKiosk` after a human resolves it). Holder-to-holder transfers
+  need both sides allowlisted, stay under a per-address daily limit, and
+  stop when paused; mint and burn bypass those rules.
+- `script/Deploy.s.sol` — deploys the mocks and the vault to a testnet, treasury
   self-approves the vault, and mints a demo faucet balance.
+- `script/DeployCashReceipt.s.sol` — deploys tkCASH on its own and
+  registers the first kiosk (`KIOSK_ID`, default `kl-sentral-01`).
 
 ## Setup
 
@@ -29,6 +39,12 @@ forge script script/Deploy.s.sol --rpc-url <testnet_rpc> --broadcast --private-k
 
 Feed the printed `MockUSDC` and `TakarabakoVault` addresses into
 `backend/.env` (`USDC_ADDRESS`, `VAULT_ADDRESS`).
+
+```bash
+KIOSK_ID=kl-sentral-01 forge script script/DeployCashReceipt.s.sol --rpc-url <testnet_rpc> --broadcast --private-key <treasury_pk>
+```
+
+Put the printed tkCASH address in `backend/.env` as `CASH_RECEIPT_ADDRESS`.
 
 ## Not yet in this workspace
 

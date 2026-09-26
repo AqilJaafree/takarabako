@@ -46,3 +46,6 @@ backend/.devservices/
 
 # Claude Code session transcripts — never commit (they can contain credentials)
 *.jsonl
+
+# Local planning notes (pasted terminal capture), not part of the repo
+CURVEGRID.md

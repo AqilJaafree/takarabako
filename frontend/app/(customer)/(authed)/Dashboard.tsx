@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import Link from "next/link";
-import type { Deposit, LiveEvent, Me } from "@/lib/types";
+import type { CashReceipts, Deposit, LiveEvent, Me } from "@/lib/types";
 import { useLiveEvents } from "@/lib/useLiveEvents";
 import { useRouter } from "next/navigation";
 import { apy, cash, SEPOLIA_TX, shortHex, timeAgo, usd, without } from "@/lib/format";
@@ -17,8 +17,17 @@ interface Pending {
   retry?: { attempt: number; of: number };
 }
 
-export function Dashboard({ me, deposits: initialDeposits }: { me: Me; deposits: Deposit[] }) {
+export function Dashboard({
+  me,
+  deposits: initialDeposits,
+  receipts,
+}: {
+  me: Me;
+  deposits: Deposit[];
+  receipts: CashReceipts | null;
+}) {
   const router = useRouter();
+  const [tkBalance, setTkBalance] = useState(receipts?.configured ? receipts.balance : 0);
   const [balance, setBalance] = useState(me.balance);
   const [deposits, setDeposits] = useState(initialDeposits);
   const [pending, setPending] = useState<Record<string, Pending>>({});
@@ -71,6 +80,10 @@ export function Dashboard({ me, deposits: initialDeposits }: { me: Me; deposits:
         upsert({ id: e.depositId, status: "failed", error: e.error });
         deposit(e.depositId, { status: "failed", amount: e.amount, currency: e.currency, error: e.error });
         break;
+      case "tkcash.minted":
+        upsert({ id: e.depositId, tkcashTxHash: e.txHash });
+        setTkBalance((b) => b + e.amount);
+        break;
     }
   }, [upsert, deposit]);
 
@@ -117,6 +130,8 @@ export function Dashboard({ me, deposits: initialDeposits }: { me: Me; deposits:
       )}
       {failure && <div className="notice error">{failure}</div>}
 
+      {receipts?.configured && <CashReceiptsCard r={receipts} balance={tkBalance} />}
+
       {me.positions.length > 0 && (
         <section className="card">
           <h2>Yield positions</h2>
@@ -157,6 +172,9 @@ export function Dashboard({ me, deposits: initialDeposits }: { me: Me; deposits:
                     {d.txHash && (
                       <> · <a href={SEPOLIA_TX(d.txHash)} target="_blank" rel="noreferrer" className="mono">{shortHex(d.txHash)}</a></>
                     )}
+                    {d.tkcashTxHash && (
+                      <> · <a href={SEPOLIA_TX(d.tkcashTxHash)} target="_blank" rel="noreferrer" title="tkCASH receipt token minted">tkCASH ✓</a></>
+                    )}
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
@@ -176,4 +194,35 @@ function DepositStatus({ d }: { d: Deposit }) {
   if (d.status === "confirmed") return <span className="pill ok">Confirmed</span>;
   if (d.status === "failed") return <span className="pill bad" title={d.error ?? undefined}>Failed</span>;
   return <span className="pill warn">{d.attempts > 1 ? `Retrying ${d.attempts}/5` : "Confirming"}</span>;
+}
+
+const ADDRESS_URL = (a: string) => `https://sepolia.etherscan.io/token/${a}`;
+
+/// tkCASH: a token for the banknotes this customer put into the kiosk,
+/// with the proof that every token is backed by cash in the box.
+function CashReceiptsCard({ r, balance }: { r: Extract<CashReceipts, { configured: true }>; balance: number }) {
+  return (
+    <section className="card tk-card">
+      <div className="spread">
+        <h2 style={{ margin: 0 }}>Cash receipts</h2>
+        <span className={`pill ${r.backed && !r.kiosk.frozen ? "ok" : "bad"}`}>
+          {r.kiosk.frozen ? "Kiosk under review" : r.backed ? "Fully backed" : "Backing mismatch"}
+        </span>
+      </div>
+      <div className="tk-balance">
+        <span className="amount">{usd(balance)}</span> <span className="tk-symbol">tkCASH</span>
+      </div>
+      <p className="small muted" style={{ margin: "4px 0 10px" }}>
+        One tkCASH for every dollar of notes you put in the box. It lives in your wallet and is redeemed when you withdraw.
+      </p>
+      <p className="small tk-proof">
+        {r.backed ? "✓" : "✗"} {usd(r.supply)} tkCASH issued · {usd(r.reserve)} of banknotes held in kiosk{" "}
+        <span className="mono">{r.kiosk.kioskId}</span>
+        {r.kiosk.lastAuditAt ? ` · last counted ${timeAgo(new Date(r.kiosk.lastAuditAt * 1000).toISOString())}` : ""}
+      </p>
+      <a href={ADDRESS_URL(r.contract)} target="_blank" rel="noreferrer" className="small">
+        View tkCASH on Etherscan →
+      </a>
+    </section>
+  );
 }

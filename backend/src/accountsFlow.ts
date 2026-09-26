@@ -5,6 +5,8 @@ import { createSession, type Session } from "./sessions.js";
 import { sendQrEmail } from "./qrEmail.js";
 import { chainReady, previewValueOnChain } from "./chain.js";
 import { deriveEnsLabel, walletSubname, registerSubname } from "./ens.js";
+import { allowlist } from "./cashReceipt.js";
+import { multibaasReady, mbSetAlias, toAlias } from "./multibaas.js";
 
 /// Everything a full login does once the Privy user is known — shared by the
 /// kiosk's email login (/verify) and the web app's Privy code login
@@ -22,6 +24,7 @@ export async function loginFull(user: { privyUserId: string; email: string; wall
     // its name, and registerSubname skips it.
     ({ txHash: ensTxHash } = await registerSubname(ensName, boundAddress));
     account = await insertAccount({ privyUserId, email, privyWallet: walletAddress, boundAddress, ensName });
+    onboardOnChain(ensName, walletAddress);
   }
 
   // First bind (including accounts that predate Postgres): email the QR once.
@@ -56,4 +59,16 @@ export async function loginFull(user: { privyUserId: string; email: string; wall
     qrFallback,
     ensTxHash,
   };
+}
+
+/// A new, identity-verified customer: allow their wallet to hold and move
+/// tkCASH, and give it a MultiBaas alias (their ENS label) so the dashboard
+/// and event queries show a name instead of an address. Background work —
+/// registration never waits for it.
+function onboardOnChain(ensName: string, wallet: string) {
+  if (!multibaasReady) return;
+  const log = (what: string) => (err: unknown) =>
+    console.error(`[multibaas] ${what} for ${ensName}:`, err instanceof Error ? err.message : err);
+  void allowlist(wallet).catch(log("tkCASH allowlist"));
+  void mbSetAlias(toAlias(ensName.split(".")[0] ?? ensName), wallet).catch(log("alias"));
 }

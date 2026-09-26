@@ -92,3 +92,116 @@ but low-level, and every integrator re-solves the same three UX gaps
 independently." Flagging them here in case they're useful input for
 where v4 hooks (or v3 tooling) could close the gap for higher-frequency,
 consumer-facing use cases like this one.
+
+---
+
+# Feedback: Curvegrid MultiBaas
+
+Context: we added MultiBaas to Takarabako as the backend's contract layer
+and indexer — treasury writes (tkCASH mint/burn, approved agent actions)
+through the unsigned-transaction flow, reads through the contract API,
+saved Event Queries for the dashboard, and signed webhooks into Postgres.
+These notes are from writing that integration against
+`@curvegrid/multibaas-sdk` 1.1.1 and the public docs, then running it
+against a free-tier Sepolia deployment: setup, a signed write through the
+unsigned-transaction flow, a webhook delivery, saved queries and the agent's
+reads.
+
+## What worked well
+
+- **The unsigned-transaction flow fits a backend that must keep its own
+  key.** Calling a write method with `from` returns a ready
+  `TransactionToSignResponse`; we sign it with viem and hand it back to
+  `submitSignedTransaction`. That let us keep the treasury key in our own
+  process without a Cloud Wallet, which on the free tier would have meant
+  one wallet and an Azure setup.
+- **Contract calls by alias and label read cleanly.** `callContractFunction("tkcash", "takarabako_cash_receipt", "recordCashIn", args)`
+  is much easier to review than raw ABI encoding, and `formatInts: "string"`
+  keeps 6-decimal amounts exact in JavaScript.
+- **The webhook docs are precise.** Header names, hex encoding, the
+  body-then-timestamp order and the array payload shape were all stated,
+  with Go reference code, so the verifier was quick to write and test.
+- **Event Query aggregators map onto real questions.** Rebuilding token
+  balances from `Transfer` with an `add` on `to` and a `subtract` on `from`,
+  grouped by holder, gave us a holders table without running our own indexer.
+
+## What tripped us up
+
+- **The SDK signature changed between versions, and the sample app is on
+  the old one.** `multibaas-sample-app` passes a `chain` argument first
+  (`callContractFunction(chain, address, label, method, args)`,
+  `getChainStatus(chain)`); in 1.1.1 the chain is baked into the paths
+  (`/chains/ethereum/...`) and that argument is gone. Copying from the
+  sample gave type errors until we read the generated `api.d.ts`.
+- **No JSON examples for Event Queries.** The Event Indexing page explains
+  the concepts (select, filter, aggregate, group by the one non-aggregated
+  field), but we couldn't find a full request example. Unanswered for us
+  from the docs: whether `eventName` is the bare name or the full signature
+  (we used `CashIn(bytes32,address,uint256,uint32,bytes3)`), how to filter
+  to one contract (we used a `contract_label` field filter), and whether
+  results can be grouped by day. One complete example per feature would
+  have saved guesswork.
+- **Nonces when two signers' views differ.** Transactions MultiBaas builds
+  carry a nonce from its node, while our viem sends use a local nonce
+  manager against a different RPC. A send made a second earlier may not be
+  visible to the other side yet, so the two paths could hand out the same
+  nonce. We sign MultiBaas-built transactions with our own nonce manager
+  instead of the returned `nonce`, and serialise both paths. A note on this
+  in the unsigned-transaction docs would help anyone mixing MultiBaas with
+  another client.
+- **Shared contracts flood the event stream.** Linking Uniswap's
+  `NonfungiblePositionManager` or a shared ENS registry indexes every
+  user's events, not just ours, so our webhook handler has to filter by
+  address. A per-link event filter (e.g. only events involving an address)
+  would make linking shared infrastructure practical on a small plan.
+
+## What the live run turned up
+
+Each of these cost a round trip to find; the SDK's TypeScript types allowed
+every one of the failing requests.
+
+- **An API key with no group gets 403 everywhere.** Our first key was
+  accepted (not a 401) but every call, even `GET /chains/ethereum/status`,
+  returned `403 user does not have permission to access this resource`.
+  Adding it to the Administrators group fixed it. The key-creation screen
+  could warn when a key has no group.
+- **Uploading a contract requires bytecode.** `BaseContract.bin` is optional
+  in the SDK, but `createContract` without it fails with a raw database
+  error: `null value in column "bytecode" of relation "contracts" violates
+  not-null constraint`. For ABI-only third-party contracts we now send a
+  placeholder.
+- **Event Query fields need `inputIndex`.** A field with only `name` is
+  rejected (`missing field index` when saving, `invalid request` when
+  executing), although the type's doc comment says "either `name` or
+  `inputIndex` is required". The bare event name and the full signature
+  both work for `eventName`, and a `contract_label` filter works.
+- **Aggregated queries need an explicit `groupBy`.** The docs say the one
+  non-aggregated field is the group key; in practice the query is rejected
+  as `invalid request` until `groupBy` names it.
+- **`formatInts` takes `auto`, `as_numbers` or `as_strings`.** We guessed
+  `"string"` from the type (`formatInts?: string`) and got `not a valid
+  formatInts option`. The values are only in the doc comment; a string-union
+  type would catch this at compile time.
+- **Event Query pages are capped at 50 rows, with an opaque error.**
+  `executeEventQuery(name, 0, 100)` returns `400 invalid request`; 50 works.
+  We page through results in fifties now. Saying "limit must be ≤ 50" in the
+  error (and the docs) would have saved a bisection.
+
+What worked first time once those were fixed: the unsigned-transaction
+round trip (a tkCASH `setAllowlisted` built by MultiBaas, signed locally,
+broadcast and mined in about 20 seconds), address aliases and links, and the
+signed webhook — the event reached our backend through an ngrok tunnel and
+passed signature verification on the first delivery.
+
+## Suggestions
+
+1. Keep the sample app in step with the current SDK, or pin the SDK
+   version it targets in its README.
+2. Add copy-paste JSON examples to each Event Query doc page (a sum with
+   group-by, a filter by contract, an ordered list).
+3. Document how to combine MultiBaas-built unsigned transactions with a
+   client that manages its own nonces.
+4. Offer event filters on address–contract links for shared contracts.
+5. Tighten the SDK types to what the server accepts: make `bin` required,
+   `formatInts` a string union, and document the 50-row page limit; return
+   specific validation messages instead of `invalid request`.
