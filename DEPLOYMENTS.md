@@ -275,7 +275,7 @@ forge verify-contract 0x8023edf927c0a53f5620998f972b3d0740e04ea9 src/TakarabakoC
   --constructor-args $(cast abi-encode "constructor(address)" 0x9205DcCC081D896edeAB423d88665660d61d5bfE)
 ```
 
-MultiBaas deployment host: _pending_ (record the host only, never the API key).
+MultiBaas deployment host (Sepolia, free tier): `lfozlu7lwjb2bl25fgqbersp6u.multibaas.com`. Only the host is recorded here, never the API key or webhook secret.
 
 `npm run mb:setup` (backend) creates these labels and aliases:
 
