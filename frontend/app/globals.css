@@ -3370,3 +3370,461 @@ a.human-badge {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- find a kiosk (/kiosks) ---------- */
+.finder {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 20px 16px 64px;
+}
+
+.finder-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.finder-hero h1 {
+  font-size: clamp(28px, 6vw, 40px);
+  margin: 4px 0 6px;
+}
+
+.finder-map-wrap {
+  position: relative;
+  margin: 16px 0;
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid rgba(227, 179, 106, 0.35);
+  box-shadow: 0 30px 80px -30px rgba(179, 38, 30, 0.6);
+}
+
+.kiosk-map {
+  height: clamp(360px, 62vh, 560px);
+  width: 100%;
+  background: #0d0706;
+}
+
+.kiosk-map-loading {
+  background: radial-gradient(closest-side, rgba(227, 179, 106, 0.15), #0d0706);
+}
+
+.finder-map-actions {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  z-index: 2;
+}
+
+.finder-map-actions .btn:not(.btn-gold) {
+  background: rgba(18, 8, 7, 0.85);
+}
+
+.kiosk-map .maplibregl-ctrl.maplibregl-ctrl-attrib,
+.kiosk-map .maplibregl-ctrl.maplibregl-ctrl-attrib.maplibregl-compact-show {
+  background: rgba(18, 8, 7, 0.78);
+  color: var(--muted);
+  font-size: 10px;
+  max-width: calc(100% - 20px);
+}
+
+.kiosk-map .maplibregl-ctrl-attrib-button {
+  background-color: transparent;
+  filter: invert(1) opacity(0.6);
+}
+
+.kiosk-map .maplibregl-ctrl-attrib a {
+  color: var(--muted);
+}
+
+/* the kiosk pin */
+.kiosk-pin {
+  position: relative;
+  width: 48px;
+  height: 60px;
+  display: flex;
+  justify-content: center;
+}
+
+.kiosk-pin-head {
+  position: absolute;
+  top: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 35% 30%, #fff1cc, var(--gold) 50%, #8a6320);
+  border: 2px solid #fff4dc;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.6), 0 0 26px rgba(227, 179, 106, 0.7);
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 700;
+  color: #3a1d0a;
+}
+
+.kiosk-pin-head i {
+  font-style: normal;
+  transform: rotate(45deg);
+}
+
+.kiosk-pin-ring {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  margin-left: -10px;
+  border-radius: 50%;
+  border: 2px solid var(--gold);
+  opacity: 0;
+}
+
+.kiosk-pin-label {
+  position: absolute;
+  top: -30px;
+  white-space: nowrap;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(18, 8, 7, 0.9);
+  border: 1px solid rgba(227, 179, 106, 0.5);
+  color: var(--cream);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.user-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #4c9dff;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 6px rgba(76, 157, 255, 0.25);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .kiosk-pin-head {
+    animation: pin-drop 0.9s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  }
+
+  .kiosk-pin-ring {
+    animation: pin-ring 2.4s ease-out infinite;
+  }
+
+  .kiosk-pin-ring.r2 {
+    animation-delay: 1.2s;
+  }
+
+  .user-dot {
+    animation: user-pulse 2s ease-in-out infinite;
+  }
+}
+
+@keyframes pin-drop {
+  from {
+    transform: translateY(-60px) rotate(-45deg);
+    opacity: 0;
+  }
+}
+
+@keyframes pin-ring {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(4.5);
+    opacity: 0;
+  }
+}
+
+@keyframes user-pulse {
+  50% {
+    box-shadow: 0 0 0 12px rgba(76, 157, 255, 0.12);
+  }
+}
+
+.finder-card {
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 20px;
+  margin-bottom: 16px;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+}
+
+.finder-card h2 {
+  font-size: 22px;
+  margin: 0 0 4px;
+}
+
+.finder-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.finder-facts > div {
+  display: grid;
+  gap: 3px;
+  align-content: start;
+}
+
+.finder-facts b {
+  font-size: 15px;
+}
+
+/* floor plan */
+.floor-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.floor-tabs button {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: 10px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg);
+  color: var(--cream);
+  font: inherit;
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.floor-tabs button span {
+  font-family: var(--font-sans);
+  font-weight: 500;
+}
+
+.floor-tabs button.is-on {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px var(--gold-soft);
+}
+
+.floor-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 16px;
+  background:
+    linear-gradient(rgba(227, 179, 106, 0.04) 1px, transparent 1px) 0 0 / 24px 24px,
+    linear-gradient(90deg, rgba(227, 179, 106, 0.04) 1px, transparent 1px) 0 0 / 24px 24px,
+    #140a08;
+  border: 1px solid var(--line);
+}
+
+.fp-outline {
+  fill: rgba(36, 21, 18, 0.6);
+  stroke: rgba(227, 179, 106, 0.35);
+  stroke-width: 2;
+}
+
+.fp-room rect {
+  fill: #221411;
+  stroke: #45302a;
+  stroke-width: 1.5;
+}
+
+.fp-room.service rect {
+  fill: #1b100e;
+}
+
+.fp-room.seating rect {
+  fill: #1d110f;
+  stroke-dasharray: 4 4;
+}
+
+.fp-room.stage rect {
+  fill: rgba(179, 38, 30, 0.22);
+  stroke: rgba(179, 38, 30, 0.6);
+}
+
+.fp-room.target rect {
+  fill: rgba(227, 179, 106, 0.16);
+  stroke: var(--gold);
+  stroke-width: 2.5;
+}
+
+.fp-room.stairs rect {
+  fill: #1b100e;
+}
+
+.fp-steps line {
+  stroke: #5a4038;
+  stroke-width: 1.5;
+}
+
+.fp-label {
+  fill: var(--cream);
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.fp-label.small {
+  font-size: 11px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+}
+
+.fp-sub {
+  fill: var(--muted);
+  font-size: 12px;
+  font-family: var(--font-sans);
+}
+
+.fp-route-glow {
+  fill: none;
+  stroke: rgba(227, 179, 106, 0.2);
+  stroke-width: 12;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.fp-route {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+}
+
+.fp-route-march {
+  fill: none;
+  stroke: #fff4dc;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 2 16;
+  opacity: 0.8;
+}
+
+.fp-start circle {
+  fill: #4c9dff;
+  stroke: #fff;
+  stroke-width: 3;
+}
+
+.fp-kiosk .head {
+  fill: var(--gold);
+  stroke: #fff4dc;
+  stroke-width: 2;
+}
+
+.fp-kiosk .ring {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 2;
+  opacity: 0;
+}
+
+.fp-kiosk .glyph {
+  fill: #3a1d0a;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.fp-kiosk-label {
+  fill: var(--gold);
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+}
+
+.fp-up path {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .fp-route {
+    animation: route-draw 2.4s cubic-bezier(0.45, 0, 0.2, 1) both;
+  }
+
+  .fp-route-march {
+    animation: route-march 1.2s linear infinite, route-fade 2.6s ease both;
+  }
+
+  .fp-kiosk .ring {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: fp-ring 2.4s ease-out 2s infinite;
+  }
+
+  .fp-kiosk .ring.r2 {
+    animation-delay: 3.2s;
+  }
+
+  .fp-kiosk {
+    animation: route-fade 0.6s ease 2s both;
+  }
+
+  .fp-up {
+    animation: fp-bob 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes route-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+
+@keyframes route-march {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+
+@keyframes route-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes fp-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(3.2);
+    opacity: 0;
+  }
+}
+
+@keyframes fp-bob {
+  50% {
+    transform: translate(285px, 232px);
+  }
+}
+
+.floor-steps {
+  margin: 14px 0 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 6px;
+  color: var(--cream);
+  font-size: 15px;
+}
+
+@media (max-width: 720px) {
+  .finder-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
