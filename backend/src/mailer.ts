@@ -8,7 +8,15 @@ import { config } from "./config.js";
 
 const gmail =
   config.gmail.user && config.gmail.appPassword
-    ? nodemailer.createTransport({ service: "gmail", auth: { user: config.gmail.user, pass: config.gmail.appPassword } })
+    ? nodemailer.createTransport({
+        service: "gmail",
+        auth: { user: config.gmail.user, pass: config.gmail.appPassword },
+        // Logins wait for the QR email, so a blocked SMTP port (DigitalOcean
+        // blocks 25/465/587) must fail fast, not after nodemailer's 2 minutes.
+        connectionTimeout: 10_000,
+        greetingTimeout: 10_000,
+        socketTimeout: 20_000,
+      })
     : null;
 
 const resend = config.resend.apiKey ? new Resend(config.resend.apiKey) : null;
