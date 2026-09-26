@@ -46,7 +46,7 @@ export const config = {
   // Treasury ops agent (opsAgent.ts): the model, and the token a human
   // sends to approve or reject its proposals.
   opsAgent: {
-    model: process.env.OPS_AGENT_MODEL ?? "claude-sonnet-5",
+    model: process.env.OPS_AGENT_MODEL ?? "claude-opus-5",
     adminToken: process.env.OPS_ADMIN_TOKEN ?? "",
   },
   // USD per 1 MYR. Unset or 0 = use the live rate (see fx.ts).

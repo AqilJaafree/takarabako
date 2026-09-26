@@ -11,6 +11,8 @@ import { eventsRouter } from "./routes/events.js";
 import { meRouter } from "./routes/me.js";
 import { depositSessionsRouter } from "./routes/depositSessions.js";
 import { webhooksRouter } from "./routes/webhooks.js";
+import { opsRouter } from "./routes/ops.js";
+import { startOpsMonitor } from "./opsMonitor.js";
 import { migrate } from "./db.js";
 import { startDepositWorker } from "./depositQueue.js";
 
@@ -41,6 +43,7 @@ app.use(depositRouter);
 app.use(agentRouter);
 app.use(withdrawRouter);
 app.use(positionRouter);
+app.use(opsRouter);
 
 // Catches anything asyncHandler forwards (chain calls, Privy, the agent) —
 // without this, an unhandled rejection in an async route takes the whole
@@ -60,6 +63,7 @@ try {
   process.exit(1);
 }
 startDepositWorker();
+startOpsMonitor();
 
 app.listen(config.port, () => {
   console.log(`takarabako backend listening on :${config.port}`);
