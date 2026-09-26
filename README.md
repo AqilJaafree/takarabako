@@ -135,6 +135,25 @@ Scripts: `npm run ens:setup` (register the parent, deploy registry and
 resolver), `npm run ens:kiosk -- http://<pi>:8080` (publish a kiosk's device
 key), `npm run ens:migrate` (re-issue names).
 
+## World ID: one human, one account
+
+Customers prove they're a unique human with **World ID** (IDKit 4) on the web
+app. The backend signs each request with the RP signing key (it never reaches
+the browser) and binds it to the customer's own wallet as the signal; World
+App returns a proof, which the backend forwards to the Developer Portal's v4
+verify endpoint. The proof's nullifier — World ID's anonymous per-app id for a
+person — is stored under a unique index, so one human can't run two accounts.
+
+A verified human unlocks what needs a real person behind it: the tkCASH
+allowlist (holding and moving the cash-backed token), sending by ENS name,
+and the treasury's Sepolia gas for their wallet (no longer gifted to every new
+email). Their ENS name gets `takarabako.verified = world-id`, so anyone
+resolving `alice-1a2b.takarabako.eth` sees they're a verified human. Cash
+deposits and withdrawals at the kiosk stay open to everyone.
+
+Config (backend/.env): `WORLD_APP_ID`, `WORLD_RP_ID`, `WORLD_APP_SIGNING_KEY`,
+`WORLD_ACTION`, `WORLD_ENVIRONMENT`.
+
 ## Yield on 1inch Aqua
 
 Customers put their box to work as ETH/USDC liquidity through

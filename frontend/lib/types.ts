@@ -28,6 +28,7 @@ export interface Me {
   balance: number;
   apyBps: number;
   positions: Position[];
+  worldId?: { verified: boolean; credential: string | null; verifiedAt: string | null };
   expiresAt: string;
 }
 
@@ -246,6 +247,7 @@ export interface ResolvedName {
   name: string;
   address: string;
   kind: string | null;
+  verifiedHuman?: boolean;
   customer: { ensName: string | null } | null;
   tkcashAllowlisted: boolean | null;
 }
@@ -257,6 +259,7 @@ export interface MyWallet {
   eth: number;
   tkcash: { balance: number; allowlisted: boolean; dailyLimit: number | null; spentToday: number } | null;
   chainId: number;
+  worldId?: { verified: boolean; credential: string | null };
 }
 
 /// What a kiosk login hands the browser. The backend session token stays in

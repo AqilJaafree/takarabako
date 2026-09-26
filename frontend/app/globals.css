@@ -2353,3 +2353,31 @@ body:has(.range-chart svg.is-dragging) {
 .kiosk-head .machine-id {
   margin-top: 8px;
 }
+
+/* ---------- World ID ---------- */
+.world-card {
+  border-color: rgba(240, 184, 90, 0.35);
+}
+
+.world-card.is-verified {
+  border-color: rgba(127, 201, 160, 0.4);
+}
+
+.world-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.human-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(127, 201, 160, 0.16);
+  color: var(--ok);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  vertical-align: 2px;
+}
