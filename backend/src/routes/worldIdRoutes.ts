@@ -21,7 +21,7 @@ worldIdRouter.get("/worldid/request", requireSession("full"), asyncHandler(async
     res.status(404).json({ error: "unknown account" });
     return;
   }
-  res.json({ ...requestContext(account), verified: Boolean(account.worldVerifiedAt) });
+  res.json({ ...requestContext(account.privyWallet), verified: Boolean(account.worldVerifiedAt) });
 }));
 
 /// POST /me/worldid — the IDKit result; verified with World and recorded.
