@@ -33,7 +33,7 @@ export const LABELS = {
   vault: "takarabako_vault",
   cashReceipt: "takarabako_cash_receipt",
   usdc: "mock_usdc",
-  uniswapNpm: "uniswap_v3_npm",
+  aqua: "oneinch_aqua", // 1inch Aqua registry — the yield strategies
   ensRegistry: "ens_user_registry",
 } as const;
 

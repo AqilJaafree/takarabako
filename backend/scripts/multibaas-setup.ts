@@ -15,6 +15,7 @@ import type { EventQuery } from "@curvegrid/multibaas-sdk";
 import { config } from "../src/config.js";
 import { ALIASES, LABELS, mb, mbCall, mbError, mbSend, multibaasReady, toAlias } from "../src/multibaas.js";
 import { pool } from "../src/db.js";
+import { aq } from "../src/aquaSdk.js";
 import { treasuryAddress } from "../src/chain.js";
 
 if (!multibaasReady) {
@@ -22,7 +23,8 @@ if (!multibaasReady) {
   process.exit(1);
 }
 
-const UNISWAP_NPM = "0x1238536071E1c677A632429e3655c799b22cDA52";
+// Replaced by 1inch Aqua; unlinked on the next run (the free tier allows five).
+const RETIRED = { alias: "uniswap-npm", label: "uniswap_v3_npm" };
 const ENS_USER_REGISTRY = "0x786441fDe1a4006EadD745A8b90d8621F7a99916";
 const VERSION = "1.0";
 
@@ -42,13 +44,6 @@ async function foundryArtifact(contract: string): Promise<Artifact> {
 }
 
 // Only the parts of these third-party contracts we call or index.
-const npmAbi = parseAbi([
-  "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
-  "event IncreaseLiquidity(uint256 indexed tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)",
-  "event DecreaseLiquidity(uint256 indexed tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)",
-  "event Collect(uint256 indexed tokenId, address recipient, uint256 amount0, uint256 amount1)",
-  "function positions(uint256 tokenId) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)",
-]);
 const ensAbi = parseAbi([
   "event LabelRegistered(uint256 indexed tokenId, bytes32 indexed labelHash, string label, address owner, uint64 expiry, address indexed sender)",
   "function register(string label, address owner, address registry, address resolver, uint256 roleBitmap, uint64 expiry) returns (uint256)",
@@ -63,19 +58,23 @@ const contracts: Array<{ label: string; name: string; alias: string; address: st
   { label: LABELS.vault, name: "TakarabakoVault", alias: ALIASES.vault, address: config.vaultAddress, artifact: () => foundryArtifact("TakarabakoVault") },
   { label: LABELS.cashReceipt, name: "TakarabakoCashReceipt", alias: ALIASES.tkcash, address: config.cashReceiptAddress, artifact: () => foundryArtifact("TakarabakoCashReceipt") },
   { label: LABELS.usdc, name: "MockUSDC", alias: ALIASES.musdc, address: config.usdcAddress, artifact: () => foundryArtifact("MockUSDC") },
-  { label: LABELS.uniswapNpm, name: "NonfungiblePositionManager", alias: "uniswap-npm", address: UNISWAP_NPM, artifact: external(npmAbi) },
+  { label: LABELS.aqua, name: "Aqua", alias: "aqua", address: config.aqua.address, artifact: external(aq.ABI.AQUA_ABI as unknown as Abi) },
   { label: LABELS.ensRegistry, name: "UserRegistry", alias: "ens-wantest", address: ENS_USER_REGISTRY, artifact: external(ensAbi) },
 ];
 
 const status = (err: unknown) => (err as { response?: { status?: number } })?.response?.status;
 
-async function step(what: string, run: () => Promise<unknown>, okIfConflict = true) {
+async function step(what: string, run: () => Promise<unknown>, okIfConflict = true, okIfMissing = false) {
   try {
     await run();
     console.log(`  ✓ ${what}`);
   } catch (err) {
     if (okIfConflict && status(err) === 409) {
       console.log(`  · ${what} (already there)`);
+      return;
+    }
+    if (okIfMissing && status(err) === 404) {
+      console.log(`  · ${what} (already gone)`);
       return;
     }
     console.error(`  ✗ ${what}: ${mbError(err).message}`);
@@ -93,6 +92,8 @@ for (const c of contracts) {
 }
 
 console.log("2. Addresses, aliases and links");
+// Free the retired contract's slot first so the new link fits the five-contract cap.
+await step(`unlink ${RETIRED.alias} ↔ ${RETIRED.label} (retired)`, () => mb.contracts.unlinkAddressContract(RETIRED.alias, RETIRED.label), false, true);
 if (treasuryAddress) await step(`alias ${ALIASES.treasury} → ${treasuryAddress}`, () => mb.addresses.setAddress({ alias: ALIASES.treasury, address: treasuryAddress! }), false);
 for (const c of contracts) {
   if (!c.address) {
@@ -124,11 +125,13 @@ const TRANSFER = "Transfer(address,address,uint256)";
 const DEPOSITED = "Deposited(address,uint256,uint256)";
 const WITHDRAWN = "Withdrawn(address,address,uint256,uint256)";
 const ATTESTED = "ReserveAttested(bytes32,uint256,uint256,int256,bytes32)";
+const PULLED = "Pulled(address,address,bytes32,address,uint256)";
 const cashIn = inputOf(LABELS.cashReceipt, CASH_IN);
 const transfer = inputOf(LABELS.cashReceipt, TRANSFER);
 const deposited = inputOf(LABELS.vault, DEPOSITED);
 const withdrawn = inputOf(LABELS.vault, WITHDRAWN);
 const attested = inputOf(LABELS.cashReceipt, ATTESTED);
+const pulled = inputOf(LABELS.aqua, PULLED);
 // An aggregated query must name its group-by field explicitly.
 const queries: Record<string, EventQuery> = {
   // Proof of reserve: USD minted per kiosk.
@@ -165,6 +168,11 @@ const queries: Record<string, EventQuery> = {
     ],
     orderBy: "at",
     order: "DESC",
+  },
+  // Tokens traders took out of Aqua strategies, per token (swap volume).
+  aqua_pulled_by_token: {
+    events: [{ eventName: PULLED, select: [pulled("token"), pulled("amount", "add", "total")], filter: onlyContract(LABELS.aqua) }],
+    groupBy: "token",
   },
   // Operator counts against the chain's reserve.
   reserve_attestations: {
