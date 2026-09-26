@@ -245,3 +245,38 @@ The rationale is threaded all the way to the kiosk: `POST
 /agent/open-position`'s response includes `rationale`, and
 `device-agent/public/app.js` logs it (`agent: "..."`) right after the
 position-opened line.
+
+## tkCASH and Curvegrid MultiBaas
+
+`TakarabakoCashReceipt` (tkCASH) is deployed on its own with
+`contracts/script/DeployCashReceipt.s.sol`, so the verified contracts above
+stay as they are. **Not deployed yet** — once it is, record it here:
+
+| Contract | Address | Etherscan |
+|---|---|---|
+| `TakarabakoCashReceipt (tkCASH)` | _pending_ | _pending_ |
+
+Deploy and verify (constructor arg: the treasury address as `initialOwner`):
+
+```bash
+cd contracts
+KIOSK_ID=kl-sentral-01 forge script script/DeployCashReceipt.s.sol --rpc-url $RPC_URL --broadcast --private-key $PRIVATE_KEY
+forge verify-contract <address> src/TakarabakoCashReceipt.sol:TakarabakoCashReceipt \
+  --chain sepolia --etherscan-api-key $ETHERSCAN_API_KEY \
+  --constructor-args $(cast abi-encode "constructor(address)" 0x9205DcCC081D896edeAB423d88665660d61d5bfE)
+```
+
+MultiBaas deployment host: _pending_ (record the host only, never the API key).
+
+`npm run mb:setup` (backend) creates these labels and aliases:
+
+| Label | Contract | Alias | Address |
+|---|---|---|---|
+| `takarabako_vault` | `TakarabakoVault` | `vault` | `0xD069D36Af7DF950EE87002Fc120B90eF5Ea3ce3D` |
+| `takarabako_cash_receipt` | `TakarabakoCashReceipt` | `tkcash` | tkCASH above |
+| `mock_usdc` | `MockUSDC` | `musdc` | `0x6cc5f175810e61A56508049f0527BC75EB7e77e4` |
+| `uniswap_v3_npm` | `NonfungiblePositionManager` (events + `positions` only) | `uniswap-npm` | `0x1238536071E1c677A632429e3655c799b22cDA52` |
+| `ens_user_registry` | `UserRegistry` (`LabelRegistered`, `register`, `findOwner`) | `ens-wantest` | `0x786441fDe1a4006EadD745A8b90d8621F7a99916` |
+
+Plus `treasury` → the treasury signer, and one alias per customer (their
+ENS label → their Privy wallet), created at registration.
