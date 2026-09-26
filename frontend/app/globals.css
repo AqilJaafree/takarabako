@@ -2584,3 +2584,106 @@ a.human-badge {
   transform-origin: left;
   transition: transform 1s linear;
 }
+
+/* ---------- deposit terminal: choose how to log in ---------- */
+.deposit-choose {
+  text-align: center;
+}
+
+.deposit-choose h2 {
+  font-size: 26px;
+  margin: 10px 0 6px;
+}
+
+.kiosk-tag {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(227, 179, 106, 0.45);
+  background: var(--gold-soft);
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.choice-tile {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 18px 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: linear-gradient(180deg, var(--surface-2), var(--bg));
+  color: var(--cream);
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.1s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.choice-tile:hover:not(:disabled),
+.choice-tile:focus-visible {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px var(--gold-soft), 0 18px 40px -18px rgba(227, 179, 106, 0.5);
+  outline: none;
+}
+
+.choice-tile:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.choice-tile:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.choice-icon {
+  width: clamp(44px, 12vw, 64px);
+  height: clamp(44px, 12vw, 64px);
+  color: var(--gold);
+}
+
+.choice-title {
+  font-family: var(--font-serif);
+  font-size: clamp(16px, 4.2vw, 20px);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.choice-sub {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+@media (max-width: 520px) {
+  .choice-grid {
+    gap: 10px;
+  }
+
+  .choice-tile {
+    gap: 6px;
+    padding: 10px;
+  }
+
+  .choice-sub {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 340px) {
+  .choice-sub {
+    display: none;
+  }
+}
