@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { ActionItem, ChainEvent, OpsData, Severity, Summary, Holders, Flows, Positions } from "@/lib/opsTypes";
+import type { ActionItem, ChainEvent, KioskState, OpsData, Severity, Summary, Holders, Flows, Positions } from "@/lib/opsTypes";
 import { apy, shortHex, SEPOLIA_TX, timeAgo, usd } from "@/lib/format";
 import { FlowsChart, HBars } from "./charts";
 import { AgentPanel } from "./AgentPanel";
@@ -17,9 +17,42 @@ const SEVERITY: Record<Severity, { icon: string; label: string }> = {
   info: { icon: "i", label: "Info" },
 };
 
+const TOKEN_KEY = "tb_ops_token";
+
+/// The operator token, kept in this tab only (sessionStorage).
+function useOpsToken(): [string, (v: string) => void] {
+  const [token, setTokenState] = useState("");
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTokenState(sessionStorage.getItem(TOKEN_KEY) ?? "");
+    } catch {}
+  }, []);
+  const setToken = useCallback((v: string) => {
+    setTokenState(v);
+    try {
+      sessionStorage.setItem(TOKEN_KEY, v);
+    } catch {}
+  }, []);
+  return [token, setToken];
+}
+
+/// POST to an operator endpoint with the token; throws the backend's error.
+async function operatorPost(path: string, token: string, body?: unknown) {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-ops-token": token },
+    body: JSON.stringify(body ?? {}),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error ?? `request failed (${res.status})`);
+  return json as { txHash?: string };
+}
+
 export function OpsDashboard({ initial }: { initial: OpsData }) {
   const [data, setData] = useState(initial);
   const [refreshing, setRefreshing] = useState(false);
+  const [token, setToken] = useOpsToken();
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -65,7 +98,7 @@ export function OpsDashboard({ initial }: { initial: OpsData }) {
       {summary && <StatTiles summary={summary} flows={ok(data.flows) ? data.flows : null} />}
 
       <div className="ops-grid">
-        {summary && <ReservePanel summary={summary} />}
+        {summary && <ReservePanel summary={summary} token={token} onChanged={refresh} />}
         <section className="card">
           <h2>Banknote mix</h2>
           <p className="muted small">USD minted as tkCASH per note face value (MultiBaas query <code>cash_in_by_denomination</code>).</p>
@@ -104,7 +137,7 @@ export function OpsDashboard({ initial }: { initial: OpsData }) {
         <EventsPanel events={ok(data.events) ? data.events.events : null} source={ok(data.events) ? data.events.source : null} />
       </div>
 
-      <AgentPanel proposals={summary?.proposals ?? []} alerts={summary?.alerts ?? []} onChanged={refresh} />
+      <AgentPanel proposals={summary?.proposals ?? []} alerts={summary?.alerts ?? []} onChanged={refresh} token={token} setToken={setToken} />
     </main>
   );
 }
@@ -193,7 +226,7 @@ function StatTiles({ summary, flows }: { summary: Summary; flows: Flows | null }
   );
 }
 
-function ReservePanel({ summary }: { summary: Summary }) {
+function ReservePanel({ summary, token, onChanged }: { summary: Summary; token: string; onChanged: () => void }) {
   const r = summary.reserve.data;
   return (
     <section className="card">
@@ -220,6 +253,9 @@ function ReservePanel({ summary }: { summary: Summary }) {
               </tbody>
             </table>
           </div>
+          {r.kiosks.map((k) => (
+            <CountForm key={k.kioskId} kiosk={k} token={token} onChanged={onChanged} />
+          ))}
           <p className="label" style={{ marginTop: 16 }}>Recent counts</p>
           {r.attestations.length === 0 ? (
             <p className="ops-empty">No operator counts yet.</p>
@@ -370,3 +406,76 @@ function EventsPanel({ events, source }: { events: ChainEvent[] | null; source: 
   );
 }
 
+
+/// An operator's physical cash count, recorded on-chain. A count that differs
+/// from the chain freezes the kiosk; a human unfreezes it after resolving.
+function CountForm({ kiosk, token, onChanged }: { kiosk: KioskState; token: string; onChanged: () => void }) {
+  const [counted, setCounted] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string; tx?: string } | null>(null);
+
+  async function run(label: string, send: () => Promise<{ txHash?: string }>) {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const { txHash } = await send();
+      setMsg({ ok: true, text: label, tx: txHash });
+      setCounted("");
+      onChanged();
+    } catch (err) {
+      setMsg({ ok: false, text: err instanceof Error ? err.message : "failed" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const value = Number(counted);
+  return (
+    <div className="ops-count">
+      <p className="label">Record a count · {kiosk.kioskId}</p>
+      <form
+        className="row"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void run(value === kiosk.reserve ? "Count recorded — matches the chain." : "Count recorded — it differs, so the kiosk is now frozen.", () =>
+            operatorPost("/api/ops/attest", token, { kioskId: kiosk.kioskId, counted: value }),
+          );
+        }}
+      >
+        <input
+          className="input"
+          type="number"
+          min="0"
+          step="0.01"
+          inputMode="decimal"
+          placeholder={`USD counted (chain says ${usd(kiosk.reserve)})`}
+          value={counted}
+          onChange={(e) => setCounted(e.target.value)}
+          aria-label="USD counted in the box"
+        />
+        <button className="btn btn-gold small" disabled={busy || !token || counted === "" || !(value >= 0)}>
+          {busy ? "Recording…" : "Record count"}
+        </button>
+        {kiosk.frozen && (
+          <button
+            type="button"
+            className="btn btn-ghost small"
+            disabled={busy || !token}
+            onClick={() => void run("Kiosk unfrozen.", () => operatorPost(`/api/ops/kiosks/${encodeURIComponent(kiosk.kioskId)}/unfreeze`, token))}
+          >
+            Unfreeze
+          </button>
+        )}
+      </form>
+      {!token && <p className="muted small">Enter the operator token in the agent panel below to record counts.</p>}
+      {msg && (
+        <p className={`small ${msg.ok ? "tone-ok" : "tone-bad"}`}>
+          {msg.text}
+          {msg.tx && (
+            <> · <a href={SEPOLIA_TX(msg.tx)} target="_blank" rel="noreferrer">{shortHex(msg.tx)}</a></>
+          )}
+        </p>
+      )}
+    </div>
+  );
+}

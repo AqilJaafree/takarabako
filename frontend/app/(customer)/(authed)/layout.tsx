@@ -13,6 +13,9 @@ export default function AuthedLayout({ children }: { children: React.ReactNode }
       </header>
       <Nav />
       {children}
+      <footer className="app-foot">
+        <a href="/ops">Treasury dashboard</a> · proof of reserve for every tkCASH
+      </footer>
     </main>
   );
 }

@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { AgentRun, Alert, Proposal } from "@/lib/opsTypes";
 import { shortHex, SEPOLIA_TX, timeAgo } from "@/lib/format";
 
-const TOKEN_KEY = "tb_ops_token";
 const EXAMPLES = [
   "Is the yield reserve enough for the next 30 days?",
   "Which kiosk holds the most cash, and is it fully backed?",
@@ -32,29 +31,25 @@ function describeArgs(p: Proposal) {
   }
 }
 
-/// Ask the treasury agent, and approve or reject what it proposes. The
-/// operator token stays in this tab only (sessionStorage).
-export function AgentPanel({ proposals, alerts, onChanged }: { proposals: Proposal[]; alerts: Alert[]; onChanged: () => void }) {
-  const [token, setToken] = useState("");
+/// Ask the treasury agent, and approve or reject what it proposes.
+export function AgentPanel({
+  proposals,
+  alerts,
+  onChanged,
+  token,
+  setToken,
+}: {
+  proposals: Proposal[];
+  alerts: Alert[];
+  onChanged: () => void;
+  token: string;
+  setToken: (v: string) => void;
+}) {
   const [question, setQuestion] = useState("");
   const [run, setRun] = useState<AgentRun | null>(null);
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState("");
   const [deciding, setDeciding] = useState<string | null>(null);
-
-  useEffect(() => {
-    try {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setToken(sessionStorage.getItem(TOKEN_KEY) ?? "");
-    } catch {}
-  }, []);
-
-  function saveToken(v: string) {
-    setToken(v);
-    try {
-      sessionStorage.setItem(TOKEN_KEY, v);
-    } catch {}
-  }
 
   async function ask(e: React.FormEvent) {
     e.preventDefault();
@@ -112,7 +107,7 @@ export function AgentPanel({ proposals, alerts, onChanged }: { proposals: Propos
           autoComplete="off"
           placeholder="OPS_ADMIN_TOKEN"
           value={token}
-          onChange={(e) => saveToken(e.target.value)}
+          onChange={(e) => setToken(e.target.value)}
           style={{ margin: "6px 0 12px" }}
         />
         <form onSubmit={ask}>
