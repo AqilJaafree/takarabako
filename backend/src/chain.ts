@@ -75,6 +75,60 @@ function queueSend<T>(send: () => Promise<T>): Promise<T> {
   return run;
 }
 
+/// For transactions built elsewhere (MultiBaas returns them unsigned —
+/// multibaas.ts): same queue, so they never race a viem send for a nonce.
+export const queueTreasurySend = queueSend;
+
+/// Signs an unsigned transaction with the treasury key. The fields are
+/// MultiBaas's TransactionToSignTx (gas, gasFeeCap/gasTipCap or gasPrice).
+/// The nonce comes from our own nonce manager, not the builder: MultiBaas's
+/// node may not have seen a send we made a second ago, and sharing one
+/// counter keeps both paths in order.
+export async function signTreasuryTx(tx: {
+  gas: number;
+  to?: string | null;
+  value: string;
+  data: string;
+  gasFeeCap?: string;
+  gasTipCap?: string;
+  gasPrice?: string;
+}): Promise<`0x${string}`> {
+  if (!account) throw new Error("chain not configured — set TREASURY_PRIVATE_KEY");
+  const nonce = await nonceManager.consume({ address: account.address, chainId: sepolia.id, client: publicClient });
+  const common = {
+    chainId: sepolia.id,
+    nonce,
+    gas: (BigInt(tx.gas) * 13n) / 10n, // same 30% headroom as our own sends
+    to: (tx.to ?? undefined) as Address | undefined,
+    value: BigInt(tx.value || 0),
+    data: tx.data as `0x${string}`,
+  };
+  return tx.gasFeeCap
+    ? account.signTransaction({
+        ...common,
+        type: "eip1559",
+        maxFeePerGas: BigInt(tx.gasFeeCap),
+        maxPriorityFeePerGas: BigInt(tx.gasTipCap ?? 0),
+      })
+    : account.signTransaction({ ...common, type: "legacy", gasPrice: BigInt(tx.gasPrice ?? 0) });
+}
+
+/// After a signed transaction failed to submit, so its nonce isn't burned.
+export function resetTreasuryNonce() {
+  if (account) nonceManager.reset({ address: account.address, chainId: sepolia.id });
+}
+
+export async function waitForTx(hash: `0x${string}`) {
+  const receipt = await publicClient.waitForTransactionReceipt({ hash, pollingInterval: 1_000 });
+  if (receipt.status !== "success") throw new Error(`transaction reverted on-chain (tx ${hash})`);
+  return receipt;
+}
+
+export async function treasuryEthBalance(): Promise<number> {
+  if (!account) return 0;
+  return Number(formatUnits(await publicClient.getBalance({ address: account.address }), 18));
+}
+
 /// Sends depositFor and returns the hash without waiting for it to be mined.
 /// The deposit queue stores the hash before waiting, so a retry after a crash
 /// waits for this transaction rather than sending another.

@@ -3,6 +3,18 @@ import { store } from "../store.js";
 import { findByPrivyUserId } from "../accounts.js";
 import { requireSession } from "../sessions.js";
 import { asyncHandler } from "../asyncHandler.js";
+import { ALIASES, LABELS, mbCall, multibaasReady } from "../multibaas.js";
+import { chainReady, previewValueOnChain } from "../chain.js";
+
+/// The customer's live vault value (principal + accrued yield): through
+/// MultiBaas when it's configured, straight from the chain otherwise.
+async function liveVaultValue(boundAddress: string): Promise<number | null> {
+  if (multibaasReady) {
+    const raw = await mbCall<string>(ALIASES.vault, LABELS.vault, "previewValue", [boundAddress]).catch(() => null);
+    if (raw !== null) return Number(raw) / 1e6; // USDC, 6 decimals
+  }
+  return chainReady ? previewValueOnChain(boundAddress as `0x${string}`) : null;
+}
 
 /// GET /position — PRD §7.3, for the kiosk screen (PRD §7.2). The user
 /// comes from the full-access session.
@@ -25,5 +37,5 @@ positionRouter.get("/position", requireSession("full"), asyncHandler(async (_req
     value: p.amount, // Phase 1: read live value via vault.previewValue / position math
   }));
 
-  res.json({ ensName: account.ensName, positions });
+  res.json({ ensName: account.ensName, vaultValue: await liveVaultValue(account.boundAddress), positions });
 }));
