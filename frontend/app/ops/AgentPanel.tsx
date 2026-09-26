@@ -187,6 +187,7 @@ export function AgentPanel({
                   <span className="ops-feed-what">
                     {ACTION_LABEL[p.action]} · {describeArgs(p)}{" "}
                     <span className={`pill ${p.status === "executed" ? "ok" : p.status === "rejected" ? "" : "bad"}`}>{p.status}</span>
+                    {p.autonomous && <span className="pill ok" title="Executed by the agent within its mandate">agent · on its own</span>}
                   </span>
                   <span className="muted small">
                     {p.txHash ? <a href={SEPOLIA_TX(p.txHash)} target="_blank" rel="noreferrer">{shortHex(p.txHash)}</a> : p.error ?? ""}

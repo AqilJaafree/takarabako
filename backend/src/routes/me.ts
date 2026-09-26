@@ -10,6 +10,7 @@ import { config } from "../config.js";
 import { allowanceJson, dailyAllowance } from "../limits.js";
 import { ALIASES, LABELS, mbCall } from "../multibaas.js";
 import { cashReceiptReady, fromTkUnits, kioskState, tkSupply } from "../cashReceipt.js";
+import { issueDepositCode } from "../depositCode.js";
 
 /// Read endpoints for the web app (full sessions only): the account at a
 /// glance, deposit history, and the quick-deposit QR to show at the kiosk.
@@ -43,15 +44,22 @@ meRouter.get("/deposits", requireSession("full"), asyncHandler(async (req, res) 
   res.json({ deposits: await listDeposits(res.locals.session.privyUserId, limit) });
 }));
 
+/// GET /me/qr — a fresh deposit QR (depositCode.ts): valid for 5 minutes,
+/// and it replaces the account's previous one. Every call issues a new code.
 meRouter.get("/me/qr", requireSession("full"), asyncHandler(async (_req, res) => {
   const account = await findByPrivyUserId(res.locals.session.privyUserId);
   if (!account) {
     res.status(404).json({ error: "unknown account" });
     return;
   }
+  const { qr, expiresAt, ttlSeconds } = await issueDepositCode(account.privyUserId);
+  res.set("cache-control", "no-store");
   res.json({
     wallet: account.privyWallet,
-    dataUrl: await QRCode.toDataURL(account.privyWallet, { width: 480, margin: 2 }),
+    qr,
+    expiresAt,
+    ttlSeconds,
+    dataUrl: await QRCode.toDataURL(qr, { width: 480, margin: 2 }),
   });
 }));
 

@@ -60,6 +60,7 @@ export interface Proposal {
   status: "pending" | "approved" | "rejected" | "executed" | "failed";
   txHash: string | null;
   error: string | null;
+  autonomous?: boolean;
   createdAt: string;
 }
 
@@ -127,7 +128,47 @@ export interface OpsData {
   flows: Flows | { error: string };
   positions: Positions | { error: string };
   events: { source: string; events: ChainEvent[] } | { error: string };
+  integrity: { kiosks: IntegrityReport[] } | { error: string };
+  mandate: MandateStatus | { error: string };
+  reports: { reports: AgentReportSummary[] } | { error: string };
   loadedAt: string;
+}
+
+/// Cash integrity (backend integrity.ts).
+export interface IntegrityFinding {
+  code: string;
+  severity: "critical" | "warn" | "info";
+  title: string;
+  detail: string;
+}
+
+export interface IntegrityReport {
+  kioskId: string;
+  windowDays: number;
+  status: "clear" | "warn" | "critical";
+  machine: { notes: number; usd: number; unsigned: number };
+  chain: { mints: number; usd: number; reserve: number | null; frozen: boolean };
+  lastCount: { counted: number; onChain: number; delta: number; at: string | null } | null;
+  notesSinceCount: number;
+  findings: IntegrityFinding[];
+  checkedAt: string;
+}
+
+/// The agent's mandate (backend mandate.ts).
+export interface MandateStatus {
+  enabled: boolean;
+  rules: Array<{ action: Proposal["action"]; label: string; autonomous: boolean; dailyLimit: number | null; why: string; usedToday: number }>;
+}
+
+/// Daily reports (backend report.ts).
+export interface AgentReportSummary {
+  id: string;
+  body: string;
+  hash: string;
+  anchorTx: string | null;
+  model: string | null;
+  status: "clear" | "warn" | "critical";
+  createdAt: string;
 }
 
 export interface TraceStep {

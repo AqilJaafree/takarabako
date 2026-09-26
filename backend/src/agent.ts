@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config.js";
 import { TIERS, type Tier } from "./aquaMath.js";
+import { complete, llmReady } from "./llm.js";
 
 /// The yield agent for the beginner tiers. The customer picks a risk tier;
 /// Claude confirms the matching 1inch Aqua strategy against today's ETH price
@@ -37,7 +38,14 @@ export function getTiersInfo(spot: number | null): TierInfo[] {
   }));
 }
 
-const anthropic = config.agent.apiKey ? new Anthropic({ apiKey: config.agent.apiKey }) : null;
+const anthropic = !llmReady && config.agent.apiKey ? new Anthropic({ apiKey: config.agent.apiKey }) : null;
+
+const RATIONALE_SYSTEM =
+  "You are the yield agent for Takarabako, a cash-in kiosk that puts savings into 1inch Aqua " +
+  "liquidity strategies on ETH/USDC. The customer already picked a risk tier; you never change it. " +
+  "Write ONE short, honest sentence for a DeFi beginner explaining why the given strategy fits that " +
+  "tier, mentioning the price range in dollars when there is one. APY figures are rough estimates from " +
+  "the range width, not promises: if you mention one, say \"about\" or \"estimated\". Plain text only, no preamble.";
 
 const DEFAULT_RATIONALE: Record<Tier, string> = {
   low: "Full-range ETH/USDC liquidity: it earns on every trade and swings the least, which suits a low-risk choice.",
@@ -46,23 +54,22 @@ const DEFAULT_RATIONALE: Record<Tier, string> = {
 };
 
 export async function tierRationale(tier: Tier, amount: number, spot: number): Promise<string> {
+  const prompt = `Tier: ${tier}. Amount: $${amount}. ETH price now: $${spot.toFixed(0)}. Strategies:\n${JSON.stringify(getTiersInfo(spot), null, 2)}`;
+  if (llmReady) {
+    try {
+      return (await complete(RATIONALE_SYSTEM, prompt, 1200)) || DEFAULT_RATIONALE[tier];
+    } catch (err) {
+      console.error("[agent] rationale failed, using the default:", err instanceof Error ? err.message : err);
+      return DEFAULT_RATIONALE[tier];
+    }
+  }
   if (!anthropic) return DEFAULT_RATIONALE[tier];
   try {
     const response = await anthropic.messages.create({
       model: config.agent.model,
       max_tokens: 300,
-      system:
-        "You are the yield agent for Takarabako, a cash-in kiosk that puts savings into 1inch Aqua " +
-        "liquidity strategies on ETH/USDC. The customer already picked a risk tier; you never change it. " +
-        "Write ONE short, honest sentence for a DeFi beginner explaining why the given strategy fits that " +
-        "tier, mentioning the price range in dollars when there is one. APY figures are rough estimates from " +
-        "the range width, not promises: if you mention one, say \"about\" or \"estimated\". Plain text only, no preamble.",
-      messages: [
-        {
-          role: "user",
-          content: `Tier: ${tier}. Amount: $${amount}. ETH price now: $${spot.toFixed(0)}. Strategies:\n${JSON.stringify(getTiersInfo(spot), null, 2)}`,
-        },
-      ],
+      system: RATIONALE_SYSTEM,
+      messages: [{ role: "user", content: prompt }],
     });
     const text = response.content.find((b): b is Anthropic.TextBlock => b.type === "text")?.text.trim();
     return text || DEFAULT_RATIONALE[tier];

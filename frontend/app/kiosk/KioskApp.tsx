@@ -15,7 +15,7 @@ import { MachineBadge } from "@/components/MachineBadge";
 
 const GREETINGS = {
   kiosk: "いらっしゃいませ! Tap in with your email or wallet QR.",
-  deposit: "いらっしゃいませ! Show me your QR, or log in with World ID, to deposit.",
+  deposit: "いらっしゃいませ! Pick how to log in, then feed me your notes.",
 } as const;
 const bubble = (text: string) => (text.length > 170 ? `${text.slice(0, 167).trimEnd()}…` : text);
 
@@ -24,8 +24,8 @@ const bubble = (text: string) => (text.length > 170 ? `${text.slice(0, 167).trim
 ///   - email login → full access (deposit, yield, withdraw as cash or to wallet)
 ///   - wallet-QR scan → deposit only
 /// mode="deposit" (the /deposit page) is a cash-deposit terminal: it opens on
-/// the camera, only takes wallet-QR logins, and goes back to scanning after
-/// every customer.
+/// a choice of login (deposit QR or World ID), takes deposit-only sessions,
+/// and goes back to that choice after every customer.
 /// The backend session token never reaches this page: /api/kiosk/* keeps it
 /// in an httpOnly cookie and hands it to the Pi bridge server-side.
 
@@ -81,7 +81,7 @@ export function KioskApp({
 }) {
   const depositOnly = mode === "deposit";
   const GREETING = GREETINGS[mode];
-  const startScreen: Screen = depositOnly ? "scan" : "welcome";
+  const startScreen: Screen = "welcome";
   const [screen, setScreen] = useState<Screen>(startScreen);
   const [session, setSession] = useState<KioskLogin | null>(null);
   const [balance, setBalance] = useState(0);
@@ -280,11 +280,11 @@ export function KioskApp({
     } catch (err) {
       const status = (err as Error & { status?: number }).status;
       setScreen("welcome");
-      if (status === 404 || status === 400) {
-        // Unknown or foreign QR: a pop-up to scan again or sign up.
+      if (status === 404 || status === 400 || status === 410) {
+        // Unknown, foreign or expired QR: a pop-up to scan again (or sign up).
         setMessage("");
         setBadQr(text);
-        setQrProblem(status === 404 ? "unregistered" : "invalid");
+        setQrProblem(status === 410 ? "expired" : status === 404 ? "unregistered" : "invalid");
         catSay("Hmm, I don't know this QR…", "thinking", 0);
       } else {
         // Deposit terminal: show why, with a button to scan again.
@@ -401,16 +401,24 @@ export function KioskApp({
         )}
 
         {screen === "welcome" && depositOnly && (
-          <section className="card" style={{ textAlign: "center" }}>
-            <p className="label">Deposit cash</p>
-            <p className="muted">Open <b>My QR</b> on your phone (or the QR from your welcome email) and show it to the camera.</p>
+          <section className="card deposit-choose">
+            <span className="kiosk-tag">Takarabako kiosk</span>
+            <h2>Deposit cash</h2>
+            <p className="muted">To deposit money, first choose how to log in.</p>
             {message && <div className="notice error">{message}</div>}
-            <button className="btn btn-gold btn-block" disabled={busy} onClick={() => { setMessage(""); setLoginVia("qr"); setScreen("scan"); }}>
-              {busy ? "Checking your QR…" : "Scan my QR"}
-            </button>
-            <button className="btn btn-block" disabled={busy} onClick={() => { setMessage(""); setLoginVia("world"); setScreen("scan"); }}>
-              Log in with World ID
-            </button>
+            <div className="choice-grid">
+              <button className="choice-tile" disabled={busy} onClick={() => { setMessage(""); setLoginVia("qr"); setScreen("scan"); }}>
+                <QrIcon />
+                <span className="choice-title">{busy ? "Checking your QR…" : "Scan my QR"}</span>
+                <span className="choice-sub">Show the QR from the app’s Deposit tab</span>
+              </button>
+              <button className="choice-tile" disabled={busy} onClick={() => { setMessage(""); setLoginVia("world"); setScreen("scan"); }}>
+                <WorldIdIcon />
+                <span className="choice-title">Log in with World ID</span>
+                <span className="choice-sub">Scan with World App on your phone</span>
+              </button>
+            </div>
+            <p className="muted small" style={{ margin: "14px 0 0" }}>New here? Sign up in the Takarabako app first.</p>
           </section>
         )}
 
@@ -444,7 +452,7 @@ export function KioskApp({
             onResult={onQr}
             ignore={ignoreQr}
             onCancel={(why) => { setMessage(why ?? ""); setScreen("welcome"); }}
-            hint={depositOnly ? "Open My QR on your phone, then hold it up to the camera." : undefined}
+            hint={depositOnly ? "Open Deposit in the Takarabako app, then hold your phone up to the camera." : undefined}
             fallback={depositOnly ? "check the camera is connected and allowed, then tap Scan my QR" : "log in with email instead"}
           />
         )}
@@ -673,5 +681,40 @@ function Scanner({
       <p className="muted small" style={{ textAlign: "center" }}>{status}</p>
       <button className="btn btn-block" onClick={() => onCancel()}>Cancel</button>
     </section>
+  );
+}
+
+// Choice-tile icons for the deposit terminal (inline, so they follow the theme).
+function QrIcon() {
+  return (
+    <svg className="choice-icon" viewBox="0 0 48 48" aria-hidden="true">
+      <g fill="none" stroke="currentColor" strokeWidth="3" strokeLinejoin="round">
+        <rect x="6" y="6" width="14" height="14" rx="2" />
+        <rect x="28" y="6" width="14" height="14" rx="2" />
+        <rect x="6" y="28" width="14" height="14" rx="2" />
+      </g>
+      <g fill="currentColor">
+        <rect x="11" y="11" width="4" height="4" />
+        <rect x="33" y="11" width="4" height="4" />
+        <rect x="11" y="33" width="4" height="4" />
+        <rect x="28" y="28" width="5" height="5" />
+        <rect x="37" y="28" width="5" height="5" />
+        <rect x="32.5" y="32.5" width="5" height="5" />
+        <rect x="28" y="37" width="5" height="5" />
+        <rect x="37" y="37" width="5" height="5" />
+      </g>
+    </svg>
+  );
+}
+
+function WorldIdIcon() {
+  return (
+    <svg className="choice-icon" viewBox="0 0 48 48" aria-hidden="true">
+      <g fill="none" stroke="currentColor" strokeWidth="3">
+        <circle cx="24" cy="24" r="18" />
+        <circle cx="24" cy="24" r="8" />
+        <path d="M6 24h10M32 24h10" strokeLinecap="round" />
+      </g>
+    </svg>
   );
 }

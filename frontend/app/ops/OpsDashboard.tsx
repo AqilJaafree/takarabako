@@ -5,6 +5,7 @@ import type { ActionItem, ChainEvent, KioskState, OpsData, Severity, Summary, Ho
 import { apy, shortHex, SEPOLIA_TX, timeAgo, usd } from "@/lib/format";
 import { FlowsChart, HBars } from "./charts";
 import { AgentPanel } from "./AgentPanel";
+import { AiTreasury } from "./AiTreasury";
 
 const REFRESH_MS = 20_000; // matches the backend's panel cache
 
@@ -85,7 +86,7 @@ export function OpsDashboard({ initial }: { initial: OpsData }) {
               <span className={`pill ${summary.cashReceipt ? "ok" : "warn"}`}>{summary.cashReceipt ? "tkCASH live" : "tkCASH not deployed"}</span>
             </>
           )}
-          <button className="btn btn-ghost small" onClick={refresh} disabled={refreshing}>
+          <button className="btn btn-ghost small" onClick={refresh} disabled={refreshing} suppressHydrationWarning>
             {refreshing ? "Refreshing…" : `Updated ${new Date(data.loadedAt).toLocaleTimeString()}`}
           </button>
         </div>
@@ -93,6 +94,14 @@ export function OpsDashboard({ initial }: { initial: OpsData }) {
 
       {!summary && <div className="notice error">Couldn&apos;t load the dashboard: {"error" in data.summary ? data.summary.error : ""}</div>}
       {summary && !summary.multibaas && <SetupNotice />}
+
+      <AiTreasury
+        integrity={ok(data.integrity) ? data.integrity.kiosks : null}
+        mandate={ok(data.mandate) ? data.mandate : null}
+        reports={ok(data.reports) ? data.reports.reports : null}
+        token={token}
+        onChanged={refresh}
+      />
 
       {summary && <ActionItems items={summary.actionItems} />}
       {summary && <StatTiles summary={summary} flows={ok(data.flows) ? data.flows : null} />}

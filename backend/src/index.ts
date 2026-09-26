@@ -19,6 +19,7 @@ import { ensRouter } from "./routes/ensRoutes.js";
 import { worldIdRouter } from "./routes/worldIdRoutes.js";
 import { startDeedWatcher } from "./ensTransfers.js";
 import { startOpsMonitor } from "./opsMonitor.js";
+import { startDailyReports } from "./report.js";
 import { startAquaSimulator } from "./aquaSimulator.js";
 import { migrate } from "./db.js";
 import { startDepositWorker } from "./depositQueue.js";
@@ -77,6 +78,7 @@ try {
 }
 startDepositWorker();
 startOpsMonitor();
+startDailyReports();
 startAquaSimulator();
 startDeedWatcher();
 
