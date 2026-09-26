@@ -29,7 +29,16 @@ export interface Me {
   apyBps: number;
   positions: Position[];
   worldId?: { verified: boolean; credential: string | null; verifiedAt: string | null };
+  limit?: DailyLimit;
   expiresAt: string;
+}
+
+/// What an account that hasn't verified with World ID may still move today.
+export interface DailyLimit {
+  limited: boolean;
+  limitUsd: number;
+  usedUsd: number;
+  leftUsd: number | null; // null when there's no limit
 }
 
 /// GET /deposits
@@ -260,6 +269,7 @@ export interface MyWallet {
   tkcash: { balance: number; allowlisted: boolean; dailyLimit: number | null; spentToday: number } | null;
   chainId: number;
   worldId?: { verified: boolean; credential: string | null };
+  limit?: DailyLimit;
 }
 
 /// What a kiosk login hands the browser. The backend session token stays in
@@ -273,5 +283,7 @@ export interface KioskLogin {
   qrEmailed: boolean;
   bridge: "ok" | "skipped" | "failed";
   depositSessionId: string | null;
-  worldVerified: boolean; // World ID: the deposit terminal offers to verify if not
+  worldVerified: boolean;
+  limit: DailyLimit | null; // unverified accounts: what's left today
+  depositBlocked: string | null; // why a deposit couldn't start (e.g. today's limit is used)
 }

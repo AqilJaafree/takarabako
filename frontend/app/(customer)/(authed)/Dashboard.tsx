@@ -121,7 +121,9 @@ export function Dashboard({
           {me.worldId?.verified ? (
             <span className="human-badge">✓ verified human</span>
           ) : me.worldId ? (
-            <span className="human-badge is-pending" title="Scan your QR at a Takarabako deposit terminal and verify with World App">not verified · verify at a kiosk</span>
+            <Link href="/verify" className="human-badge is-pending" title="Take a World ID selfie to lift the daily limit">
+              {me.limit?.leftUsd != null ? `${usd(me.limit.leftUsd)} left today · verify` : "not verified · verify"}
+            </Link>
           ) : null}
         </div>
         <p className="small" style={{ marginTop: 10, marginBottom: 0, color: "rgba(244,233,218,.8)" }}>

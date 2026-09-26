@@ -1,6 +1,6 @@
 import { relay } from "@/lib/backend";
 
-/// GET /api/kiosk/worldid/request — an RP-signed World ID request for the customer logged in at this kiosk.
+/// GET /api/worldid/request — an RP-signed World ID request bound to this customer's wallet.
 export async function GET() {
-  return relay("kiosk", "/worldid/request");
+  return relay("web", "/worldid/request");
 }

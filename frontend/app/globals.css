@@ -2354,28 +2354,49 @@ body:has(.range-chart svg.is-dragging) {
   margin-top: 8px;
 }
 
-/* ---------- World ID (verified at the deposit terminal) ---------- */
-.kiosk-world {
-  border-color: rgba(240, 184, 90, 0.35);
-}
-
-.kiosk-world-code {
+/* ---------- World ID selfie (web app, after sign-up) ---------- */
+.world-code {
   display: grid;
   place-items: center;
-  min-height: 240px;
+  min-height: 220px;
   margin-top: 12px;
 }
 
-.kiosk-world-code img {
+.world-code img {
   border-radius: 12px;
   background: var(--cream);
 }
 
-.kiosk-world-done,
-.kiosk-verified {
+.world-qr-alt {
+  margin-top: 12px;
+  text-align: center;
+}
+
+.world-qr-alt summary {
+  cursor: pointer;
+}
+
+.world-flow a.btn {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+}
+
+.world-flow .btn.is-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.world-done {
   color: var(--ok);
   text-align: center;
   margin: 8px 0;
+}
+
+.kiosk-limit {
+  color: var(--warn);
+  text-align: center;
+  margin: 4px 0 8px;
 }
 
 .human-badge {
@@ -2388,6 +2409,10 @@ body:has(.range-chart svg.is-dragging) {
   font-family: var(--font-sans);
   font-size: 12px;
   vertical-align: 2px;
+}
+
+a.human-badge {
+  text-decoration: none;
 }
 
 .human-badge.is-pending {

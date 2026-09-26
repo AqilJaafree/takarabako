@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import type { Me, MyWallet } from "@/lib/types";
 import { loadForPage } from "@/lib/serverData";
+import Link from "next/link";
+import { usd } from "@/lib/format";
 import { SendForm } from "./SendForm";
 
 export const metadata: Metadata = { title: "Send · Takarabako" };
@@ -14,10 +16,10 @@ export default async function SendPage() {
         Type someone&apos;s ENS name — like <span className="mono">alice-1a2b.takarabako.eth</span>. It&apos;s looked up on ENS, so
         what you see is exactly where it goes.
       </p>
-      {wallet.worldId && !wallet.worldId.verified && (
+      {wallet.limit?.limited && wallet.limit.leftUsd !== null && (
         <div className="notice pending">
-          <b>Verify you&apos;re human first.</b> Sending by name needs one real person behind each account. At any Takarabako deposit
-          terminal, scan your QR (My QR) and tap <b>Verify with World ID</b> — then approve in World App on your phone.
+          Unverified accounts can move {usd(wallet.limit.limitUsd, 0)} a day — <b>{usd(wallet.limit.leftUsd)} left today</b>.{" "}
+          <Link href="/verify">Take a World ID selfie</Link> to lift the limit.
         </div>
       )}
       <SendForm balance={me.balance} wallet={wallet} />

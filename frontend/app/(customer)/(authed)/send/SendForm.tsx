@@ -88,9 +88,9 @@ export function SendForm({ balance, wallet }: { balance: number; wallet: MyWalle
   const dailyLeft = tk?.dailyLimit != null ? Math.max(0, tk.dailyLimit - tk.spentToday) : null;
   const value = Number(amount);
 
-  const unverified = wallet.worldId ? !wallet.worldId.verified : false;
-  const problem = unverified
-    ? "Verify you're human with World ID at a Takarabako kiosk to send."
+  const limitLeft = wallet.limit?.limited ? wallet.limit.leftUsd : null;
+  const problem = limitLeft !== null && value > limitLeft
+    ? `Unverified accounts can move ${usd(wallet.limit!.limitUsd, 0)} a day — ${usd(limitLeft)} left today. Take a World ID selfie to lift it.`
     : !r
     ? null
     : asset === "balance" && !r.customer

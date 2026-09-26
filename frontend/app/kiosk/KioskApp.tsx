@@ -10,7 +10,6 @@ import { useStageDirector } from "@/components/treasure/useStageDirector";
 import { DepositFlow, type Refusal } from "./DepositFlow";
 import { ConnectionLost, useBackendDown } from "@/components/ConnectionLost";
 import { MachineBadge } from "@/components/MachineBadge";
-import { KioskWorldId } from "@/components/KioskWorldId";
 
 const GREETINGS = {
   kiosk: "いらっしゃいませ! Tap in with your email or wallet QR.",
@@ -398,11 +397,14 @@ export function KioskApp({
             {session.bridge === "failed" && (
               <div className="notice error">The cash slot is offline — notes will be handed back. Please ask staff.</div>
             )}
-            {!session.worldVerified && (
-              <KioskWorldId onVerified={() => setSession((s) => (s ? { ...s, worldVerified: true } : s))} />
+            {session.limit?.limited && session.limit.leftUsd !== null && !session.depositBlocked && (
+              <p className="kiosk-limit small">
+                {usd(session.limit.leftUsd)} of today&apos;s {usd(session.limit.limitUsd, 0)} left · verify with a World ID selfie in the app to lift it
+              </p>
             )}
-            {session.worldVerified && <p className="kiosk-verified small">✓ Verified human · World ID</p>}
-            {session.depositSessionId ? (
+            {session.depositBlocked ? (
+              <div className="notice pending">{session.depositBlocked}</div>
+            ) : session.depositSessionId ? (
               <DepositFlow
                 sessionId={session.depositSessionId}
                 refusal={refusal}
