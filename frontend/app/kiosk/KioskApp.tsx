@@ -8,6 +8,7 @@ import { apy, cash, usd, without } from "@/lib/format";
 import { TreasureStage } from "@/components/treasure/TreasureStage";
 import { useStageDirector } from "@/components/treasure/useStageDirector";
 import { DepositFlow, type Refusal } from "./DepositFlow";
+import { ConnectionLost, useBackendDown } from "@/components/ConnectionLost";
 
 const GREETINGS = {
   kiosk: "いらっしゃいませ! Tap in with your email or wallet QR.",
@@ -89,6 +90,9 @@ export function KioskApp({
   const [busy, setBusy] = useState(false);
   const [ticker, setTicker] = useState<string[]>([]);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
+  // Backend unreachable: cover the screen until it's back, then reveal the
+  // same screen underneath (session, notes and step all kept).
+  const [backendDown, backendRecovered] = useBackendDown();
   const director = useStageDirector(GREETING);
   const { deposit: cue, say: catSay, withdraw: burst } = director;
 
@@ -320,6 +324,14 @@ export function KioskApp({
 
   return (
     <main className="kiosk">
+      {backendDown && (
+        <div className="conn-overlay">
+          <ConnectionLost
+            onRecovered={backendRecovered}
+            detail={session ? "Your session and any notes you've inserted are safe. We'll carry on right here." : undefined}
+          />
+        </div>
+      )}
       <div className="kiosk-panel">
         <header className="kiosk-head">
           <div className="brand">

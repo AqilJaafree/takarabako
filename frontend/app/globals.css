@@ -836,3 +836,233 @@ code,
     transform: none;
   }
 }
+
+/* ---------- connection lost (components/ConnectionLost.tsx) ---------- */
+.conn-lost {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  max-width: 420px;
+  margin: 8vh auto;
+  padding: 28px 22px;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.conn-title {
+  margin: 6px 0 0;
+  font-family: var(--font-serif);
+  font-size: 24px;
+}
+
+.conn-detail {
+  margin: 0;
+  max-width: 34ch;
+}
+
+.conn-status {
+  margin: 4px 0 6px;
+  color: var(--warn);
+  font-variant-numeric: tabular-nums;
+}
+
+.conn-lost.is-back .conn-status {
+  color: var(--ok);
+}
+
+/* The little lacquered box + a paper lantern. */
+.conn-scene {
+  position: relative;
+  width: 150px;
+  height: 110px;
+}
+
+.conn-box {
+  position: absolute;
+  left: 25px;
+  bottom: 6px;
+  width: 100px;
+  height: 70px;
+}
+
+.conn-body {
+  position: absolute;
+  inset: 22px 0 0;
+  border: 2px solid var(--gold);
+  border-radius: 6px;
+  background: linear-gradient(var(--lacquer), var(--lacquer-deep));
+}
+
+.conn-lid {
+  position: absolute;
+  left: -3px;
+  right: -3px;
+  top: 8px;
+  height: 18px;
+  border: 2px solid var(--gold);
+  border-radius: 6px 6px 3px 3px;
+  background: linear-gradient(#c9372c, var(--lacquer-deep));
+  transform-origin: 0% 100%;
+  transform: rotate(0deg); /* closed while offline */
+}
+
+.conn-lantern {
+  position: absolute;
+  right: 4px;
+  top: 0;
+  width: 22px;
+  height: 30px;
+  border-radius: 45%;
+  background: #f3c178;
+  box-shadow: 0 0 0 2px var(--lacquer-deep);
+  transform-origin: 50% -14px;
+}
+
+.conn-lantern::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: -14px;
+  width: 2px;
+  height: 14px;
+  background: var(--muted);
+}
+
+.conn-lantern-glow {
+  position: absolute;
+  inset: -14px;
+  border-radius: 50%;
+  background: radial-gradient(rgba(243, 193, 120, 0.45), transparent 70%);
+}
+
+/* Kiosk: covers the screen; the screen underneath is kept as it was. */
+.conn-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(18, 8, 7, 0.72);
+  backdrop-filter: blur(6px);
+}
+
+.conn-overlay .conn-lost {
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* In: the page blurs away and the card rises. */
+  .conn-lost {
+    animation: conn-rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  .conn-overlay {
+    animation: conn-dim 0.35s ease-out both;
+  }
+
+  /* Offline: the lid shuts, the lantern sways and flickers. */
+  .conn-lid {
+    animation: lid-shut 0.6s 0.2s cubic-bezier(0.5, 0, 0.2, 1) both;
+  }
+
+  .conn-lantern {
+    animation: lantern-sway 2.6s ease-in-out infinite;
+  }
+
+  .conn-lantern-glow {
+    animation: lantern-flicker 1.9s steps(1) infinite;
+  }
+
+  /* Back: the lid opens, then the overlay fades to reveal the screen. */
+  .conn-lost.is-back .conn-lid {
+    animation: lid-open 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  .conn-overlay:has(.is-back) {
+    animation: conn-undim 0.4s 0.5s ease-in both;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conn-lost.is-back .conn-lid {
+    transform: rotate(-70deg);
+  }
+}
+
+@keyframes conn-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+    filter: blur(4px);
+  }
+}
+
+@keyframes conn-dim {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0);
+  }
+}
+
+@keyframes conn-undim {
+  to {
+    opacity: 0;
+    backdrop-filter: blur(0);
+  }
+}
+
+@keyframes lid-shut {
+  from {
+    transform: rotate(-70deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes lid-open {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(-70deg);
+  }
+}
+
+@keyframes lantern-sway {
+  50% {
+    transform: rotate(7deg);
+  }
+}
+
+@keyframes lantern-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  43% {
+    opacity: 0.55;
+  }
+  47% {
+    opacity: 0.9;
+  }
+  71% {
+    opacity: 0.7;
+  }
+}
+
+/* Customer app: the scene animates out into the recovered page (error.tsx). */
+::view-transition-old(.conn-out) {
+  animation: conn-out 0.45s ease-in both;
+}
+
+@keyframes conn-out {
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+    filter: blur(4px);
+  }
+}
