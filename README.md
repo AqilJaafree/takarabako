@@ -46,6 +46,9 @@ Live app deployment:
   ENS v2 subname registration, real vault deposit/withdraw, real per-user
   Uniswap v3 position open/exit, real Claude Haiku 4.5 pool-selection
   rationale.
+- **`frontend/`** — Next.js web app: the customer app (Privy email-code
+  login, live balance, quick-deposit QR, yield, withdraw) and `/kiosk`, the
+  box's new screen. See [`frontend/README.md`](./frontend/README.md).
 - **`device-agent/`** — kiosk page for the Raspberry Pi 4 touchscreen, plus
   the software bridge for a real TB74 pulse bill acceptor (`gpio/`).
 
