@@ -67,6 +67,7 @@ export interface Summary {
   multibaas: boolean;
   cashReceipt: boolean;
   kioskId: string;
+  retiredKiosks?: string[];
   feeBps: number;
   vault: Panel<VaultState>;
   reserve: Panel<ReserveStatus>;

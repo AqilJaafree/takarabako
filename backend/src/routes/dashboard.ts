@@ -81,6 +81,8 @@ dashboardRouter.get("/dashboard/summary", asyncHandler(async (_req, res) => {
         });
       if (reserve.data.paused) items.push({ severity: "serious", title: "tkCASH is paused", detail: "Transfers and cash-ins are stopped." });
       for (const k of reserve.data.kiosks) {
+        // Retired kiosks (KIOSK_PREVIOUS_IDS) are out of service on purpose.
+        if (config.previousKioskIds.includes(k.kioskId)) continue;
         if (k.frozen)
           items.push({ severity: "critical", title: `Kiosk ${k.kioskId} is frozen`, detail: "Its last count didn't match the chain. Recount, then unfreeze." });
         else if (!k.active) items.push({ severity: "serious", title: `Kiosk ${k.kioskId} is out of service`, detail: "It won't take cash until reactivated." });
@@ -98,6 +100,7 @@ dashboardRouter.get("/dashboard/summary", asyncHandler(async (_req, res) => {
       multibaas: multibaasReady,
       cashReceipt: cashReceiptReady,
       kioskId: config.kioskId,
+      retiredKiosks: config.previousKioskIds,
       feeBps: config.withdrawFeeBps,
       vault,
       reserve,

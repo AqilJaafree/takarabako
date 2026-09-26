@@ -245,7 +245,9 @@ function ReservePanel({ summary, token, onChanged }: { summary: Summary; token: 
                     <td className="mono">{k.kioskId}</td>
                     <td>{usd(k.reserve)}</td>
                     <td>
-                      <span className={`pill ${k.frozen ? "bad" : k.active ? "ok" : "warn"}`}>{k.frozen ? "Frozen" : k.active ? "In service" : "Out of service"}</span>
+                      <span className={`pill ${k.frozen ? "bad" : k.active ? "ok" : summary.retiredKiosks?.includes(k.kioskId) ? "" : "warn"}`}>
+                        {k.frozen ? "Frozen" : k.active ? "In service" : summary.retiredKiosks?.includes(k.kioskId) ? "Retired" : "Out of service"}
+                      </span>
                     </td>
                     <td>{k.lastAuditAt ? timeAgo(new Date(k.lastAuditAt * 1000).toISOString()) : "never"}</td>
                   </tr>
@@ -253,7 +255,7 @@ function ReservePanel({ summary, token, onChanged }: { summary: Summary; token: 
               </tbody>
             </table>
           </div>
-          {r.kiosks.map((k) => (
+          {r.kiosks.filter((k) => !summary.retiredKiosks?.includes(k.kioskId)).map((k) => (
             <CountForm key={k.kioskId} kiosk={k} token={token} onChanged={onChanged} />
           ))}
           <p className="label" style={{ marginTop: 16 }}>Recent counts</p>
