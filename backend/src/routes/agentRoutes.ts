@@ -3,6 +3,7 @@ import { z } from "zod";
 import { store } from "../store.js";
 import { findByPrivyUserId } from "../accounts.js";
 import { requireSession } from "../sessions.js";
+import { recordYieldEvent } from "../history.js";
 import { positionSubname, registerSubname } from "../ens.js";
 import { proposeOpenPosition, getPoolsInfo } from "../agent.js";
 import { asyncHandler } from "../asyncHandler.js";
@@ -55,6 +56,18 @@ agentRouter.post("/agent/open-position", requireSession("full"), asyncHandler(as
   const ensName = positionSubname(position.positionId);
   position.ensName = ensName;
   await registerSubname(ensName, account.boundAddress);
+
+  await recordYieldEvent({
+    privyUserId: userId,
+    action: "open",
+    riskTier: riskLevel,
+    pair: position.pair,
+    apyBps: position.apyBps,
+    amountUsd: amount,
+    rationale: proposal.rationale ?? null,
+    ensName,
+    txHash: proposal.txHash ?? null,
+  });
 
   res.json({
     positionId: position.positionId,

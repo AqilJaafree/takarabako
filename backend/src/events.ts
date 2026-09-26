@@ -15,7 +15,9 @@ export type UserEvent =
       txHash: string;
       balance: number;
     }
-  | { type: "deposit.failed"; depositId: string; amount: number; currency: string; error: string };
+  | { type: "deposit.failed"; depositId: string; amount: number; currency: string; error: string }
+  // A note the acceptor handed back: not a supported note, or in poor condition.
+  | { type: "deposit.refused"; reason: "unsupported" | "bad_condition"; sessionId: string | null };
 
 const channel = (privyUserId: string) => `user:${privyUserId}`;
 

@@ -53,19 +53,25 @@ export interface DepositRow {
   status: "queued" | "sending" | "confirmed" | "failed";
   attempts: number;
   error: string | null;
+  sessionId: string | null;
   createdAt: Date;
 }
 
 const DEPOSIT_COLUMNS = `id, privy_user_id as "privyUserId", currency, amount::float as amount,
-  usd_amount::float as "usdAmount", tx_hash as "txHash", status, attempts, error, created_at as "createdAt"`;
+  usd_amount::float as "usdAmount", tx_hash as "txHash", status, attempts, error, session_id as "sessionId", created_at as "createdAt"`;
 
 /// A deposit starts as a queued row; the deposit queue (depositQueue.ts)
 /// sends it and moves it to sending → confirmed | failed.
-export async function createQueuedDeposit(d: { privyUserId: string; currency: string; amount: number }): Promise<DepositRow> {
+export async function createQueuedDeposit(d: {
+  privyUserId: string;
+  currency: string;
+  amount: number;
+  sessionId?: string | null; // the deposit session (history.ts) the note belongs to
+}): Promise<DepositRow> {
   const { rows } = await pool.query(
-    `insert into deposits (id, privy_user_id, currency, amount, status) values ($1, $2, $3, $4, 'queued')
+    `insert into deposits (id, privy_user_id, currency, amount, status, session_id) values ($1, $2, $3, $4, 'queued', $5)
      returning ${DEPOSIT_COLUMNS}`,
-    [crypto.randomUUID(), d.privyUserId, d.currency, d.amount],
+    [crypto.randomUUID(), d.privyUserId, d.currency, d.amount, d.sessionId ?? null],
   );
   return rows[0];
 }

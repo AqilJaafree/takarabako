@@ -5,6 +5,7 @@ import { requireSession, type Session } from "../sessions.js";
 import { chainReady } from "../chain.js";
 import { enqueueDeposit } from "../depositQueue.js";
 import { publishUserEvent } from "../events.js";
+import { currentOpenSession } from "../history.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { toUsd, usdPerUnit } from "../fx.js";
 
@@ -51,7 +52,8 @@ depositRouter.post("/deposit", requireSession("deposit"), asyncHandler(async (re
     return;
   }
 
-  const row = await createQueuedDeposit({ privyUserId: account.privyUserId, currency, amount });
+  const open = await currentOpenSession(account.privyUserId);
+  const row = await createQueuedDeposit({ privyUserId: account.privyUserId, currency, amount, sessionId: open?.id ?? null });
   // The rate is cached (fx.ts), so this estimate is instant; the credited
   // amount is fixed when the queue sends the transaction.
   const { usdAmount: estUsd } = await toUsd(amount, currency);
@@ -71,6 +73,7 @@ depositRouter.post("/deposit", requireSession("deposit"), asyncHandler(async (re
 
   res.status(202).json({
     depositId: row.id,
+    sessionId: row.sessionId,
     ensName: account.ensName,
     amount,
     currency,

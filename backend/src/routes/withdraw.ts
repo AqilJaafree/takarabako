@@ -5,6 +5,7 @@ import { config } from "../config.js";
 import { store } from "../store.js";
 import { findByPrivyUserId } from "../accounts.js";
 import { requireSession } from "../sessions.js";
+import { recordWithdrawal } from "../history.js";
 import { proposeExitAll } from "../agent.js";
 import { chainReady, withdrawAllOnChain, treasuryAddress } from "../chain.js";
 import { asyncHandler } from "../asyncHandler.js";
@@ -54,6 +55,8 @@ withdrawRouter.post("/withdraw", requireSession("full"), asyncHandler(async (req
   const feeBps = destination === "wallet" ? 0 : config.withdrawFeeBps;
   const fee = (grossUsdc * feeBps) / 10_000;
   const netUsdc = grossUsdc - fee;
+
+  await recordWithdrawal({ privyUserId: userId, destination, grossUsd: grossUsdc, feeBps, netUsd: netUsdc, txHash: vaultTxHash });
 
   store.logWithdraw({
     id: crypto.randomUUID(),

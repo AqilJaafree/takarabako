@@ -11,6 +11,7 @@ import {
 import { toUsd } from "./fx.js";
 import { sendDepositTx, waitForDepositTx } from "./chain.js";
 import { publishUserEvent, type UserEvent } from "./events.js";
+import { maybeSendReceipt } from "./receiptEmail.js";
 
 /// Durable deposits. The row in Postgres is the record; the BullMQ job is the
 /// work item. If the backend dies mid-job, BullMQ's stalled-job check hands
@@ -88,6 +89,12 @@ export async function processDeposit(depositId: string, deps: ProcessDeps = live
     txHash: hash,
     balance,
   });
+  if (row.sessionId) await sendReceiptIfDone(row.sessionId);
+}
+
+// The receipt email must never fail (and so retry) a deposit that already went through.
+async function sendReceiptIfDone(sessionId: string) {
+  await maybeSendReceipt(sessionId).catch((err) => console.error(`[receipt] ${sessionId}:`, err));
 }
 
 export function startDepositWorker() {
@@ -111,6 +118,7 @@ export function startDepositWorker() {
         ? { type: "deposit.failed", depositId: row.id, amount: row.amount, currency: row.currency, error: err.message }
         : { type: "deposit.retrying", depositId: row.id, attempt: job.attemptsMade, maxAttempts: DEPOSIT_ATTEMPTS, error: err.message },
     );
+    if (final && row.sessionId) await sendReceiptIfDone(row.sessionId);
   });
 
   worker.on("error", (err) => console.error("[deposits] worker error:", err.message));

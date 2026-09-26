@@ -9,6 +9,7 @@ import { loginQrRouter } from "./routes/loginQr.js";
 import { authPrivyRouter } from "./routes/authPrivy.js";
 import { eventsRouter } from "./routes/events.js";
 import { meRouter } from "./routes/me.js";
+import { depositSessionsRouter } from "./routes/depositSessions.js";
 import { migrate } from "./db.js";
 import { startDepositWorker } from "./depositQueue.js";
 
@@ -32,6 +33,7 @@ app.use(loginQrRouter);
 app.use(authPrivyRouter);
 app.use(eventsRouter);
 app.use(meRouter);
+app.use(depositSessionsRouter);
 app.use(depositRouter);
 app.use(agentRouter);
 app.use(withdrawRouter);
