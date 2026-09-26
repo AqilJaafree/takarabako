@@ -7,6 +7,8 @@ import { enqueueDeposit } from "../depositQueue.js";
 import { publishUserEvent } from "../events.js";
 import { currentOpenSession } from "../history.js";
 import { asyncHandler } from "../asyncHandler.js";
+import { config } from "../config.js";
+import { checkMachine } from "../machine.js";
 import { toUsd, usdPerUnit } from "../fx.js";
 
 /// POST /deposit — PRD §6.2 (ATM-style: comes after login). Cash lands in the
@@ -21,6 +23,18 @@ const DepositBody = z.object({
   // Currency of the cash inserted. The bill acceptor sends MYR; the vault is
   // credited in USD(C) after conversion.
   currency: z.enum(["USD", "MYR"]).default("USD"),
+  // The kiosk's signature over this note (device-agent/machine.js).
+  machine: z
+    .object({
+      kiosk: z.string(),
+      amount: z.string(),
+      currency: z.string(),
+      nonce: z.string(),
+      issuedAt: z.string(),
+      signature: z.string(),
+      device: z.string().optional(),
+    })
+    .optional(),
 });
 
 /// GET /fx?currency=MYR — the rate /deposit will use, so the kiosk can show
@@ -52,8 +66,23 @@ depositRouter.post("/deposit", requireSession("deposit"), asyncHandler(async (re
     return;
   }
 
+  // Which machine took this note, proven by its signature and its ENS name.
+  const token = (req.header("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const machine = await checkMachine(parsed.data.machine, { amount, currency, token });
+  if (!machine.verified && parsed.data.machine) console.warn(`[machine] unverified note from ${machine.kiosk ?? "?"}: ${machine.reason}`);
+  if (!machine.verified && config.machineSignature === "required") {
+    res.status(403).json({ error: `deposit not signed by a verified Takarabako kiosk (${machine.reason})` });
+    return;
+  }
+
   const open = await currentOpenSession(account.privyUserId);
-  const row = await createQueuedDeposit({ privyUserId: account.privyUserId, currency, amount, sessionId: open?.id ?? null });
+  const row = await createQueuedDeposit({
+    privyUserId: account.privyUserId,
+    currency,
+    amount,
+    sessionId: open?.id ?? null,
+    machine: machine.verified ? { name: machine.kiosk, signer: machine.signer, nonce: machine.nonce, signature: machine.signature } : null,
+  });
   // The rate is cached (fx.ts), so this estimate is instant; the credited
   // amount is fixed when the queue sends the transaction.
   const { usdAmount: estUsd } = await toUsd(amount, currency);
@@ -74,6 +103,7 @@ depositRouter.post("/deposit", requireSession("deposit"), asyncHandler(async (re
   res.status(202).json({
     depositId: row.id,
     sessionId: row.sessionId,
+    machine: machine.verified ? { kiosk: machine.kiosk, verified: true } : { verified: false, reason: machine.reason },
     ensName: account.ensName,
     amount,
     currency,

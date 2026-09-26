@@ -53,6 +53,10 @@ export const config = {
     model: process.env.OPS_AGENT_MODEL ?? "claude-opus-5",
     adminToken: process.env.OPS_ADMIN_TOKEN ?? "",
   },
+  // Verifiable kiosks (machine.ts): "required" rejects deposits that aren't
+  // signed by a kiosk whose ENS name resolves to the signer; "optional"
+  // credits them but marks them unverified.
+  machineSignature: (process.env.MACHINE_SIGNATURE === "required" ? "required" : "optional") as "required" | "optional",
   // 1inch Aqua yield (aqua.ts). Aqua and its SwapVM router are deployed on
   // Sepolia at the same addresses as mainnet (the router at its previous
   // address; the SDK doesn't list Sepolia). mETH is our mock ETH.

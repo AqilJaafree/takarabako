@@ -7,6 +7,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { deviceInfo, signNote } from "./machine.js";
 
 const PORT = process.env.KIOSK_PORT || 8080;
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:4000";
@@ -208,6 +209,9 @@ async function handlePulseDeposit(req, res) {
   if (!(amount > 0)) return sendJson(res, 400, { error: "amount must be a positive number" });
   if (!sessionActive()) return sendJson(res, 409, { error: "no active session — log in before inserting cash" });
   const { token } = session;
+  // This machine signs the note it just took; the backend checks the
+  // signature against the kiosk's ENS name before crediting it.
+  const machine = await signNote({ amount, currency: currency ?? "USD", token });
 
   let body;
   try {
@@ -216,7 +220,7 @@ async function handlePulseDeposit(req, res) {
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       // currency is passed through so the backend converts ringgit to USD;
       // the pulse listener doesn't send one and stays on the backend's USD default.
-      body: JSON.stringify({ amount, currency: currency ?? undefined }),
+      body: JSON.stringify({ amount, currency: currency ?? "USD", machine: machine ?? undefined }),
     });
     body = await backendRes.json();
     if (!backendRes.ok) throw new Error(typeof body.error === "string" ? body.error : JSON.stringify(body.error));
@@ -241,6 +245,7 @@ createServer(async (req, res) => {
   try {
     if (req.method === "POST" && url.pathname === "/session") return await handleSessionStart(req, res);
     if (req.method === "GET" && url.pathname === "/session") return handleSessionStatus(res);
+    if (req.method === "GET" && url.pathname === "/device") return sendJson(res, 200, await deviceInfo());
     if (req.method === "POST" && url.pathname === "/session/end") return await handleSessionEnd(req, res);
     if (req.method === "POST" && url.pathname === "/bill-rejected") return await handleBillRejected(req, res);
     if (req.method === "POST" && url.pathname === "/pulse-deposit") return await handlePulseDeposit(req, res);

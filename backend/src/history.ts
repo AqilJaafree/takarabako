@@ -13,6 +13,8 @@ export interface ReceiptNote {
   usdAmount: number | null;
   txHash: string | null;
   tkcashTxHash: string | null; // the tkCASH minted for this note
+  machineName: string | null; // the kiosk that took it (ENS name), when its signature checked out
+  machineVerified: boolean;
   status: "queued" | "sending" | "confirmed" | "failed";
   at: Date;
 }
@@ -111,7 +113,7 @@ function buildReceipt(session: { id: string; privyUserId: string; status: "open"
   };
 }
 
-const NOTE_COLUMNS = `id, amount::float as amount, currency, usd_amount::float as "usdAmount", tx_hash as "txHash", tkcash_tx_hash as "tkcashTxHash", status,
+const NOTE_COLUMNS = `id, amount::float as amount, currency, usd_amount::float as "usdAmount", tx_hash as "txHash", tkcash_tx_hash as "tkcashTxHash", machine_name as "machineName", machine_verified as "machineVerified", status,
   created_at as at, session_id as "sessionId"`;
 
 export async function getReceipt(id: string): Promise<Receipt | null> {
