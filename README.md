@@ -8,7 +8,7 @@ dashboard and a policy-bound AI agent.**
 An ATM-style cash-in kiosk: verify your identity with just an email (Privy —
 real embedded wallet, no seed phrase, no app), *then* insert cash, and it's
 credited to an ENS-named on-chain wallet (`*.wantest.eth`) with optional
-risk-tiered yield on real Uniswap v3 pools, chosen with a real Claude Haiku
+risk-tiered yield as 1inch Aqua liquidity strategies (Uniswap v3 before), with a Claude Haiku
 4.5 call. Built for ETHGlobal Online 2026. Full product spec lives in
 `takarabako-prd.md` (gitignored, local-only).
 
@@ -52,7 +52,7 @@ backend's contract layer and indexer:
 | Track | What we built | Where |
 |---|---|---|
 | **RWA tokenization** | **tkCASH** — a token that is a claim on one US dollar of banknotes in a specific kiosk. Minted when a note is accepted, burned when cash leaves; supply always equals the on-chain kiosk reserve. Operator counts (`attestReserve`) are proof-of-reserve checkpoints — a mismatch freezes that kiosk's minting. Transfers need both sides allowlisted (Privy-verified), respect a daily limit and a global pause. | `contracts/src/TakarabakoCashReceipt.sol`, `backend/src/cashReceipt.ts` |
-| **Digital asset dashboard** | **`/ops`** — proof of reserve per kiosk, tkCASH backing, vault coverage, treasury gas, banknote mix, daily cash in/out, holders and concentration, vault depositors, Uniswap positions, a live event feed and action items. | `frontend/app/ops/`, `backend/src/routes/dashboard.ts` |
+| **Digital asset dashboard** | **`/ops`** — proof of reserve per kiosk, tkCASH backing, vault coverage, treasury gas, banknote mix, daily cash in/out, holders and concentration, vault depositors, 1inch Aqua strategies, a live event feed and action items. | `frontend/app/ops/`, `backend/src/routes/dashboard.ts` |
 | **AI agent** | A **treasury ops agent** (Claude) that answers operators from live MultiBaas data and can only *propose* actions — fund the yield reserve, set APY, pause a kiosk, mint float. Hard limits are enforced in code; a human approves; approval executes through MultiBaas. A monitor watches webhook events and wakes the agent on anomalies. | `backend/src/opsAgent.ts`, `policy.ts`, `opsMonitor.ts` |
 
 ### How we used MultiBaas
@@ -83,7 +83,7 @@ backend's contract layer and indexer:
 flowchart LR
     Kiosk[Kiosk / bill acceptor] -->|note accepted| API[backend]
     API -->|recordCashIn / redeem / agent actions<br/>unsigned tx from MultiBaas,<br/>signed locally| MB[(Curvegrid MultiBaas)]
-    MB -->|broadcast| Chain[Ethereum Sepolia<br/>vault · tkCASH · mUSDC<br/>Uniswap NPM · ENS registry]
+    MB -->|broadcast| Chain[Ethereum Sepolia<br/>vault · tkCASH · mUSDC<br/>1inch Aqua · ENS registry]
     Chain -->|events indexed| MB
     MB -->|signed webhooks| API
     MB -->|Event Queries · reads| API
@@ -103,6 +103,36 @@ flowchart LR
 See the MultiBaas section of [`FEEDBACK.md`](./FEEDBACK.md#feedback-curvegrid-multibaas)
 for what worked, what tripped us up, and suggestions.
 
+## Yield on 1inch Aqua
+
+Customers put their box to work as ETH/USDC liquidity through
+[1inch Aqua](https://github.com/1inch/aqua), the shared-liquidity registry,
+and SwapVM strategies from [`@1inch/swap-vm-sdk`](https://github.com/1inch/sdks).
+Aqua and its SwapVM router are live on Sepolia (the SDK doesn't list Sepolia;
+the router is at its previous address, `0x1111113d…c0de`, version 1.0.2).
+The pair is mETH (a mintable ETH stand-in priced off live ETH/USD) and mUSDC.
+
+- **Quick start** — three tiers for beginners: *Steady* (full-range x·y=k),
+  *Balanced* (±25% concentrated) and *Bold* (±8%), each with a one-line Claude
+  rationale.
+- **Advanced** — drag a price range on a week of ETH/USD (log scale, −90% to
+  +300%) and pick a shape: *Spot* (even), *Curve* (weighted to the current
+  price) or *Bid-Ask* (weighted to the edges). The range is split into up to
+  five bins, each its own concentrated SwapVM strategy; bins wholly below the
+  price are USDC-only bids, wholly above are ETH-only asks, so a −90%…−3%
+  range is a one-sided "buy the dip" ladder. Token amounts come from SwapVM's
+  liquidity maths so every strategy starts at the market price.
+- **Money flow** — opening takes the amount out of the customer's vault; the
+  treasury is the Aqua maker and ships the strategies (tokens stay in its
+  wallet, Aqua tracks virtual balances). Closing — or withdrawing — docks
+  them and returns their value at the live ETH price to the vault.
+- **Demo market maker** — nobody trades on Sepolia, so with `AQUA_SIM=1` the
+  treasury trades against its own strategies every 10 minutes (at most two
+  swaps), pulling mispriced ones toward the live price or making a small
+  round trip so fees accrue.
+- The 1inch hosted Swap API doesn't serve Sepolia; everything here talks to
+  the Aqua and SwapVM contracts directly through the SDKs.
+
 ## Layout
 
 - **`contracts/`** — Foundry workspace: `MockUSDC`, mock risk-tier tokens,
@@ -110,7 +140,7 @@ for what worked, what tripped us up, and suggestions.
   `TakarabakoCashReceipt` (tkCASH).
 - **`backend/`** — Node/TypeScript orchestrator: real Privy identity, real
   ENS v2 subname registration, real vault deposit/withdraw, real per-user
-  Uniswap v3 position open/exit, real Claude Haiku 4.5 pool-selection
+  1inch Aqua yield strategies (beginner tiers and a drawable advanced range), real Claude Haiku 4.5
   rationale.
 - **`frontend/`** — Next.js web app: the customer app (Privy email-code
   login, live balance, quick-deposit QR, yield, withdraw), `/kiosk`, the
@@ -128,7 +158,7 @@ sequenceDiagram
     participant API as backend
     participant Privy
     participant Claude as Claude Haiku 4.5
-    participant Uniswap as Uniswap v3
+    participant Aqua as 1inch Aqua (SwapVM)
     participant ENS as ENS v2 (wantest.eth)
     participant Vault as TakarabakoVault
 
@@ -148,14 +178,14 @@ sequenceDiagram
     Kiosk->>API: POST /agent/open-position {riskLevel, amount}
     API->>Claude: confirm tier against live pool data
     Claude-->>API: rationale (tier is never overridden)
-    API->>Uniswap: mint concentrated-liquidity position
-    Uniswap-->>API: LP NFT tokenId
-    API->>ENS: register uniswap-<id>.wantest.eth
+    API->>Vault: withdrawTo(treasury, amount's shares)
+    API->>Aqua: ship SwapVM strategies (one per bin)
+    API->>ENS: register aqua-<id>.wantest.eth
     API-->>Kiosk: {ensName, pair, apyBps, rationale}
 
     User->>Kiosk: withdraw
     Kiosk->>API: POST /withdraw {userId}
-    API->>Uniswap: decreaseLiquidity + collect
+    API->>Aqua: dock strategies, value at live ETH price, depositFor back
     API->>Vault: withdrawTo(treasury, shares)
     API-->>Kiosk: {netUsdc, receipt} (2% fee)
 ```

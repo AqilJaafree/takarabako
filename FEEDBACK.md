@@ -205,3 +205,59 @@ passed signature verification on the first delivery.
 5. Tighten the SDK types to what the server accepts: make `bin` required,
    `formatInts` a string union, and document the 50-row page limit; return
    specific validation messages instead of `invalid request`.
+
+---
+
+# Feedback: 1inch Aqua and SwapVM
+
+Context: Takarabako's yield moved from Uniswap v3 positions to 1inch Aqua
+strategies built with `@1inch/aqua-sdk` 0.3.4 and `@1inch/swap-vm-sdk` 0.4.4,
+on Sepolia: beginner tiers plus an advanced range drawn on a chart, split into
+concentrated bins (Spot / Curve / Bid-Ask), including one-sided ranges.
+
+## What worked well
+
+- **Virtual balances fit a custodial treasury.** The treasury approves Aqua
+  once and ships as many strategies as it likes; docking is pure accounting,
+  so "change the range" is dock + ship with no token transfers.
+- **The concentrated-liquidity maths is in the SDK.** `Price.fromHuman` handles
+  decimals, and `computeLiquidityFromAmounts` gives the exact token ratio for a
+  range at the current price — without it, a strategy's starting price (set by
+  the shipped balances) would be wrong.
+- **One-sided ranges just work.** A USDC-only strategy below the price shipped
+  with a zero ETH balance and filled like a bid at the top of its range. That
+  made Bid-Ask ladders and "−90% buy the dip" ranges straightforward.
+- **Quote before swap.** `quote` via `eth_call` returned exactly what the swap
+  then did, which let our demo market maker size trades safely.
+
+## What tripped us up
+
+- **The repo moved.** `github.com/1inch/aqua-sdk` is gone; the SDKs now live in
+  the `1inch/sdks` monorepo. Links pointing at the old repo 404.
+- **The ESM builds don't load in Node.** `@1inch/swap-vm-sdk`'s `index.mjs`
+  imports `@1inch/byte-utils/dist/constants` without an extension, which Node's
+  ESM resolver rejects (`ERR_MODULE_NOT_FOUND`). We load the CommonJS builds
+  through `createRequire` and keep the types from the package.
+- **README and code disagree.** The README decodes orders with `Order.parse`;
+  0.4.4 has `Order.decode`. The concentrate example sets
+  `rawPriceMin: ONE_E18 / 3000n` for 1500–3000 USDC/WETH, which ignores the two
+  tokens' decimals; `Price.fromHuman` is the reliable path.
+- **Sepolia is deployed but undocumented.** Aqua is live on Sepolia at its usual
+  address, and a SwapVM Aqua router (v1.0.2) sits at the *previous* router
+  address, but neither appears in the SDK's address maps, and the current router
+  address has no code there. We found them by checking bytecode and
+  `eip712Domain()` on-chain.
+- **No takers on testnet.** Nothing trades against Sepolia strategies, so they
+  never earn or cross their ranges. We run our own small market maker for demos;
+  a 1inch-run testnet resolver (or documented guidance) would help builders.
+
+## Suggestions
+
+1. Fix the ESM import paths (or add `"exports"` subpath mappings) so the SDKs
+   load in native Node ESM.
+2. Add Sepolia to `AQUA_CONTRACT_ADDRESSES` / `AQUA_SWAP_VM_CONTRACT_ADDRESSES`,
+   or deploy the current router there.
+3. Keep the README examples in step with the SDK (`Order.decode`, decimals-aware
+   prices via `Price.fromHuman`).
+4. Export `ConcentrateLiquidityCalculator` from the package root; today only the
+   lower-level `computeLiquidityFromAmounts` is reachable.
