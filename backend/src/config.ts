@@ -55,6 +55,17 @@ export const config = {
     model: process.env.OPS_AGENT_MODEL ?? "claude-opus-5",
     adminToken: process.env.OPS_ADMIN_TOKEN ?? "",
   },
+  // World ID (worldId.ts): proof of personhood, one human per account.
+  // IDKit 4: the backend signs each request with the RP signing key and
+  // forwards proofs to the Developer Portal to verify.
+  worldId: {
+    appId: process.env.WORLD_APP_ID ?? "",
+    rpId: process.env.WORLD_RP_ID ?? "",
+    signingKey: process.env.WORLD_APP_SIGNING_KEY ?? "",
+    action: process.env.WORLD_ACTION ?? "",
+    // (the variable is spelled WORLD_ENVIROMENT in existing .env files; both work)
+    environment: (process.env.WORLD_ENVIRONMENT ?? process.env.WORLD_ENVIROMENT ?? "production") as "production" | "staging" | "sandbox",
+  },
   // Verifiable kiosks (machine.ts): "required" rejects deposits that aren't
   // signed by a kiosk whose ENS name resolves to the signer; "optional"
   // credits them but marks them unverified.

@@ -3,6 +3,7 @@ import { createRemoteJWKSet } from "jose";
 import type { Address } from "viem";
 import { config } from "./config.js";
 import { chainReady, fundWalletWithEthOnChain } from "./chain.js";
+import { worldIdReady } from "./worldId.js";
 
 /// PRD §7.8 (revised) — Privy replaces World ID Selfie Check as the
 /// identity/verification layer. World ID's bridge/QR handoff never
@@ -75,7 +76,9 @@ export async function getOrCreateUserWallet(email: string): Promise<PrivyUserWal
   if (!walletAddress) throw new Error(`Privy user ${userId} has no ethereum embedded wallet`);
 
   let fundingTxHash: string | undefined;
-  if (isNewUser && chainReady) {
+  // With World ID on, the gas gift waits until they verify as a unique human
+  // (worldId.ts) — otherwise throwaway emails could farm Sepolia ETH.
+  if (isNewUser && chainReady && !worldIdReady) {
     try {
       const { txHash } = await fundWalletWithEthOnChain(walletAddress as Address, NEW_ACCOUNT_FUNDING_ETH);
       fundingTxHash = txHash;

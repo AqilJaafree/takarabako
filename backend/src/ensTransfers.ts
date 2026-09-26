@@ -8,6 +8,7 @@ import { cashReceiptReady, fromTkUnits } from "./cashReceipt.js";
 import { ALIASES, LABELS, mbCall } from "./multibaas.js";
 import { openPositions } from "./aqua.js";
 import { onChainEvent } from "./chainEvents.js";
+import { isVerifiedHuman } from "./worldId.js";
 
 /// Sending by ENS name. A name is resolved through the official ENS v2
 /// Universal Resolver; the address it points to is matched to a Takarabako
@@ -26,6 +27,7 @@ export interface Resolved {
   name: string;
   address: string;
   kind: string | null; // takarabako.kind text record: customer | kiosk | aqua-position
+  verifiedHuman: boolean; // takarabako.verified = world-id
   customer: { ensName: string | null } | null;
   tkcashAllowlisted: boolean | null;
 }
@@ -34,12 +36,20 @@ export async function lookup(name: string): Promise<Resolved | null> {
   const clean = name.trim().toLowerCase();
   const r = await resolveName(clean);
   if (!r) return null;
-  const [kind, account, allowlisted] = await Promise.all([
+  const [kind, verified, account, allowlisted] = await Promise.all([
     textRecord(clean, "takarabako.kind"),
+    textRecord(clean, "takarabako.verified"),
     accountByWallet(r.address),
     cashReceiptReady ? mbCall<boolean>(ALIASES.tkcash, LABELS.cashReceipt, "allowlist", [r.address]).catch(() => null) : Promise.resolve(null),
   ]);
-  return { name: clean, address: r.address, kind, customer: account ? { ensName: account.ensName } : null, tkcashAllowlisted: allowlisted };
+  return {
+    name: clean,
+    address: r.address,
+    kind,
+    verifiedHuman: verified === "world-id",
+    customer: account ? { ensName: account.ensName } : null,
+    tkcashAllowlisted: allowlisted,
+  };
 }
 
 async function record(t: {
@@ -61,6 +71,7 @@ async function record(t: {
 
 /// Box balance to another customer, by name. Custodial: the vault is ours.
 export async function sendBalance(from: Account, toName: string, amount: number) {
+  if (!isVerifiedHuman(from)) throw new Error("verify you're human with World ID before sending");
   const target = await lookup(toName);
   if (!target) throw new Error(`${toName} doesn't resolve to an address`);
   const to = await accountByWallet(target.address);
@@ -130,6 +141,7 @@ const lastTopUp = new Map<string, number>();
 
 /// Customers pay gas for transfers they sign; top their wallet up when low (at most hourly).
 export async function ensureGas(account: Account) {
+  if (!isVerifiedHuman(account)) return { eth: 0, toppedUp: false, needsWorldId: true };
   const wei = await publicClient.getBalance({ address: account.privyWallet as Address });
   const eth = Number(wei) / 1e18;
   if (eth >= MIN_GAS_ETH) return { eth, toppedUp: false };

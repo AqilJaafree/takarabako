@@ -17,6 +17,7 @@ import { ALIASES, LABELS, mb, mbCall, mbError, mbSend, multibaasReady, toAlias }
 import { pool } from "../src/db.js";
 import { aq } from "../src/aquaSdk.js";
 import { registryAbi } from "../src/ensV2.js";
+import { worldIdReady } from "../src/worldId.js";
 import { treasuryAddress } from "../src/chain.js";
 
 if (!multibaasReady) {
@@ -228,11 +229,16 @@ console.log("5. Existing customers");
 // Accounts registered before MultiBaas was set up: allowlist their wallet
 // for tkCASH and give it an alias (new accounts get both at registration).
 try {
-  const { rows } = await pool.query("select ens_name, privy_wallet from accounts where ens_name is not null");
-  for (const a of rows as Array<{ ens_name: string; privy_wallet: string }>) {
+  const { rows } = await pool.query("select ens_name, privy_wallet, world_verified_at from accounts where ens_name is not null");
+  for (const a of rows as Array<{ ens_name: string; privy_wallet: string; world_verified_at: Date | null }>) {
     const alias = toAlias(a.ens_name.split(".")[0] ?? a.ens_name);
     await step(`alias ${alias} → ${a.privy_wallet}`, () => mb.addresses.setAddress({ alias, address: a.privy_wallet }), false);
     if (!config.cashReceiptAddress) continue;
+    // With World ID on, only verified humans are allowlisted (worldId.ts does it on verification).
+    if (worldIdReady && !a.world_verified_at) {
+      console.log(`  · ${alias}: not World ID-verified yet — tkCASH allowlisting waits for verification`);
+      continue;
+    }
     const allowed = await mbCall<boolean>(ALIASES.tkcash, LABELS.cashReceipt, "allowlist", [a.privy_wallet]).catch(() => false);
     if (allowed) console.log(`  · ${alias} allowlisted for tkCASH (already there)`);
     else await step(`allowlist ${alias} for tkCASH`, () => mbSend(ALIASES.tkcash, LABELS.cashReceipt, "setAllowlisted", [a.privy_wallet, true]), false);

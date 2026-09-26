@@ -12,6 +12,7 @@ import { positionSubname, tokenIdOf } from "../ens.js";
 import { registryAbi } from "../ensV2.js";
 import { confirmTkcashSend, ensureGas, holdsDeed, lookup, reconcileDeeds, sendBalance } from "../ensTransfers.js";
 import { listPositions } from "../aqua.js";
+import { isVerifiedHuman } from "../worldId.js";
 
 /// Sending by ENS name (web app). Customer-signed transfers are prepared here
 /// — recipient resolved and checked, gas topped up — and the browser has the
@@ -67,7 +68,14 @@ ensRouter.get("/me/wallet", requireSession("full"), asyncHandler(async (_req, re
       spentToday: Number(day) === today ? fromTkUnits(spent) : 0,
     };
   }
-  res.json({ ensName: account.ensName, wallet: account.privyWallet, eth, tkcash: tk, chainId: SEPOLIA });
+  res.json({
+    ensName: account.ensName,
+    wallet: account.privyWallet,
+    eth,
+    tkcash: tk,
+    chainId: SEPOLIA,
+    worldId: { verified: isVerifiedHuman(account), credential: account.worldCredential },
+  });
 }));
 
 const Balance = z.object({ to: z.string().min(3), amount: z.number().positive() });
@@ -98,6 +106,10 @@ ensRouter.post("/send/tkcash/prepare", requireSession("full"), asyncHandler(asyn
   }
   const account = await me(res);
   if (!account) return;
+  if (!isVerifiedHuman(account)) {
+    res.status(403).json({ error: "verify you're human with World ID before sending tkCASH" });
+    return;
+  }
   const target = await lookup(parsed.data.to);
   if (!target) {
     res.status(422).json({ error: `${parsed.data.to} doesn't resolve to an address` });

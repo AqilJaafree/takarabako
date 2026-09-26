@@ -2,7 +2,7 @@
   "name": "@takarabako/backend",
   "version": "0.1.0",
   "private": true,
-  "description": "Takarabako backend/orchestrator \u2014 PRD \u00a77.3. Treasury signer, deposit/verify/withdraw API, kiosk-facing endpoints.",
+  "description": "Takarabako backend/orchestrator — PRD §7.3. Treasury signer, deposit/verify/withdraw API, kiosk-facing endpoints.",
   "type": "module",
   "scripts": {
     "dev": "tsx watch --env-file=.env src/index.ts",
@@ -22,6 +22,7 @@
     "@anthropic-ai/sdk": "^0.125.0",
     "@curvegrid/multibaas-sdk": "^1.1.1",
     "@privy-io/node": "^0.34.0",
+    "@worldcoin/idkit-core": "^4.3.0",
     "bullmq": "^6.3.9",
     "express": "^4.21.2",
     "ioredis": "^6.0.0",

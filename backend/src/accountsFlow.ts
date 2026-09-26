@@ -7,6 +7,7 @@ import { chainReady, previewValueOnChain } from "./chain.js";
 import { deriveEnsLabel, walletSubname, registerSubname } from "./ens.js";
 import { allowlist } from "./cashReceipt.js";
 import { multibaasReady, mbSetAlias, toAlias } from "./multibaas.js";
+import { worldIdReady } from "./worldId.js";
 
 /// Everything a full login does once the Privy user is known — shared by the
 /// kiosk's email login (/verify) and the web app's Privy code login
@@ -70,6 +71,8 @@ function onboardOnChain(ensName: string, wallet: string) {
   if (!multibaasReady) return;
   const log = (what: string) => (err: unknown) =>
     console.error(`[multibaas] ${what} for ${ensName}:`, err instanceof Error ? err.message : err);
-  void allowlist(wallet).catch(log("tkCASH allowlist"));
+  // With World ID on, holding and moving tkCASH waits until they prove
+  // they're a unique human (worldId.ts); without it, signup is enough.
+  if (!worldIdReady) void allowlist(wallet).catch(log("tkCASH allowlist"));
   void mbSetAlias(toAlias(ensName.split(".")[0] ?? ensName), wallet).catch(log("alias"));
 }

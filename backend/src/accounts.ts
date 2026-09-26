@@ -9,10 +9,13 @@ export interface Account {
   boundAddress: string; // vault account (deriveBoundAddress in store.ts)
   ensName: string | null;
   qrEmailedAt: Date | null;
+  worldVerifiedAt: Date | null; // set once World ID proved this is a unique human (worldId.ts)
+  worldCredential: string | null;
 }
 
 const COLUMNS = `privy_user_id as "privyUserId", email, privy_wallet as "privyWallet",
-  bound_address as "boundAddress", ens_name as "ensName", qr_emailed_at as "qrEmailedAt"`;
+  bound_address as "boundAddress", ens_name as "ensName", qr_emailed_at as "qrEmailedAt",
+  world_verified_at as "worldVerifiedAt", world_credential as "worldCredential"`;
 
 export async function findByPrivyUserId(privyUserId: string): Promise<Account | null> {
   const { rows } = await pool.query(`select ${COLUMNS} from accounts where privy_user_id = $1`, [privyUserId]);
@@ -30,7 +33,7 @@ export async function findByWallet(wallet: string): Promise<Account | null> {
   return rows[0] ?? null;
 }
 
-export async function insertAccount(a: Omit<Account, "qrEmailedAt">): Promise<Account> {
+export async function insertAccount(a: Omit<Account, "qrEmailedAt" | "worldVerifiedAt" | "worldCredential">): Promise<Account> {
   const { rows } = await pool.query(
     `insert into accounts (privy_user_id, email, privy_wallet, bound_address, ens_name)
      values ($1, $2, $3, $4, $5) returning ${COLUMNS}`,
