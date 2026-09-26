@@ -308,3 +308,30 @@ mUSDC. Both probe strategies were docked afterwards. The treasury approved Aqua
 MultiBaas links the Aqua contract as `oneinch_aqua` (alias `aqua`) in the slot
 that held Uniswap's position manager; a saved query `aqua_pulled_by_token`
 sums swap volume out of our strategies.
+
+## ENS v2 — official Sepolia deployment (takarabako.eth)
+
+The earlier `wantest.eth` (above) sits on the Sepolia *beta* deployment; the
+official `UniversalResolverV2` (`0x2f8a180604c42457cb56c7c4f708748ff1f91df1`)
+resolves through a different root (`0xc960F7217d3643B525Ef36Bec8Adf86953CD9aB8`
+→ `.eth` registry `0xdedb92913a25abe1f7bcdd85d8a344a43b398b67`), which has no
+`wantest`. So names moved to `takarabako.eth` there (addresses from
+`ensdomains/contracts-v2` `deployments/sepolia-official-v1-20260525-r2`,
+checked on-chain).
+
+| What | Address / value |
+|---|---|
+| `takarabako.eth` | registered with the official `ETHRegistrar` (`0x8c2e866b…affca`) for 1 year, 7.99 of the deployment's open-mint MockUSDC (register tx `0x3dd28cec…`) |
+| Our `UserRegistry` (subnames) | `0x73153594ec5349f2ea191e39b9ec1e2fe4fa4b99` — deployed via the official `VerifiableFactory`, which verifies it points at `UserRegistryImpl` |
+| Our `PermissionedResolver` (records) | `0x6ef4efc23141edf959bcad3b8f3d213f9b244905` — same factory, `PermissionedResolverImpl` |
+| `kl-sentral-01.takarabako.eth` | addr → `0xb3F9928aD5E659b8d22A556FbcfF545cf49EC9f5`, the Pi's device key; `takarabako.kind=kiosk` |
+
+Checked through the official `UniversalResolverV2`: `takarabako.eth` → the
+treasury; `aqiljeff-6263.takarabako.eth` → the customer's Privy wallet;
+`kl-sentral-01.takarabako.eth` → the device key. The first signed note
+(nonce 1) was verified end to end: signer recovered from the Pi's signature ==
+the kiosk name's address record.
+
+tkCASH's daily transfer limit is now set on-chain to $500
+(`setDailyTransferLimit`, tx `0xae068973…`). MultiBaas links our UserRegistry
+as `takarabako_names` (the beta registry link was retired).
