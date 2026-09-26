@@ -32,7 +32,7 @@ const EDGE_ANGLE = (72 * Math.PI) / 180; // the drum angle that lands on the scr
 const MAX_ANGLE = (80 * Math.PI) / 180; // draw a little past the edge
 const TOKEN_ANGLE = 0.23; // angular spacing between codes
 const RING_GAP = 1.55; // world spacing between rings
-const OPACITY = 1; // overall strength — it's a background
+const OPACITY = 1.3; // overall strength — it's a background (alpha is clamped to 1)
 const FRAME_MS = 1000 / 30; // a slow drift doesn't need 60 fps
 const SPRITE_PX = 64; // font size the sprites are drawn at
 
