@@ -43,3 +43,6 @@ device-agent/public/config.js
 
 # Local Postgres/Redis data when running without Docker (npm run services)
 backend/.devservices/
+
+# Claude Code session transcripts — never commit (they can contain credentials)
+*.jsonl
