@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 
-export type QrProblemKind = "unregistered" | "invalid";
+export type QrProblemKind = "unregistered" | "invalid" | "expired";
 
 // An unattended pop-up must not block the next customer.
 const IDLE_CLOSE_MS = 60_000;
@@ -15,7 +15,11 @@ const COPY: Record<QrProblemKind, { title: string; body: string }> = {
   },
   invalid: {
     title: "That’s not a Takarabako QR",
-    body: "Open My QR in the Takarabako app (or the QR from your welcome email) and try again, or sign up first.",
+    body: "Open Deposit in the Takarabako app (or the QR from your welcome email) and try again, or sign up first.",
+  },
+  expired: {
+    title: "This QR has expired",
+    body: "Deposit QRs last 5 minutes. Open Deposit in the Takarabako app on your phone for a fresh one, then scan it.",
   },
 };
 
@@ -92,15 +96,17 @@ export function QrProblem({
               <button className="btn btn-gold btn-block" onClick={onRescan} autoFocus>
                 Scan a new QR
               </button>
-              <button className="btn btn-block" onClick={onSignUp}>
-                Sign up
-              </button>
+              {kind !== "expired" && (
+                <button className="btn btn-block" onClick={onSignUp}>
+                  Sign up
+                </button>
+              )}
             </div>
           </>
         ) : (
           <>
             <h2 id="qr-modal-title">Sign up on your phone</h2>
-            <p className="muted">Point your phone camera here, sign up with your email, then open <b>My QR</b> and scan it at this box.</p>
+            <p className="muted">Point your phone camera here, sign up with your email, then open <b>Deposit</b> and scan it at this box.</p>
             <div className="qr-frame qr-modal-qr">
               {signupQr ? (
                 // eslint-disable-next-line @next/next/no-img-element -- generated data URL

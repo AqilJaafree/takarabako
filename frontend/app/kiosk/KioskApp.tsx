@@ -280,11 +280,11 @@ export function KioskApp({
     } catch (err) {
       const status = (err as Error & { status?: number }).status;
       setScreen("welcome");
-      if (status === 404 || status === 400) {
-        // Unknown or foreign QR: a pop-up to scan again or sign up.
+      if (status === 404 || status === 400 || status === 410) {
+        // Unknown, foreign or expired QR: a pop-up to scan again (or sign up).
         setMessage("");
         setBadQr(text);
-        setQrProblem(status === 404 ? "unregistered" : "invalid");
+        setQrProblem(status === 410 ? "expired" : status === 404 ? "unregistered" : "invalid");
         catSay("Hmm, I don't know this QR…", "thinking", 0);
       } else {
         // Deposit terminal: show why, with a button to scan again.
@@ -403,7 +403,7 @@ export function KioskApp({
         {screen === "welcome" && depositOnly && (
           <section className="card" style={{ textAlign: "center" }}>
             <p className="label">Deposit cash</p>
-            <p className="muted">Open <b>My QR</b> on your phone (or the QR from your welcome email) and show it to the camera.</p>
+            <p className="muted">Open <b>Deposit</b> in the Takarabako app on your phone (or the QR from your welcome email) and show it to the camera.</p>
             {message && <div className="notice error">{message}</div>}
             <button className="btn btn-gold btn-block" disabled={busy} onClick={() => { setMessage(""); setLoginVia("qr"); setScreen("scan"); }}>
               {busy ? "Checking your QR…" : "Scan my QR"}
@@ -444,7 +444,7 @@ export function KioskApp({
             onResult={onQr}
             ignore={ignoreQr}
             onCancel={(why) => { setMessage(why ?? ""); setScreen("welcome"); }}
-            hint={depositOnly ? "Open My QR on your phone, then hold it up to the camera." : undefined}
+            hint={depositOnly ? "Open Deposit in the Takarabako app, then hold your phone up to the camera." : undefined}
             fallback={depositOnly ? "check the camera is connected and allowed, then tap Scan my QR" : "log in with email instead"}
           />
         )}

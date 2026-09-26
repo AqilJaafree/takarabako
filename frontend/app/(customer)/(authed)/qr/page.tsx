@@ -1,24 +1,22 @@
 import type { Metadata } from "next";
 import { loadForPage } from "@/lib/serverData";
-import { shortHex } from "@/lib/format";
+import { DepositQr, type DepositQrCode } from "./DepositQr";
 
-export const metadata: Metadata = { title: "My QR · Takarabako" };
+export const metadata: Metadata = { title: "Deposit · Takarabako" };
 
-/// The quick-deposit QR: shown to the kiosk camera for a deposit-only login.
-export default async function QrPage() {
-  const { wallet, dataUrl } = await loadForPage<{ wallet: string; dataUrl: string }>("/me/qr");
+/// Deposit: a QR for the kiosk camera that logs in to a deposit-only session.
+/// Every visit makes a new one (valid 5 minutes, refreshed while on screen).
+export default async function DepositPage() {
+  const initial = await loadForPage<DepositQrCode>("/me/qr");
   return (
     <section style={{ textAlign: "center" }}>
-      <h1 style={{ fontSize: 26 }}>Show this at the kiosk</h1>
+      <h1 style={{ fontSize: 26 }}>Deposit cash</h1>
       <p className="muted">Tap “Scan my QR” on the box and hold your phone up to the camera.</p>
-      <div className="qr-frame">
-        {/* eslint-disable-next-line @next/next/no-img-element -- data URL from the backend */}
-        <img src={dataUrl} alt={`QR code for wallet ${wallet}`} width={480} height={480} />
-      </div>
-      <p className="mono muted small">{shortHex(wallet, 10, 8)}</p>
-      <div className="notice" style={{ textAlign: "left" }}>
-        💡 Turn your screen brightness up so the camera reads it first time. This QR only lets someone
-        <strong> put cash into</strong> your box — withdrawing always needs your email login.
+      <DepositQr initial={initial} />
+      <div className="notice" style={{ textAlign: "left", marginTop: 16 }}>
+        💡 This QR changes every 5 minutes and stops working as soon as a new one appears, so a screenshot
+        won’t work later. It only lets someone <strong>put cash into</strong> your box — withdrawing always
+        needs your email login. Turn your brightness up so the camera reads it first time.
       </div>
     </section>
   );

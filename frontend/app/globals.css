@@ -2553,3 +2553,34 @@ a.human-badge {
     opacity: 0;
   }
 }
+
+/* ---------- customer Deposit tab: rotating QR ---------- */
+.deposit-qr img {
+  transition: opacity 0.25s ease;
+}
+
+.deposit-qr.is-refreshing img {
+  opacity: 0.35;
+}
+
+.qr-timer {
+  width: min(100%, 360px);
+  margin: 0 auto 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.qr-timer-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.qr-timer-bar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), #f0c887);
+  transform-origin: left;
+  transition: transform 1s linear;
+}

@@ -173,7 +173,7 @@ export function Dashboard({
       <section className="card">
         <div className="spread" style={{ marginBottom: 4 }}>
           <h2 style={{ margin: 0 }}>Deposits</h2>
-          <Link href="/qr" className="small">Show my QR at the kiosk →</Link>
+          <Link href="/qr" className="small">Deposit at the kiosk →</Link>
         </div>
         {deposits.length === 0 ? (
           <p className="muted" style={{ margin: "12px 0 0" }}>
