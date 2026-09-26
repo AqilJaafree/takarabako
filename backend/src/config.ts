@@ -20,6 +20,12 @@ export const config = {
   withdrawFeeBps: Number(process.env.WITHDRAW_FEE_BPS ?? 200),
   databaseUrl: process.env.DATABASE_URL ?? "",
   redisUrl: process.env.REDIS_URL ?? "redis://localhost:6379",
+  // Gmail SMTP with an App Password (myaccount.google.com/apppasswords).
+  // Used for the QR email when set; otherwise Resend (needs a verified domain).
+  gmail: {
+    user: process.env.GMAIL_USER ?? "",
+    appPassword: (process.env.GMAIL_APP_PASSWORD ?? "").replace(/\s+/g, ""),
+  },
   resend: {
     apiKey: process.env.RESEND_API_KEY ?? "",
     from: process.env.RESEND_FROM ?? "",
