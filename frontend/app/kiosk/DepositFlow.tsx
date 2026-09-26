@@ -163,6 +163,7 @@ export function DepositFlow({
               : "Confirming on Sepolia… your email copy follows once every note is in."}
           </p>
         </article>
+        <EmailReceipt sessionId={receipt.id} />
         <button className="btn btn-gold btn-block" onClick={onDone}>
           Done
         </button>
@@ -243,3 +244,38 @@ export function DepositFlow({
     </section>
   );
 }
+
+/// "Email me this receipt": the receipt and its PDF, to the account's own
+/// email address (never one typed at the kiosk).
+function EmailReceipt({ sessionId }: { sessionId: string }) {
+  const [state, setState] = useState<{ kind: "idle" | "sending" } | { kind: "sent"; to: string } | { kind: "error"; message: string }>({ kind: "idle" });
+
+  async function send() {
+    setState({ kind: "sending" });
+    try {
+      const res = await fetch(`/api/kiosk/receipt/email?id=${encodeURIComponent(sessionId)}`, { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "Couldn't send the email");
+      setState({ kind: "sent", to: body.to });
+    } catch (e) {
+      setState({ kind: "error", message: e instanceof Error ? e.message : "Couldn't send the email" });
+    }
+  }
+
+  if (state.kind === "sent") {
+    return (
+      <p className="receipt-emailed" role="status">
+        ✓ Sent to <b>{state.to}</b> with the PDF receipt
+      </p>
+    );
+  }
+  return (
+    <div className="receipt-email">
+      <button className="btn btn-block" onClick={send} disabled={state.kind === "sending"}>
+        {state.kind === "sending" ? "Sending…" : "✉ Email me this receipt (PDF)"}
+      </button>
+      {state.kind === "error" && <p className="small tone-bad" style={{ margin: "6px 0 0", textAlign: "center" }}>{state.message}</p>}
+    </div>
+  );
+}
+

@@ -3969,3 +3969,22 @@ button.kiosk-pin:focus-visible .kiosk-pin-head {
 .finder-indoor .floor-svg {
   max-height: min(52vh, 400px);
 }
+
+/* ---------- kiosk receipt: email it ---------- */
+.receipt-email {
+  margin: 14px 0 10px;
+}
+
+.receipt-emailed {
+  margin: 14px 0 10px;
+  padding: 12px;
+  border-radius: 12px;
+  text-align: center;
+  color: var(--ok);
+  border: 1px solid rgba(127, 201, 160, 0.45);
+  background: rgba(127, 201, 160, 0.08);
+}
+
+.receipt-emailed b {
+  color: var(--cream);
+}

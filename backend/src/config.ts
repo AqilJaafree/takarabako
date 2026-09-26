@@ -34,6 +34,12 @@ export const config = {
     apiKey: process.env.RESEND_API_KEY ?? "",
     from: process.env.RESEND_FROM ?? "",
   },
+  // Brevo (HTTPS API, no domain needed: verify one sender address in Brevo).
+  // BREVO_FROM like "Takarabako <you@gmail.com>".
+  brevo: {
+    apiKey: process.env.BREVO_API_KEY ?? "",
+    from: process.env.BREVO_FROM ?? "",
+  },
   // Curvegrid MultiBaas (multibaas.ts): contract calls, event indexing,
   // saved event queries and signed webhooks. Unset = everything that uses it
   // falls back (direct viem reads, no dashboard aggregates).

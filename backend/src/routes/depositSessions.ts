@@ -10,7 +10,7 @@ import {
   recordRefused,
   type HistoryKind,
 } from "../history.js";
-import { maybeSendReceipt } from "../receiptEmail.js";
+import { emailReceiptNow, maybeSendReceipt } from "../receiptEmail.js";
 import { publishUserEvent } from "../events.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { findByPrivyUserId } from "../accounts.js";
@@ -64,6 +64,17 @@ depositSessionsRouter.post("/deposit-sessions/:id/finish", requireSession("depos
   await finishDepositSession(id);
   await maybeSendReceipt(id).catch((err) => console.error(`[receipt] ${id}:`, err));
   res.json(await getReceipt(id));
+}));
+
+/// POST /deposit-sessions/:id/email — "Email me this receipt" at the kiosk:
+/// sends the receipt (with its PDF) to the account's own email address.
+depositSessionsRouter.post("/deposit-sessions/:id/email", requireSession("deposit"), asyncHandler(async (req, res) => {
+  const result = await emailReceiptNow(String(req.params.id), res.locals.session.privyUserId);
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  res.json({ sent: true, to: result.to });
 }));
 
 const RefusedBody = z.object({ reason: z.enum(["unsupported", "bad_condition"]) });
