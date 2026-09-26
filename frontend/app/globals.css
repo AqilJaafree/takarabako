@@ -2399,6 +2399,33 @@ body:has(.range-chart svg.is-dragging) {
   margin: 4px 0 8px;
 }
 
+/* ---------- Deposit terminal: QR or World ID login ---------- */
+.login-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 4px;
+  margin-bottom: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.login-tabs button {
+  padding: 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.login-tabs button[aria-selected="true"] {
+  background: var(--gold-soft);
+  color: var(--gold);
+}
+
 .human-badge {
   display: inline-block;
   margin-left: 8px;

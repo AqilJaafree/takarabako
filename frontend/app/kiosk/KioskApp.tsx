@@ -8,12 +8,13 @@ import { apy, cash, usd, without } from "@/lib/format";
 import { TreasureStage } from "@/components/treasure/TreasureStage";
 import { useStageDirector } from "@/components/treasure/useStageDirector";
 import { DepositFlow, type Refusal } from "./DepositFlow";
+import { WorldLogin } from "./WorldLogin";
 import { ConnectionLost, useBackendDown } from "@/components/ConnectionLost";
 import { MachineBadge } from "@/components/MachineBadge";
 
 const GREETINGS = {
   kiosk: "いらっしゃいませ! Tap in with your email or wallet QR.",
-  deposit: "いらっしゃいませ! Show me your QR to deposit.",
+  deposit: "いらっしゃいませ! Show me your QR, or log in with World ID, to deposit.",
 } as const;
 const bubble = (text: string) => (text.length > 170 ? `${text.slice(0, 167).trimEnd()}…` : text);
 
@@ -91,6 +92,8 @@ export function KioskApp({
   const [busy, setBusy] = useState(false);
   const [ticker, setTicker] = useState<string[]>([]);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
+  // Deposit terminal: which login the scan screen shows.
+  const [loginVia, setLoginVia] = useState<"qr" | "world">("qr");
   // Backend unreachable: cover the screen until it's back, then reveal the
   // same screen underneath (session, notes and step all kept).
   const [backendDown, backendRecovered] = useBackendDown();
@@ -112,6 +115,7 @@ export function KioskApp({
     setReceipt(null);
     setMessage("");
     setScreen(startScreen);
+    setLoginVia("qr");
     catSay(GREETING, "idle", 0);
   }, [catSay, GREETING, startScreen]);
 
@@ -355,8 +359,11 @@ export function KioskApp({
             <p className="label">Deposit cash</p>
             <p className="muted">Open <b>My QR</b> on your phone (or the QR from your welcome email) and show it to the camera.</p>
             {message && <div className="notice error">{message}</div>}
-            <button className="btn btn-gold btn-block" disabled={busy} onClick={() => { setMessage(""); setScreen("scan"); }}>
+            <button className="btn btn-gold btn-block" disabled={busy} onClick={() => { setMessage(""); setLoginVia("qr"); setScreen("scan"); }}>
               {busy ? "Checking your QR…" : "Scan my QR"}
+            </button>
+            <button className="btn btn-block" disabled={busy} onClick={() => { setMessage(""); setLoginVia("world"); setScreen("scan"); }}>
+              Log in with World ID
             </button>
           </section>
         )}
@@ -375,7 +382,18 @@ export function KioskApp({
           </section>
         )}
 
-        {screen === "scan" && (
+        {screen === "scan" && depositOnly && (
+          <div className="login-tabs" role="tablist" aria-label="How to log in">
+            <button role="tab" aria-selected={loginVia === "qr"} onClick={() => setLoginVia("qr")}>Scan my QR</button>
+            <button role="tab" aria-selected={loginVia === "world"} onClick={() => setLoginVia("world")}>World ID</button>
+          </div>
+        )}
+
+        {screen === "scan" && depositOnly && loginVia === "world" && (
+          <WorldLogin onLogin={startSession} onUseQr={() => setLoginVia("qr")} />
+        )}
+
+        {screen === "scan" && !(depositOnly && loginVia === "world") && (
           <Scanner
             onResult={onQr}
             onCancel={(why) => { setMessage(why ?? ""); setScreen("welcome"); }}

@@ -1,17 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import QRCode from "qrcode";
-import { deviceLegacy, selfieCheck, selfieCheckLegacy, useIDKitRequest, type RpContext } from "@worldcoin/idkit";
-
-interface WorldRequest {
-  app_id: `app_${string}`;
-  action: string;
-  environment: "production" | "staging" | "sandbox";
-  preset?: "device" | "selfie" | "selfie-v4";
-  signal: string;
-  rp_context: RpContext;
-}
+import { useWorldProof, type WorldRequest } from "@/lib/useWorldProof";
 
 /// The World ID selfie, taken right after the customer creates their wallet.
 /// The backend signs the request and binds it to that wallet's address (the
@@ -52,76 +42,37 @@ export function WorldSelfie({ onVerified }: { onVerified: () => void }) {
   return <SelfieFlow request={request} onVerified={onVerified} onRestart={() => setRequest(null)} />;
 }
 
-/// The credential the backend asked for (WORLD_PRESET).
-function presetFor({ preset, signal }: WorldRequest) {
-  if (preset === "selfie-v4") return { allow_legacy_proofs: false, preset: selfieCheck({ signal }) };
-  if (preset === "device") return { allow_legacy_proofs: true, preset: deviceLegacy({ signal }) };
-  return { allow_legacy_proofs: true, preset: selfieCheckLegacy({ signal }) };
-}
-
 function SelfieFlow({ request, onVerified, onRestart }: { request: WorldRequest; onVerified: () => void; onRestart: () => void }) {
-  const flow = useIDKitRequest({
-    app_id: request.app_id,
-    action: request.action,
-    rp_context: request.rp_context,
-    environment: request.environment,
-    ...presetFor(request),
-  });
-  const [qr, setQr] = useState<string | null>(null);
-  const [status, setStatus] = useState<"open" | "approve" | "checking" | "done" | "error">("open");
+  const proof = useWorldProof(request);
+  const [status, setStatus] = useState<"waiting" | "checking" | "done" | "error">("waiting");
   const [error, setError] = useState("");
-  const opened = useRef(false);
   const submitted = useRef(false);
 
-  // Start the request once; IDKit then waits for World App.
   useEffect(() => {
-    if (opened.current) return;
-    opened.current = true;
-    flow.open();
-  }, [flow]);
-
-  useEffect(() => {
-    if (!flow.connectorURI) return;
-    let cancelled = false;
-    QRCode.toDataURL(flow.connectorURI, { width: 320, margin: 1, color: { dark: "#120807", light: "#f4e9da" } })
-      .then((url) => !cancelled && setQr(url))
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [flow.connectorURI]);
-
-  useEffect(() => {
-    // Derived from IDKit's state machine; the proof is sent once.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (flow.isAwaitingUserConfirmation && status === "open") setStatus("approve");
-    if (flow.isError && status !== "error") {
-      setStatus("error");
-      setError(`World ID didn't finish (${flow.errorCode ?? "error"}).`);
-    }
-    if (flow.isSuccess && flow.result && !submitted.current) {
-      submitted.current = true;
-      setStatus("checking");
-      fetch("/api/me/worldid", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(flow.result) })
-        .then(async (res) => {
-          const body = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(body.error ?? "verification failed");
-          setStatus("done");
-          setTimeout(onVerified, 1200);
-        })
-        .catch((e) => {
-          setStatus("error");
-          setError(e instanceof Error ? e.message : "verification failed");
-        });
-    }
-  }, [flow.isAwaitingUserConfirmation, flow.isError, flow.isSuccess, flow.result, flow.errorCode, status, onVerified]);
+    // The proof is sent once.
+    if (proof.status !== "success" || !proof.result || submitted.current) return;
+    submitted.current = true;
+    setStatus("checking");
+    fetch("/api/me/worldid", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(proof.result) })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error ?? "verification failed");
+        setStatus("done");
+        setTimeout(onVerified, 1200);
+      })
+      .catch((e) => {
+        setStatus("error");
+        setError(e instanceof Error ? e.message : "verification failed");
+      });
+  }, [proof.status, proof.result, onVerified]);
 
   if (status === "done") return <p className="world-done">✓ Verified — no daily limit on your box.</p>;
 
-  if (status === "error") {
+  const failure = status === "error" ? error || "verification failed" : proof.status === "error" ? `World ID didn't finish (${proof.errorCode ?? "error"}).` : "";
+  if (failure) {
     return (
       <>
-        <div className="notice error">{error}</div>
+        <div className="notice error">{failure}</div>
         <button className="btn btn-block" onClick={onRestart}>Try again</button>
       </>
     );
@@ -129,9 +80,9 @@ function SelfieFlow({ request, onVerified, onRestart }: { request: WorldRequest;
 
   return (
     <div className="world-flow">
-      {status === "open" && (
+      {status === "waiting" && proof.status === "open" && (
         <>
-          <a className={`btn btn-gold btn-block${flow.connectorURI ? "" : " is-disabled"}`} href={flow.connectorURI ?? undefined}>
+          <a className={`btn btn-gold btn-block${proof.connectorURI ? "" : " is-disabled"}`} href={proof.connectorURI ?? undefined}>
             Open World App
           </a>
           <details className="world-qr-alt">
@@ -139,15 +90,13 @@ function SelfieFlow({ request, onVerified, onRestart }: { request: WorldRequest;
             <div className="world-code">
               {/* A generated data URL — next/image adds nothing here. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              {qr ? <img src={qr} alt="World ID QR code — scan with World App" width={220} height={220} /> : <span className="muted small">Preparing the code…</span>}
+              {proof.qr ? <img src={proof.qr} alt="World ID QR code — scan with World App" width={220} height={220} /> : <span className="muted small">Preparing the code…</span>}
             </div>
           </details>
         </>
       )}
       <p className="small" style={{ textAlign: "center", margin: "10px 0 0" }}>
-        {status === "open" && "World App asks for a quick selfie, then comes back here."}
-        {status === "approve" && "Take the selfie and approve in World App…"}
-        {status === "checking" && "Checking your proof with World…"}
+        {status === "checking" ? "Checking your proof with World…" : proof.status === "approve" ? "Take the selfie and approve in World App…" : "World App asks for a quick selfie, then comes back here."}
       </p>
     </div>
   );
