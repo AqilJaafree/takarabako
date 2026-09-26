@@ -10,8 +10,12 @@ export const config = {
     appId: process.env.PRIVY_APP_ID ?? "",
     appSecret: process.env.PRIVY_APP_SECRET ?? "",
   },
+  // ENS v2 (official Sepolia deployment; scripts/ens-setup.ts). Our own
+  // UserRegistry holds the subnames, our own PermissionedResolver the records.
   ens: {
-    parentName: process.env.ENS_PARENT_NAME ?? "wantest.eth",
+    parentName: process.env.ENS_PARENT_NAME ?? "takarabako.eth",
+    registryAddress: process.env.ENS_REGISTRY_ADDRESS ?? "",
+    resolverAddress: process.env.ENS_RESOLVER_ADDRESS ?? "",
   },
   agent: {
     apiKey: process.env.ANTHROPIC_API_KEY ?? "",

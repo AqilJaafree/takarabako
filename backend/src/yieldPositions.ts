@@ -1,6 +1,6 @@
 import type { Account } from "./accounts.js";
 import { recordYieldEvent } from "./history.js";
-import { positionSubname, registerSubname } from "./ens.js";
+import { issueName, positionSubname } from "./ens.js";
 import { closePosition, ethUsd, listPositions, openPosition, viewPosition, type OpenRequest, type PositionRow, type PositionView } from "./aqua.js";
 import { TIERS } from "./aquaMath.js";
 
@@ -16,8 +16,15 @@ export interface OpenedPosition {
 export async function openForCustomer(account: Account, req: Omit<OpenRequest, "privyUserId" | "boundAddress">): Promise<OpenedPosition> {
   const row = await openPosition({ ...req, privyUserId: account.privyUserId, boundAddress: account.boundAddress });
   const ensName = positionSubname(row.id);
-  // The name is a nice-to-have; a failed registration never undoes the position.
-  await registerSubname(ensName, account.boundAddress).catch((err) => console.error(`[ens] ${ensName}:`, err instanceof Error ? err.message : err));
+  // The name is the position's deed: an ENS v2 token in the customer's own
+  // wallet that they can send to someone else, and the position follows it.
+  // A failed registration never undoes the position.
+  await issueName({
+    name: ensName,
+    owner: account.privyWallet,
+    transferable: true,
+    texts: { "takarabako.kind": "aqua-position", "takarabako.position": row.id, "takarabako.strategy": `${row.mode}/${row.shape}` },
+  }).catch((err) => console.error(`[ens] ${ensName}:`, err instanceof Error ? err.message : err));
   const spot = await ethUsd();
   const view = await viewPosition(row, spot);
   await recordYieldEvent({
