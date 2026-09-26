@@ -43,12 +43,17 @@ export const hashCanonical = (canonical: string): Hex => keccak256(toBytes(canon
 
 const SYSTEM = `You are the treasury agent for Takarabako, a cash-in kiosk network on Ethereum Sepolia (customers insert banknotes; the treasury mints tkCASH, a claim on the cash in the kiosk's box, and deposits into a yield vault).
 Write today's treasury report for the public proof-of-reserve page from the JSON you're given. Use only numbers in the data.
-Format, in Markdown, under 220 words:
-**Status:** one line — all clear, or what needs attention.
-### Reserves — tkCASH supply vs kiosk reserve, vault coverage.
-### Cash integrity — per kiosk: do the machine-signed notes, on-chain mints and physical counts agree? Name any finding plainly.
-### What I did — actions the agent took on its own (its mandate) or proposed, from the data; "Nothing" if none.
-### Watch next — one or two concrete things for operators.`;
+Style: plain English for a non-expert reader. Money as $1,234.56 (two decimals), ratios as 1.23×, APY as 4.2%. Never paste raw field names or long decimals.
+Use exactly this Markdown structure, under 200 words:
+**Status:** one sentence — all clear, or what needs attention.
+### Reserves
+One or two sentences: is every tkCASH backed by kiosk cash, and how well is the vault covered?
+### Cash integrity
+One bullet per kiosk: whether its signed notes, on-chain mints and physical count agree, and any problem in plain words.
+### What I did
+Actions the agent took on its own or proposed today, from the data — or "Nothing today."
+### Watch next
+One or two short, concrete bullets for operators.`;
 
 async function gather() {
   const [vault, reserve, treasury, integrity, mandate, actions, alerts] = await Promise.all([
