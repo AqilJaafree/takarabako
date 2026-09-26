@@ -12,6 +12,7 @@ import { meRouter } from "./routes/me.js";
 import { depositSessionsRouter } from "./routes/depositSessions.js";
 import { webhooksRouter } from "./routes/webhooks.js";
 import { opsRouter } from "./routes/ops.js";
+import { dashboardRouter } from "./routes/dashboard.js";
 import { startOpsMonitor } from "./opsMonitor.js";
 import { migrate } from "./db.js";
 import { startDepositWorker } from "./depositQueue.js";
@@ -44,6 +45,7 @@ app.use(agentRouter);
 app.use(withdrawRouter);
 app.use(positionRouter);
 app.use(opsRouter);
+app.use(dashboardRouter);
 
 // Catches anything asyncHandler forwards (chain calls, Privy, the agent) —
 // without this, an unhandled rejection in an async route takes the whole

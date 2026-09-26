@@ -1,6 +1,6 @@
 import { config } from "./config.js";
 import { treasuryAddress, treasuryEthBalance } from "./chain.js";
-import { ALIASES, LABELS, mbCall, mbQuery, mbSend } from "./multibaas.js";
+import { ALIASES, LABELS, mbCall, mbQuery, mbSend, multibaasReady } from "./multibaas.js";
 import { cashReceiptReady, fromTkUnits, kioskIdBytes, kioskState, tkSupply } from "./cashReceipt.js";
 import { pool } from "./db.js";
 import type { ProposalAction } from "./policy.js";
@@ -39,12 +39,16 @@ export async function vaultState(): Promise<VaultState> {
   };
 }
 
+/// ETH is read straight from the chain, so the low-gas warning works even
+/// before MultiBaas is set up; the mUSDC float needs MultiBaas.
 export async function treasuryBalances() {
   const [eth, usdc] = await Promise.all([
     treasuryEthBalance(),
-    treasuryAddress ? mbCall<string>(ALIASES.musdc, LABELS.usdc, "balanceOf", [treasuryAddress]) : Promise.resolve("0"),
+    treasuryAddress && multibaasReady
+      ? mbCall<string>(ALIASES.musdc, LABELS.usdc, "balanceOf", [treasuryAddress])
+      : Promise.resolve(null),
   ]);
-  return { address: treasuryAddress ?? null, eth, musdc: Number(usdc) / USDC };
+  return { address: treasuryAddress ?? null, eth, musdc: usdc === null ? null : Number(usdc) / USDC };
 }
 
 export interface Attestation {
