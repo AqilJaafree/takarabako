@@ -18,8 +18,16 @@ export interface ToolCall {
   function: { name: string; arguments: string };
 }
 
+/// Multimodal parts for a user message: text, an image (data URL) or a
+/// file such as a PDF (data URL; OpenRouter parses it for the model).
+export type ContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } }
+  | { type: "file"; file: { filename: string; file_data: string } };
+
 export type ChatMessage =
-  | { role: "system" | "user"; content: string }
+  | { role: "system"; content: string }
+  | { role: "user"; content: string | ContentPart[] }
   | { role: "assistant"; content: string | null; tool_calls?: ToolCall[] }
   | { role: "tool"; tool_call_id: string; content: string };
 

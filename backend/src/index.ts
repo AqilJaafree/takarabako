@@ -12,6 +12,7 @@ import { eventsRouter } from "./routes/events.js";
 import { meRouter } from "./routes/me.js";
 import { depositSessionsRouter } from "./routes/depositSessions.js";
 import { webhooksRouter } from "./routes/webhooks.js";
+import { chatRouter } from "./routes/chat.js";
 import { opsRouter } from "./routes/ops.js";
 import { dashboardRouter } from "./routes/dashboard.js";
 import { yieldRouter } from "./routes/yieldRoutes.js";
@@ -27,6 +28,8 @@ import { startDepositWorker } from "./depositQueue.js";
 const app = express();
 // Signed webhooks need the raw body, so they're mounted before the JSON parser.
 app.use(webhooksRouter);
+// Chat uploads (images/PDFs) need a bigger body limit than the default.
+app.use(chatRouter);
 app.use(express.json());
 
 // Dev-only convenience: the kiosk page (device-agent) fetches this API
