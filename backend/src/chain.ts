@@ -18,18 +18,6 @@ const vaultAbi = parseAbi([
 // USDC uses 6 decimals, not the usual 18 — see contracts/src/mocks/MockUSDC.sol.
 const USDC_DECIMALS = 6;
 
-// Uniswap v3's canonical Sepolia deployment — not ours, so not env-configured.
-// Verified on-chain (factory/NPM cross-checks) before first use — DEPLOYMENTS.md.
-const UNISWAP_NPM_ADDRESS: Address = "0x1238536071E1c677A632429e3655c799b22cDA52";
-const MAX_UINT128 = 2n ** 128n - 1n;
-
-const npmAbi = parseAbi([
-  "function mint((address token0,address token1,uint24 fee,int24 tickLower,int24 tickUpper,uint256 amount0Desired,uint256 amount1Desired,uint256 amount0Min,uint256 amount1Min,address recipient,uint256 deadline)) returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)",
-  "function decreaseLiquidity((uint256 tokenId,uint128 liquidity,uint256 amount0Min,uint256 amount1Min,uint256 deadline)) returns (uint256 amount0, uint256 amount1)",
-  "function collect((uint256 tokenId,address recipient,uint128 amount0Max,uint128 amount1Max)) returns (uint256 amount0, uint256 amount1)",
-  "function positions(uint256 tokenId) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)",
-]);
-
 // The nonce manager tracks the treasury's nonce locally, so several
 // transactions can be in flight at once (e.g. two bill-acceptor deposits)
 // without each waiting for the previous one to be mined. viem resets it if a
@@ -41,7 +29,7 @@ const account = config.treasuryPrivateKey
 export const chainReady = Boolean(account && config.usdcAddress && config.vaultAddress);
 export const treasuryAddress = account?.address;
 
-const publicClient = createPublicClient({
+export const publicClient = createPublicClient({
   chain: sepolia,
   transport: http(config.rpcUrl),
 });
@@ -194,6 +182,43 @@ export async function withdrawAllOnChain(user: Address, recipient: Address) {
   return { txHash: hash, amount };
 }
 
+/// Sends a transaction built elsewhere (e.g. by the 1inch SDKs) from the
+/// treasury, in the shared send queue, without waiting for it to be mined —
+/// so several can land in the same block.
+export async function sendTreasuryTxNoWait(tx: { to: Address; data: `0x${string}`; value?: bigint }): Promise<`0x${string}`> {
+  if (!walletClient) throw new Error("chain not configured — set TREASURY_PRIVATE_KEY");
+  return queueSend(async () => {
+    const gas = await publicClient.estimateGas({ account: walletClient.account!, to: tx.to, data: tx.data, value: tx.value ?? 0n });
+    return walletClient.sendTransaction({ to: tx.to, data: tx.data, value: tx.value ?? 0n, gas: (gas * 13n) / 10n });
+  });
+}
+
+/// Same, and waits for it to be mined.
+export async function sendTreasuryTx(tx: { to: Address; data: `0x${string}`; value?: bigint }): Promise<`0x${string}`> {
+  const hash = await sendTreasuryTxNoWait(tx);
+  await waitForTx(hash);
+  return hash;
+}
+
+/// Moves `usdAmount` of `user`'s vault value to `recipient` by redeeming
+/// the matching share of their vault shares (e.g. into a yield position).
+export async function withdrawUsdOnChain(user: Address, recipient: Address, usdAmount: number) {
+  if (!walletClient) throw new Error("chain not configured — set TREASURY_PRIVATE_KEY/USDC_ADDRESS/VAULT_ADDRESS");
+  const [shares, value] = await Promise.all([
+    publicClient.readContract({ address: vaultAddress(), abi: vaultAbi, functionName: "sharesOf", args: [user] }),
+    publicClient.readContract({ address: vaultAddress(), abi: vaultAbi, functionName: "previewValue", args: [user] }),
+  ]);
+  const wanted = parseUnits(usdAmount.toFixed(USDC_DECIMALS), USDC_DECIMALS);
+  if (wanted > value) throw new Error(`only ${formatUnits(value, USDC_DECIMALS)} USDC in the box`);
+  const burn = wanted === value ? shares : (shares * wanted) / value;
+  if (burn === 0n) throw new Error("amount too small");
+  const hash = await queueSend(() =>
+    walletClient.writeContract({ address: vaultAddress(), abi: vaultAbi, functionName: "withdrawTo", args: [user, recipient, burn] }),
+  );
+  await waitForTx(hash);
+  return { txHash: hash };
+}
+
 export async function previewValueOnChain(user: Address): Promise<number> {
   const value = await publicClient.readContract({
     address: vaultAddress(),
@@ -274,107 +299,4 @@ export async function registerEnsLabelOnChain(registryAddress: Address, label: s
   await publicClient.waitForTransactionReceipt({ hash });
 
   return { tokenId, txHash: hash };
-}
-
-export interface MintPositionParams {
-  token0: Address;
-  token1: Address;
-  fee: number;
-  tickLower: number;
-  tickUpper: number;
-  amount0Desired: bigint;
-  amount1Desired: bigint;
-  recipient: Address;
-}
-
-/// Phase 3 (PRD §6.4/§7.9): mints a real, new Uniswap v3 LP position NFT —
-/// the agent's tier→pool mapping (agent.ts) decides the params; this just
-/// executes them. `simulateContract` first because `writeContract` alone
-/// only returns a tx hash, not `mint`'s (tokenId, liquidity, amount0,
-/// amount1) return values.
-export async function mintPositionOnChain(params: MintPositionParams) {
-  if (!walletClient) throw new Error("chain not configured — set TREASURY_PRIVATE_KEY/USDC_ADDRESS/VAULT_ADDRESS");
-  const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
-
-  const mintArgs = [
-    {
-      token0: params.token0,
-      token1: params.token1,
-      fee: params.fee,
-      tickLower: params.tickLower,
-      tickUpper: params.tickUpper,
-      amount0Desired: params.amount0Desired,
-      amount1Desired: params.amount1Desired,
-      amount0Min: 0n,
-      amount1Min: 0n,
-      recipient: params.recipient,
-      deadline,
-    },
-  ] as const;
-
-  const { result } = await publicClient.simulateContract({
-    account: walletClient.account,
-    address: UNISWAP_NPM_ADDRESS,
-    abi: npmAbi,
-    functionName: "mint",
-    args: mintArgs,
-  });
-  const hash = await walletClient.writeContract({
-    address: UNISWAP_NPM_ADDRESS,
-    abi: npmAbi,
-    functionName: "mint",
-    args: mintArgs,
-  });
-  await publicClient.waitForTransactionReceipt({ hash });
-
-  const [tokenId, liquidity, amount0, amount1] = result;
-  return { tokenId, liquidity, amount0, amount1, txHash: hash };
-}
-
-/// Exits a position fully: reads its current liquidity, removes all of it,
-/// then collects the underlying tokens (+ any accrued fees) to `recipient`.
-/// Two on-chain calls because in Uniswap v3, `decreaseLiquidity` only
-/// credits an internal "owed" balance — `collect` is what actually moves
-/// the tokens.
-export async function exitPositionOnChain(tokenId: bigint, recipient: Address) {
-  if (!walletClient) throw new Error("chain not configured — set TREASURY_PRIVATE_KEY/USDC_ADDRESS/VAULT_ADDRESS");
-  const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
-
-  const position = await publicClient.readContract({
-    address: UNISWAP_NPM_ADDRESS,
-    abi: npmAbi,
-    functionName: "positions",
-    args: [tokenId],
-  });
-  const liquidity = position[7];
-
-  if (liquidity > 0n) {
-    const decreaseArgs = [{ tokenId, liquidity, amount0Min: 0n, amount1Min: 0n, deadline }] as const;
-    const decreaseHash = await walletClient.writeContract({
-      address: UNISWAP_NPM_ADDRESS,
-      abi: npmAbi,
-      functionName: "decreaseLiquidity",
-      args: decreaseArgs,
-    });
-    await publicClient.waitForTransactionReceipt({ hash: decreaseHash });
-  }
-
-  const collectArgs = [{ tokenId, recipient, amount0Max: MAX_UINT128, amount1Max: MAX_UINT128 }] as const;
-  const { result: collected } = await publicClient.simulateContract({
-    account: walletClient.account,
-    address: UNISWAP_NPM_ADDRESS,
-    abi: npmAbi,
-    functionName: "collect",
-    args: collectArgs,
-  });
-  const collectHash = await walletClient.writeContract({
-    address: UNISWAP_NPM_ADDRESS,
-    abi: npmAbi,
-    functionName: "collect",
-    args: collectArgs,
-  });
-  await publicClient.waitForTransactionReceipt({ hash: collectHash });
-
-  const [amount0, amount1] = collected;
-  return { amount0, amount1, txHash: collectHash };
 }

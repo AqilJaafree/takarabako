@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { store } from "../store.js";
+import { positionSummaries } from "../yieldPositions.js";
 import { findByPrivyUserId } from "../accounts.js";
 import { requireSession } from "../sessions.js";
 import { asyncHandler } from "../asyncHandler.js";
@@ -28,13 +28,15 @@ positionRouter.get("/position", requireSession("full"), asyncHandler(async (_req
     return;
   }
 
-  const positions = store.getPositions(userId).map((p) => ({
+  const positions = (await positionSummaries(userId)).map((p) => ({
     positionId: p.positionId,
     ensName: p.ensName,
     pair: p.pair,
     riskTier: p.riskTier,
+    label: p.label,
     apy: p.apyBps / 100,
-    value: p.amount, // Phase 1: read live value via vault.previewValue / position math
+    value: p.amount, // live, from the strategy's Aqua balances at today's ETH price
+    inRange: p.inRange,
   }));
 
   res.json({ ensName: account.ensName, vaultValue: await liveVaultValue(account.boundAddress), positions });

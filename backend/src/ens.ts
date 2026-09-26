@@ -30,8 +30,9 @@ export function walletSubname(label: string): string {
   return `${label}.${config.ens.parentName}`;
 }
 
-export function positionSubname(positionId: number): string {
-  return `uniswap-${positionId}.${config.ens.parentName}`;
+/// Each 1inch Aqua yield position gets its own name, e.g. aqua-1a2b3c4d.wantest.eth.
+export function positionSubname(positionId: string): string {
+  return `aqua-${positionId.replace(/-/g, "").slice(0, 8)}.${config.ens.parentName}`;
 }
 
 export async function registerSubname(subname: string, owner: string): Promise<{ txHash: string | null }> {

@@ -7,7 +7,9 @@ import { cashReceiptReady, fromTkUnits } from "../cashReceipt.js";
 import { reserveStatus, treasuryBalances, vaultState } from "../treasury.js";
 import { recentEvents } from "../chainEvents.js";
 import { listProposals, recentAlerts } from "../proposals.js";
-import { getPoolsInfo } from "../agent.js";
+import { getTiersInfo } from "../agent.js";
+import { ethUsd, openPositions, viewPosition } from "../aqua.js";
+import { ADVANCED } from "../aquaMath.js";
 
 /// GET /dashboard/* — the operator dashboard's data (Curvegrid Digital Asset
 /// Dashboard track). Contract state comes from MultiBaas reads, holdings and
@@ -194,42 +196,26 @@ dashboardRouter.get("/dashboard/flows", asyncHandler(async (_req, res) => {
 dashboardRouter.get("/dashboard/positions", asyncHandler(async (_req, res) => {
   res.json(
     await cached("positions", async () => {
-      const pools = getPoolsInfo();
-      const { rows } = await pool.query(
-        `select risk_tier as "riskTier", pair, count(*)::int as opened, coalesce(sum(amount_usd), 0)::float as "amountUsd",
-                max(apy_bps) as "apyBps", max(created_at) as "lastOpenedAt"
-         from yield_events where action = 'open' group by risk_tier, pair`,
-      );
-      const tiers = pools.map((p) => {
-        const r = rows.find((x) => x.riskTier === p.riskTier);
+      // 1inch Aqua strategies the treasury has shipped, by tier, valued live.
+      const [open, spot] = await Promise.all([openPositions(), ethUsd().catch(() => null)]);
+      const views = spot ? await Promise.all(open.map((p) => viewPosition(p, spot).catch(() => null))) : [];
+      const modes = ["low", "medium", "high", "advanced"] as const;
+      const tiers = modes.map((mode) => {
+        const mine = views.filter((v): v is NonNullable<typeof v> => v !== null && v.mode === mode);
+        const info = getTiersInfo(spot).find((t) => t.riskTier === mode);
         return {
-          riskTier: p.riskTier,
-          pair: p.pair,
-          pool: p.poolAddress,
-          apyBps: r?.apyBps ?? p.apyBps,
-          opened: r?.opened ?? 0,
-          amountUsd: r?.amountUsd ?? 0,
-          // Our pools are full-range, so they're always in range.
-          inRange: p.fullRange ? true : null,
-          lastOpenedAt: r?.lastOpenedAt ?? null,
+          mode,
+          label: mode === "advanced" ? "Advanced" : info?.label ?? mode,
+          range: mode === "advanced" ? "custom" : info?.fullRange ? "full range" : `±${info?.rangePct}%`,
+          apyBps: mode === "advanced" ? ADVANCED.apyEstBps : info?.apyBps ?? 0,
+          open: mine.length,
+          strategies: mine.reduce((s, v) => s + v.bins.length, 0),
+          amountUsd: mine.reduce((s, v) => s + v.amountUsd, 0),
+          valueUsd: mine.reduce((s, v) => s + (v.valueUsd ?? 0), 0),
+          inRange: mine.filter((v) => v.inRange).length,
         };
       });
-
-      // LP NFTs the treasury minted (from the webhook log), with live liquidity via MultiBaas.
-      const { rows: nfts } = await pool.query(
-        `select inputs->>'tokenId' as "tokenId", triggered_at as at from chain_events
-         where contract_label = $1 and name = 'Transfer' and inputs->>'from' = $2
-         order by triggered_at desc limit 10`,
-        [LABELS.uniswapNpm, ZERO],
-      );
-      const nftPositions = await Promise.all(
-        nfts.map(async (n) => {
-          const out = await mbCall<unknown>("uniswap-npm", LABELS.uniswapNpm, "positions", [n.tokenId]).catch(() => null);
-          const fields = out ? (Array.isArray(out) ? out : Object.values(out as object)) : null;
-          return { tokenId: n.tokenId, mintedAt: n.at, liquidity: fields ? String(fields[7]) : null, fee: fields ? Number(fields[4]) : null };
-        }),
-      );
-      return { tiers, nfts: nftPositions };
+      return { spot, aqua: config.aqua.address, router: config.aqua.router, tiers };
     }),
   );
 }));

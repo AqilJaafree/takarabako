@@ -1,24 +1,22 @@
 import { Router } from "express";
 import { z } from "zod";
-import { store } from "../store.js";
 import { findByPrivyUserId } from "../accounts.js";
 import { requireSession } from "../sessions.js";
-import { recordYieldEvent } from "../history.js";
-import { positionSubname, registerSubname } from "../ens.js";
-import { proposeOpenPosition, getPoolsInfo } from "../agent.js";
+import { getTiersInfo, tierRationale } from "../agent.js";
+import { ethUsd } from "../aqua.js";
+import { openForCustomer } from "../yieldPositions.js";
 import { asyncHandler } from "../asyncHandler.js";
 
-/// POST /agent/open-position — PRD §6.4 + §7.9. Routes idle USDC into the
-/// Claude Haiku agent's risk-tiered Uniswap v3/v4 position management, then
-/// registers the position's own ENS v2 subname (`uniswap-{positionId}.wantest.eth`).
+/// The beginner yield tiers, on 1inch Aqua (ETH/USDC strategies shipped by
+/// the treasury). Route names are kept from the Uniswap version so the
+/// kiosk and web app call the same endpoints.
 export const agentRouter = Router();
 
-/// GET /agent/pools — public Uniswap v3 pool metadata per risk tier, so the
-/// kiosk's "get yield" screen can show the actual pair/pool a deposit goes
-/// into before the user commits to a risk level.
-agentRouter.get("/agent/pools", (_req, res) => {
-  res.json({ pools: getPoolsInfo() });
-});
+/// GET /agent/pools — the three tiers with ranges placed around today's price.
+agentRouter.get("/agent/pools", asyncHandler(async (_req, res) => {
+  const spot = await ethUsd().catch(() => null);
+  res.json({ spot, pools: getTiersInfo(spot) });
+}));
 
 const OpenPositionBody = z.object({
   riskLevel: z.enum(["low", "medium", "high"]),
@@ -32,50 +30,20 @@ agentRouter.post("/agent/open-position", requireSession("full"), asyncHandler(as
     return;
   }
   const { riskLevel, amount } = parsed.data;
-  const userId: string = res.locals.session.privyUserId;
-
-  const account = await findByPrivyUserId(userId);
+  const account = await findByPrivyUserId(res.locals.session.privyUserId);
   if (!account) {
     res.status(404).json({ error: "unknown account — complete /verify first" });
     return;
   }
-
-  const proposal = await proposeOpenPosition(riskLevel, amount);
-
-  const position = store.addPosition({
-    ensName: "", // filled in below once the id is assigned
-    user: userId,
-    riskTier: riskLevel,
-    pair: proposal.pair,
-    amount,
-    apyBps: proposal.apyBps,
-    openedAt: Date.now(),
-    nftTokenId: proposal.tokenId,
-  });
-
-  const ensName = positionSubname(position.positionId);
-  position.ensName = ensName;
-  await registerSubname(ensName, account.boundAddress);
-
-  await recordYieldEvent({
-    privyUserId: userId,
-    action: "open",
-    riskTier: riskLevel,
-    pair: position.pair,
-    apyBps: position.apyBps,
-    amountUsd: amount,
-    rationale: proposal.rationale ?? null,
-    ensName,
-    txHash: proposal.txHash ?? null,
-  });
-
+  const rationale = await tierRationale(riskLevel, amount, await ethUsd());
+  const { position, ensName } = await openForCustomer(account, { mode: riskLevel, amount, rationale });
   res.json({
-    positionId: position.positionId,
+    positionId: position.id,
     ensName,
-    pair: position.pair,
-    apyBps: position.apyBps,
-    nftTokenId: proposal.tokenId,
-    txHash: proposal.txHash,
-    rationale: proposal.rationale,
+    pair: `ETH/USDC · ${position.label}`,
+    apyBps: position.apyEstBps,
+    txHash: position.vaultTx,
+    rationale,
+    position,
   });
 }));
