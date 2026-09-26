@@ -7,12 +7,15 @@ import type { OpsData } from "./opsTypes";
 export async function loadOpsData(): Promise<OpsData> {
   const get = <T,>(path: string) =>
     backendFetch<T>(path).catch((err: unknown) => ({ error: err instanceof Error ? err.message : "request failed" }));
-  const [summary, holders, flows, positions, events] = await Promise.all([
+  const [summary, holders, flows, positions, events, integrity, mandate, reports] = await Promise.all([
     get<OpsData["summary"]>("/dashboard/summary"),
     get<OpsData["holders"]>("/dashboard/holders"),
     get<OpsData["flows"]>("/dashboard/flows"),
     get<OpsData["positions"]>("/dashboard/positions"),
     get<OpsData["events"]>("/dashboard/events"),
+    get<OpsData["integrity"]>("/ops/integrity"),
+    get<OpsData["mandate"]>("/ops/mandate"),
+    get<OpsData["reports"]>("/ops/reports"),
   ]);
-  return { summary, holders, flows, positions, events, loadedAt: new Date().toISOString() };
+  return { summary, holders, flows, positions, events, integrity, mandate, reports, loadedAt: new Date().toISOString() };
 }
