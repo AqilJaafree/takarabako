@@ -1,6 +1,7 @@
 import { pool } from "./db.js";
 import { config } from "./config.js";
 import { checkPolicy, type PolicyContext, type ProposalAction } from "./policy.js";
+import { checkMandate, mandateUsage } from "./mandate.js";
 
 /// The ops agent's proposals: created pending (only if policy allows),
 /// executed only when a human approves. Execution goes through MultiBaas.
@@ -16,11 +17,12 @@ export interface Proposal {
   status: ProposalStatus;
   txHash: string | null;
   error: string | null;
+  autonomous: boolean;
   createdAt: Date;
   decidedAt: Date | null;
 }
 
-const COLUMNS = `id, action, args, rationale, source, status, tx_hash as "txHash", error,
+const COLUMNS = `id, action, args, rationale, source, status, tx_hash as "txHash", error, autonomous,
   created_at as "createdAt", decided_at as "decidedAt"`;
 
 /// Amounts of each action committed today (UTC). When filing, pending
@@ -39,13 +41,17 @@ export async function policyContext(opts: { includePending?: boolean } = {}): Pr
   return { fundedToday: total("fund_yield_reserve"), mintedToday: total("mint_usdc_float"), knownKiosks: [config.kioskId, ...config.previousKioskIds] };
 }
 
-export type CreateResult = { ok: true; proposal: Proposal } | { ok: false; reason: string };
+export type CreateResult = { ok: true; proposal: Proposal; mandate?: string } | { ok: false; reason: string };
 
+/// Files a proposal if policy allows. With `execute`, an action inside the
+/// agent's mandate (mandate.ts) is carried out at once and marked
+/// autonomous; anything else waits for a human, with the reason.
 export async function createProposal(p: {
   action: ProposalAction;
   args: Record<string, unknown>;
   rationale: string;
   source?: "ask" | "monitor";
+  execute?: Executor;
 }): Promise<CreateResult> {
   const check = checkPolicy(p.action, p.args, await policyContext({ includePending: true }));
   if (!check.ok) return check;
@@ -53,7 +59,14 @@ export async function createProposal(p: {
     `insert into ops_proposals (id, action, args, rationale, source) values ($1, $2, $3, $4, $5) returning ${COLUMNS}`,
     [crypto.randomUUID(), p.action, JSON.stringify(p.args), p.rationale, p.source ?? "ask"],
   );
-  return { ok: true, proposal: rows[0] };
+  const proposal: Proposal = rows[0];
+  if (!p.execute) return { ok: true, proposal };
+
+  const mandate = checkMandate(p.action, p.args, await mandateUsage());
+  if (!mandate.autonomous) return { ok: true, proposal, mandate: mandate.reason };
+  await pool.query("update ops_proposals set autonomous = true where id = $1", [proposal.id]);
+  const done = await approveProposal(proposal.id, p.execute);
+  return done.ok ? { ok: true, proposal: done.proposal } : { ok: true, proposal: (await getProposal(proposal.id))!, mandate: done.error };
 }
 
 export async function listProposals(limit = 50): Promise<Proposal[]> {
