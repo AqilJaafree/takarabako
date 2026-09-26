@@ -51,13 +51,13 @@ const result = await rpc("tools/call", { name: TOOL, arguments: { app_id: appId,
 const blob = JSON.stringify(result);
 if (result?.isError) throw new Error(`${TOOL} failed: ${blob}`);
 console.log(`${TOOL}(${appId}, enabled=${enabled}):`);
-for (const c of result?.content ?? []) if (c.type === "text") console.log(`  ${c.text.replace(/stg_[A-Za-z0-9_-]+/g, "stg_…")}`);
+for (const c of result?.content ?? []) if (c.type === "text") console.log(`  ${c.text.replace(/\b(?:stg|sk)_[A-Za-z0-9_-]+/g, "…")}`);
 
 if (enabled) {
   const token =
     (result?.structuredContent?.staging_verification_token as string | undefined) ??
     (result?.structuredContent?.token as string | undefined) ??
-    blob.match(/stg_[A-Za-z0-9_-]+/)?.[0] ??
+    blob.match(/\b(?:stg|sk)_[A-Za-z0-9_-]+/)?.[0] ??
     blob.match(/"(?:staging_verification_)?token"\s*:\s*"([^"]+)"/)?.[1];
   if (!token) throw new Error("the window opened but no token came back — see the output above");
   const envPath = new URL("../.env", import.meta.url);
