@@ -1,6 +1,6 @@
 import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
-import { setSessionCookie } from "./backend";
+import { backendFetch, setSessionCookie } from "./backend";
 import type { KioskLogin } from "./types";
 
 /// The Pi's bill-acceptor bridge (device-agent/server.js). After a kiosk
@@ -55,6 +55,13 @@ interface BackendLogin {
 /// in the kiosk cookie, and give the browser only what it shows.
 export async function kioskLoginResponse(req: NextRequest, login: BackendLogin) {
   const bridgeStatus = await bridgeStartSession(login);
+  // Every visit to the cash slot is a deposit session that ends in a receipt.
+  const depositSession = await backendFetch<{ id: string }>("/deposit-sessions", { token: login.token, method: "POST" }).catch(
+    (err) => {
+      console.error("[kiosk] could not open a deposit session:", err instanceof Error ? err.message : err);
+      return null;
+    },
+  );
   const body: KioskLogin = {
     ensName: login.ensName,
     balance: login.balance,
@@ -63,6 +70,7 @@ export async function kioskLoginResponse(req: NextRequest, login: BackendLogin) 
     qrFallback: login.qrFallback ?? null,
     qrEmailed: login.qrEmailed ?? false,
     bridge: bridgeStatus,
+    depositSessionId: depositSession?.id ?? null,
   };
   const res = NextResponse.json(body);
   setSessionCookie(res, req, "kiosk", login.token);

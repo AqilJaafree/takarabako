@@ -7,14 +7,21 @@ import { useLiveEvents } from "@/lib/useLiveEvents";
 import { apy, cash, usd, without } from "@/lib/format";
 import { TreasureStage } from "@/components/treasure/TreasureStage";
 import { useStageDirector } from "@/components/treasure/useStageDirector";
+import { DepositFlow, type Refusal } from "./DepositFlow";
 
-const GREETING = "いらっしゃいませ! Tap in with your email or wallet QR.";
+const GREETINGS = {
+  kiosk: "いらっしゃいませ! Tap in with your email or wallet QR.",
+  deposit: "いらっしゃいませ! Show me your QR to deposit.",
+} as const;
 const bubble = (text: string) => (text.length > 170 ? `${text.slice(0, 167).trimEnd()}…` : text);
 
 /// Kiosk flows, as on the original device-agent page (ATM-style: identify
 /// first, then insert cash):
 ///   - email login → full access (deposit, yield, withdraw as cash or to wallet)
 ///   - wallet-QR scan → deposit only
+/// mode="deposit" (the /deposit page) is a cash-deposit terminal: it opens on
+/// the camera, only takes wallet-QR logins, and goes back to scanning after
+/// every customer.
 /// The backend session token never reaches this page: /api/kiosk/* keeps it
 /// in an httpOnly cookie and hands it to the Pi bridge server-side.
 
@@ -32,7 +39,7 @@ interface Pending {
 
 // device-agent/server.js GET /events entries.
 type BridgeEvent =
-  | { seq: number; id: string; type: "rejected"; reason: string }
+  | { seq: number; id: string; type: "rejected"; reason: string; code?: Refusal["code"] }
   | {
       seq: number;
       id: string;
@@ -59,8 +66,19 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   return json as T;
 }
 
-export function KioskApp({ pools, testDeposit }: { pools: Pool[]; testDeposit: boolean }) {
-  const [screen, setScreen] = useState<Screen>("welcome");
+export function KioskApp({
+  pools,
+  testDeposit,
+  mode = "kiosk",
+}: {
+  pools: Pool[];
+  testDeposit: boolean;
+  mode?: "kiosk" | "deposit";
+}) {
+  const depositOnly = mode === "deposit";
+  const GREETING = GREETINGS[mode];
+  const startScreen: Screen = depositOnly ? "scan" : "welcome";
+  const [screen, setScreen] = useState<Screen>(startScreen);
   const [session, setSession] = useState<KioskLogin | null>(null);
   const [balance, setBalance] = useState(0);
   const [expiresAt, setExpiresAt] = useState(0);
@@ -70,6 +88,7 @@ export function KioskApp({ pools, testDeposit }: { pools: Pool[]; testDeposit: b
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [ticker, setTicker] = useState<string[]>([]);
+  const [refusal, setRefusal] = useState<Refusal | null>(null);
   const director = useStageDirector(GREETING);
   const { deposit: cue, say: catSay, withdraw: burst } = director;
 
@@ -87,9 +106,9 @@ export function KioskApp({ pools, testDeposit }: { pools: Pool[]; testDeposit: b
     setPosition(null);
     setReceipt(null);
     setMessage("");
-    setScreen("welcome");
+    setScreen(startScreen);
     catSay(GREETING, "idle", 0);
-  }, [catSay]);
+  }, [catSay, GREETING, startScreen]);
 
   // A fresh page load always starts at the welcome screen with no session,
   // so the next person never lands in someone else's account.
@@ -156,7 +175,9 @@ export function KioskApp({ pools, testDeposit }: { pools: Pool[]; testDeposit: b
       if (e.type === "deposit.pending") applyDeposit(e.depositId, { status: "pending", amount: e.amount, currency: e.currency, estUsd: e.estUsd });
       else if (e.type === "deposit.retrying") applyDeposit(e.depositId, { status: "retrying", retry: { attempt: e.attempt, of: e.maxAttempts } });
       else if (e.type === "deposit.confirmed") applyDeposit(e.depositId, { status: "confirmed", amount: e.amount, currency: e.currency, balance: e.balance, usdAmount: e.usdAmount, txHash: e.txHash });
-      else applyDeposit(e.depositId, { status: "failed", amount: e.amount, currency: e.currency, error: e.error });
+      else if (e.type === "deposit.failed") applyDeposit(e.depositId, { status: "failed", amount: e.amount, currency: e.currency, error: e.error });
+      // deposit.refused: shown from the Pi bridge's feed below, which also
+      // sees notes refused while nobody is logged in.
     },
     [applyDeposit],
   );
@@ -181,8 +202,15 @@ export function KioskApp({ pools, testDeposit }: { pools: Pool[]; testDeposit: b
         for (const e of events) {
           since = Math.max(since, e.seq);
           if (e.type === "rejected") {
+            const code = e.code ?? "bad_condition";
             say(`note handed back (${e.reason}) — please try again`);
-            catSay("That note came back — smooth it out and try again?", "worried");
+            catSay(
+              code === "unsupported"
+                ? "Hmm, I can't take that note. Try another one?"
+                : "That note came back — smooth it out and try again?",
+              "worried",
+            );
+            setRefusal({ code, at: Date.now() });
             continue;
           }
           if (liveRef.current === "live" || seen.get(e.id) === e.status) continue;
@@ -235,6 +263,7 @@ export function KioskApp({ pools, testDeposit }: { pools: Pool[]; testDeposit: b
       startSession(await post<KioskLogin>("/api/kiosk/login-qr", { qr: text }));
     } catch (err) {
       setMessage((err as Error).message);
+      // Deposit terminal: show why, with a button to scan again.
       setScreen("welcome");
     } finally {
       setBusy(false);
@@ -307,7 +336,18 @@ export function KioskApp({ pools, testDeposit }: { pools: Pool[]; testDeposit: b
           />
         )}
 
-        {screen === "welcome" && (
+        {screen === "welcome" && depositOnly && (
+          <section className="card" style={{ textAlign: "center" }}>
+            <p className="label">Deposit cash</p>
+            <p className="muted">Open <b>My QR</b> on your phone (or the QR from your welcome email) and show it to the camera.</p>
+            {message && <div className="notice error">{message}</div>}
+            <button className="btn btn-gold btn-block" disabled={busy} onClick={() => { setMessage(""); setScreen("scan"); }}>
+              {busy ? "Checking your QR…" : "Scan my QR"}
+            </button>
+          </section>
+        )}
+
+        {screen === "welcome" && !depositOnly && (
           <section className="card">
             <p className="muted" style={{ textAlign: "center" }}>Enter your email to begin — like a card at an ATM.</p>
             <form onSubmit={onEmail}>
@@ -325,10 +365,38 @@ export function KioskApp({ pools, testDeposit }: { pools: Pool[]; testDeposit: b
           <Scanner
             onResult={onQr}
             onCancel={(why) => { setMessage(why ?? ""); setScreen("welcome"); }}
+            hint={depositOnly ? "Open My QR on your phone, then hold it up to the camera." : undefined}
+            fallback={depositOnly ? "check the camera is connected and allowed, then tap Scan my QR" : "log in with email instead"}
           />
         )}
 
-        {screen === "account" && session && (
+        {screen === "account" && session && depositOnly && (
+          <>
+            <section className="lacquer-card" aria-live="polite">
+              <div className="spread">
+                <span className="label">Depositing to</span>
+                <span className={`pill ${live === "live" ? "ok" : "warn"}`}>{live === "live" ? "Live" : "Reconnecting"}</span>
+              </div>
+              <div className="ens">{session.ensName}</div>
+              <div className="balance">{usd(balance)}</div>
+            </section>
+            {session.bridge === "failed" && (
+              <div className="notice error">The cash slot is offline — notes will be handed back. Please ask staff.</div>
+            )}
+            {session.depositSessionId ? (
+              <DepositFlow
+                sessionId={session.depositSessionId}
+                refusal={refusal}
+                onDone={logout}
+                onTestDeposit={testDeposit ? onTestDeposit : undefined}
+              />
+            ) : (
+              <div className="notice error">Couldn&apos;t start a deposit. Tap Done and scan again.</div>
+            )}
+          </>
+        )}
+
+        {screen === "account" && session && !depositOnly && (
           <>
             <section className="lacquer-card" aria-live="polite">
               <div className="spread">
@@ -436,7 +504,17 @@ export function KioskApp({ pools, testDeposit }: { pools: Pool[]; testDeposit: b
 
 /// Wallet-QR camera scan. Browsers only allow the camera on a secure page
 /// (https or localhost), so on the bench the kiosk is opened via localhost.
-function Scanner({ onResult, onCancel }: { onResult: (text: string) => void; onCancel: (why?: string) => void }) {
+function Scanner({
+  onResult,
+  onCancel,
+  hint,
+  fallback = "log in with email instead",
+}: {
+  onResult: (text: string) => void;
+  onCancel: (why?: string) => void;
+  hint?: string;
+  fallback?: string; // what to do when there's no camera (the deposit terminal has no email login)
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [status, setStatus] = useState("Starting the camera…");
 
@@ -447,13 +525,13 @@ function Scanner({ onResult, onCancel }: { onResult: (text: string) => void; onC
 
     (async () => {
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-        onCancel("Camera unavailable here: open the kiosk via localhost or https, or log in with email.");
+        onCancel(`Camera unavailable here (the page must be on localhost or https) — ${fallback}.`);
         return;
       }
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
       } catch (e) {
-        onCancel(`Camera unavailable (${(e as Error).name}) — log in with email instead.`);
+        onCancel(`Camera unavailable (${(e as Error).name}) — ${fallback}.`);
         return;
       }
       if (done) return;
@@ -495,6 +573,7 @@ function Scanner({ onResult, onCancel }: { onResult: (text: string) => void; onC
   return (
     <section className="card">
       <p className="label" style={{ textAlign: "center" }}>Show your QR to the camera</p>
+      {hint && <p className="muted small" style={{ textAlign: "center" }}>{hint}</p>}
       <div className="scan-frame">
         <video ref={videoRef} playsInline muted />
       </div>

@@ -626,3 +626,213 @@ code,
   pointer-events: none;
   animation: pop 0.4s ease-out;
 }
+
+/* ---------- deposit terminal (/deposit) ---------- */
+.deposit-flow {
+  display: grid;
+  gap: 12px;
+}
+
+/* "Insert your notes": a note gliding into the slot. */
+.slot-hint {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 18px 12px;
+  border: 1px dashed rgba(227, 179, 106, 0.4);
+  border-radius: var(--radius);
+  background: var(--gold-soft);
+  text-align: center;
+  font-size: 18px;
+}
+
+.slot-hint p {
+  margin: 0;
+}
+
+.slot-anim {
+  position: relative;
+  width: 120px;
+  height: 54px;
+}
+
+.slot-note {
+  position: absolute;
+  left: 20px;
+  top: 0;
+  width: 80px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #9fd3a5, #6fae7a);
+  color: #10331a;
+  font: 700 13px var(--font-sans);
+}
+
+.slot-mouth {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  width: 104px;
+  height: 8px;
+  border-radius: 4px;
+  background: #050303;
+  box-shadow: 0 0 0 2px var(--gold);
+}
+
+.deposit-notes .list {
+  margin-bottom: 10px;
+}
+
+.deposit-total {
+  padding: 10px 0 12px;
+  border-top: 1px dashed var(--line);
+  font-size: 18px;
+}
+
+.deposit-total b {
+  color: var(--gold);
+  font-family: var(--font-serif);
+  font-size: 22px;
+}
+
+/* ---------- digital receipt ---------- */
+.receipt-wrap {
+  display: grid;
+  gap: 14px;
+}
+
+.receipt-slot {
+  height: 10px;
+  margin: 0 18px -14px;
+  border-radius: 6px;
+  background: #050303;
+  box-shadow: 0 0 0 2px var(--gold);
+  position: relative;
+  z-index: 1;
+}
+
+.receipt {
+  margin: 0 30px;
+  padding: 22px 20px 18px;
+  background: #fffaf2;
+  color: #1a0f0d;
+  border-radius: 0 0 10px 10px;
+  /* torn-paper bottom edge */
+  mask: linear-gradient(#000 0 0) top / 100% calc(100% - 8px) no-repeat,
+    conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / 14px 8px repeat-x;
+  font-family: var(--font-sans);
+}
+
+.receipt-brand {
+  margin: 0;
+  font: 700 20px var(--font-serif);
+}
+
+.receipt-sub {
+  margin: 2px 0 14px;
+  color: #6e5a4a;
+  font-size: 13px;
+}
+
+.receipt-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: ui-monospace, monospace;
+  font-size: 15px;
+}
+
+.receipt-lines li {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px dotted #c9b8a4;
+}
+
+.receipt-status.confirmed {
+  color: #1f7a4f;
+}
+
+.receipt-status.failed {
+  color: #b3261e;
+}
+
+.receipt-status.queued,
+.receipt-status.sending {
+  color: #9a6b1e;
+}
+
+.receipt-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-top: 12px;
+  font-size: 17px;
+}
+
+.receipt-total b {
+  font: 700 24px var(--font-serif);
+}
+
+.receipt-foot {
+  margin: 12px 0 0;
+  color: #6e5a4a;
+  font-size: 12px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .slot-note {
+    animation: note-in 1.8s cubic-bezier(0.55, 0, 0.45, 1) infinite;
+  }
+
+  .receipt {
+    animation: receipt-print 1.1s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+
+  .receipt-lines li {
+    animation: receipt-line 0.35s ease-out both;
+  }
+}
+
+@keyframes note-in {
+  0% {
+    transform: translateY(-6px);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  75% {
+    transform: translateY(22px) scaleY(0.2);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(22px) scaleY(0.2);
+    opacity: 0;
+  }
+}
+
+/* The receipt feeds out of the slot, top edge first. */
+@keyframes receipt-print {
+  from {
+    clip-path: inset(0 0 100% 0);
+    transform: translateY(-24px);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    transform: translateY(0);
+  }
+}
+
+@keyframes receipt-line {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
