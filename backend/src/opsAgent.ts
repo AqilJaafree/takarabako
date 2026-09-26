@@ -28,6 +28,7 @@ const SAVED_QUERIES = [
   "tkcash_holders",
   "deposits_by_user",
   "withdrawals",
+  "aqua_pulled_by_token",
   "reserve_attestations",
 ] as const;
 
@@ -65,7 +66,7 @@ const TOOLS: BetaTool[] = [
   },
   {
     name: "list_recent_events",
-    description: "Most recent indexed contract events, newest first. contract is a MultiBaas label: takarabako_vault, takarabako_cash_receipt, mock_usdc, uniswap_v3_npm or ens_user_registry; empty string for all.",
+    description: "Most recent indexed contract events, newest first. contract is a MultiBaas label: takarabako_vault, takarabako_cash_receipt, mock_usdc, oneinch_aqua or ens_user_registry; empty string for all.",
     input_schema: obj({ contract: { type: "string" }, limit: { type: "integer", description: "1 to 50" } }, ["contract", "limit"]),
     strict: true,
   },

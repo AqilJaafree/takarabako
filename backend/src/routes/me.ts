@@ -3,7 +3,7 @@ import type { Address } from "viem";
 import QRCode from "qrcode";
 import { findByPrivyUserId, listDeposits } from "../accounts.js";
 import { requireSession } from "../sessions.js";
-import { store } from "../store.js";
+import { positionSummaries } from "../yieldPositions.js";
 import { chainReady, previewValueOnChain, currentApyBpsOnChain } from "../chain.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { config } from "../config.js";
@@ -30,7 +30,7 @@ meRouter.get("/me", requireSession("full"), asyncHandler(async (_req, res) => {
     privyWallet: account.privyWallet,
     balance,
     apyBps,
-    positions: store.getPositions(userId),
+    positions: await positionSummaries(userId).catch(() => []),
     expiresAt: res.locals.session.expiresAt,
   });
 }));

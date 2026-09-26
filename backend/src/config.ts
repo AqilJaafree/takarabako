@@ -49,6 +49,18 @@ export const config = {
     model: process.env.OPS_AGENT_MODEL ?? "claude-opus-5",
     adminToken: process.env.OPS_ADMIN_TOKEN ?? "",
   },
+  // 1inch Aqua yield (aqua.ts). Aqua and its SwapVM router are deployed on
+  // Sepolia at the same addresses as mainnet (the router at its previous
+  // address; the SDK doesn't list Sepolia). mETH is our mock ETH.
+  aqua: {
+    address: process.env.AQUA_ADDRESS ?? "0x1111113ccf1426a8e30e2bff5e005d929bf6a90a",
+    router: process.env.AQUA_ROUTER_ADDRESS ?? "0x1111113db0e0ef9d0e3a50d5f094a3a57a26c0de",
+    methAddress: process.env.METH_ADDRESS ?? "0x5A9E9fF59AeBb96C14DFaB7C2a43d0C130ba9282",
+    // Demo market maker (aquaSimulator.ts): trades against open strategies
+    // so they earn fees and move through their ranges on a quiet testnet.
+    simEnabled: process.env.AQUA_SIM === "1",
+    simIntervalMs: Number(process.env.AQUA_SIM_INTERVAL_MS ?? 600_000),
+  },
   // USD per 1 MYR. Unset or 0 = use the live rate (see fx.ts).
   fx: {
     myrUsdRate: Number(process.env.MYR_USD_RATE ?? 0),

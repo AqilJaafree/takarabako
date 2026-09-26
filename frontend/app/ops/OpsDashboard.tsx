@@ -332,34 +332,34 @@ function DepositorsPanel({ holders }: { holders: Holders | null }) {
 function PositionsPanel({ positions, error }: { positions: Positions | null; error: string | null }) {
   return (
     <section className="card">
-      <h2>Uniswap positions by tier</h2>
+      <h2>1inch Aqua strategies</h2>
+      <p className="muted small">
+        ETH/USDC SwapVM strategies the treasury has shipped through{" "}
+        {positions ? <a href={`https://sepolia.etherscan.io/address/${positions.aqua}`} target="_blank" rel="noreferrer">Aqua</a> : "Aqua"}, valued live
+        {positions?.spot ? ` at ETH ${usd(positions.spot, 0)}` : ""}.
+      </p>
       {!positions ? (
         <PanelError error={error} />
       ) : (
-        <>
-          <div className="ops-table-wrap">
-            <table className="ops-table">
-              <thead><tr><th>Tier</th><th>Pair</th><th>APY</th><th>Opened</th><th>Amount</th><th>Range</th></tr></thead>
-              <tbody>
-                {positions.tiers.map((t) => (
-                  <tr key={t.riskTier}>
-                    <td>{t.riskTier}</td>
-                    <td>{t.pair}</td>
-                    <td>{apy(t.apyBps)}</td>
-                    <td>{t.opened}</td>
-                    <td>{usd(t.amountUsd)}</td>
-                    <td>{t.inRange === null ? "—" : t.inRange ? <span className="tone-ok">✓ full range</span> : <span className="tone-bad">✗ out</span>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {positions.nfts.length > 0 && (
-            <p className="muted small" style={{ marginTop: 10 }}>
-              LP NFTs minted: {positions.nfts.map((n) => `#${n.tokenId}${n.liquidity === "0" ? " (closed)" : ""}`).join(", ")}
-            </p>
-          )}
-        </>
+        <div className="ops-table-wrap">
+          <table className="ops-table">
+            <thead><tr><th>Tier</th><th>Range</th><th>Est. APY</th><th>Open</th><th>Strategies</th><th>In</th><th>Value</th><th>In range</th></tr></thead>
+            <tbody>
+              {positions.tiers.map((t) => (
+                <tr key={t.mode}>
+                  <td>{t.label}</td>
+                  <td>{t.range}</td>
+                  <td>{apy(t.apyBps)}</td>
+                  <td>{t.open}</td>
+                  <td>{t.strategies}</td>
+                  <td>{usd(t.amountUsd)}</td>
+                  <td>{usd(t.valueUsd)}</td>
+                  <td>{t.open === 0 ? "—" : t.inRange === t.open ? <span className="tone-ok">✓ all</span> : <span className="tone-warn">{t.inRange}/{t.open}</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );
@@ -374,6 +374,10 @@ function describe(e: ChainEvent): string {
     case "Withdrawn": return `Vault withdrawal ${usd6(e.inputs.usdcAmount)}`;
     case "ReserveAttested": return `Count: ${usd6(e.inputs.counted)} vs chain ${usd6(e.inputs.onChain)}`;
     case "LabelRegistered": return `ENS name ${e.inputs.label}`;
+    case "Shipped": return "Aqua strategy shipped";
+    case "Docked": return "Aqua strategy docked";
+    case "Pulled": return `Aqua swap: out ${e.inputs.token?.toLowerCase().startsWith("0x6cc5") ? usd6(e.inputs.amount) + " USDC" : "mETH"}`;
+    case "Pushed": return `Aqua swap: in ${e.inputs.token?.toLowerCase().startsWith("0x6cc5") ? usd6(e.inputs.amount) + " USDC" : "mETH"}`;
     default: return e.name;
   }
 }

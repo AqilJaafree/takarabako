@@ -134,17 +134,26 @@ export function Dashboard({
 
       {me.positions.length > 0 && (
         <section className="card">
-          <h2>Yield positions</h2>
+          <div className="spread" style={{ marginBottom: 4 }}>
+            <h2 style={{ margin: 0 }}>Yield on 1inch Aqua</h2>
+            <Link href="/yield" className="small">Manage →</Link>
+          </div>
           <ul className="list">
             {me.positions.map((p) => (
               <li key={p.positionId}>
                 <div>
-                  <div style={{ textTransform: "capitalize" }}>{p.riskTier} · {p.pair}</div>
+                  <div>{p.label} · {p.pair}</div>
+                  <div className="small muted">
+                    {p.priceMin !== null && p.priceMax !== null ? `${usd(p.priceMin, 0)} – ${usd(p.priceMax, 0)}` : "Full range"}
+                    {p.inRange !== null && (
+                      <span className={p.inRange ? "tone-ok" : "tone-warn"}> · {p.inRange ? "earning" : "out of range"}</span>
+                    )}
+                  </div>
                   <div className="ens small muted">{p.ensName}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div className="amount">{usd(p.amount)}</div>
-                  <div className="small muted">{apy(p.apyBps)} APY</div>
+                  <div className="small muted">~{apy(p.apyBps)} APY</div>
                 </div>
               </li>
             ))}

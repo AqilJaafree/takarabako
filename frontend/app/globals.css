@@ -2015,3 +2015,281 @@ code,
   font-size: 13px;
   color: var(--muted);
 }
+
+/* ---------- yield: 1inch Aqua (app/(customer)/(authed)/yield) ---------- */
+.yield-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 5px;
+  margin: 4px 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.yield-tabs button {
+  appearance: none;
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--cream);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.yield-tabs button.is-on {
+  background: linear-gradient(180deg, rgba(227, 179, 106, 0.2), rgba(227, 179, 106, 0.08));
+  box-shadow: inset 0 0 0 1px rgba(227, 179, 106, 0.45);
+}
+
+.risk-dots {
+  margin-left: 6px;
+  color: var(--gold);
+  font-size: 10px;
+  letter-spacing: 2px;
+}
+
+.risk-dots .off {
+  color: var(--line);
+}
+
+.amount-picker {
+  margin-top: 16px;
+}
+
+.amount-picker .row {
+  margin-top: 6px;
+  flex-wrap: nowrap;
+}
+
+.amount-picker .input {
+  flex: 1 1 120px;
+  min-width: 0;
+  margin: 0;
+}
+
+.chip {
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  min-height: 0;
+  white-space: nowrap;
+}
+
+.shape-picker {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 12px 0 14px;
+}
+
+.shape-picker button {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--cream);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.shape-picker button.is-on {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px var(--gold);
+}
+
+.shape-icon .usdc { fill: #3987e5; }
+.shape-icon .eth { fill: #c98500; }
+.shape-icon .mid { fill: var(--gold); }
+
+/* The range chart. Series colours validated on the lacquer surface. */
+.range-chart {
+  --rc-usdc: #3987e5;
+  --rc-eth: #c98500;
+  position: relative;
+  overflow-x: auto;
+  margin: 0 -4px;
+  touch-action: none;
+}
+
+.range-chart svg {
+  display: block;
+  user-select: none;
+}
+
+/* While a range line is being dragged, nothing else on the page selects. */
+body:has(.range-chart svg.is-dragging) {
+  user-select: none;
+}
+
+.range-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 4px 6px;
+}
+
+.range-legend span,
+.rc-tip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rl-line {
+  display: inline-block;
+  width: 14px;
+  height: 2px;
+  background: var(--cream);
+  opacity: 0.85;
+}
+
+.rl-sw {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.rl-sw.usdc { background: var(--rc-usdc, #3987e5); }
+.rl-sw.eth { background: var(--rc-eth, #c98500); }
+
+.rc-grid { stroke: rgba(244, 233, 218, 0.07); }
+.rc-tick { fill: var(--muted); font-size: 11px; font-family: var(--font-sans); }
+.rc-line { fill: none; stroke: var(--cream); stroke-width: 2; opacity: 0.9; }
+.rc-area { fill: rgba(244, 233, 218, 0.05); }
+.rc-band { fill: rgba(227, 179, 106, 0.1); cursor: grab; }
+.is-dragging .rc-band { cursor: grabbing; }
+.rc-usdc { fill: var(--rc-usdc); }
+.rc-eth { fill: var(--rc-eth); }
+.rc-bin.is-hover rect:not([fill]) { filter: brightness(1.2); }
+.rc-spot { stroke: var(--cream); stroke-width: 1; stroke-dasharray: 4 4; opacity: 0.7; }
+.rc-spot-label { fill: var(--cream); font-size: 11px; font-weight: 600; font-family: var(--font-sans); }
+.rc-handle { outline: none; }
+.rc-handle-line { stroke: var(--gold); stroke-width: 2; }
+.rc-handle:focus-visible .rc-handle-line { stroke-width: 3; filter: drop-shadow(0 0 4px var(--gold)); }
+.rc-chip { fill: #2a1408; stroke: var(--gold); stroke-width: 1; }
+.rc-chip-text { fill: var(--gold); font-size: 11px; font-weight: 700; font-family: var(--font-sans); }
+.rc-cross { stroke: rgba(244, 233, 218, 0.35); stroke-width: 1; }
+.rc-dot { fill: var(--cream); stroke: var(--surface); stroke-width: 2; }
+
+.rc-tip {
+  position: absolute;
+  top: 34px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: rgba(18, 8, 7, 0.95);
+  border: 1px solid var(--line);
+  color: var(--cream);
+  font-size: 12px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 3;
+}
+
+.rc-tip b { font-size: 14px; }
+
+.presets {
+  margin: 10px 0 12px;
+}
+
+.range-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.range-inputs label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.range-inputs .input {
+  margin: 0;
+}
+
+.preview-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 14px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.pos-list {
+  list-style: none;
+  margin: 8px 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.pos-list li {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.pos-numbers {
+  margin: 6px 0 8px;
+}
+
+.pos-numbers .amount {
+  font-size: 22px;
+  color: var(--gold);
+}
+
+.pos-range {
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+
+.pos-range-band {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  border-radius: 999px;
+  background: rgba(227, 179, 106, 0.45);
+}
+
+.pos-range-now {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 16px;
+  margin-left: -1px;
+  background: var(--cream);
+  border-radius: 1px;
+}
+
+@media (max-width: 520px) {
+  .shape-picker { grid-template-columns: 1fr; }
+  .shape-picker button { flex-direction: row; align-items: center; gap: 10px; }
+  .range-inputs { grid-template-columns: 1fr; }
+}

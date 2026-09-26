@@ -3,10 +3,10 @@ import { z } from "zod";
 import type { Address } from "viem";
 import { config } from "../config.js";
 import { store } from "../store.js";
+import { closeAllForCustomer } from "../yieldPositions.js";
 import { findByPrivyUserId } from "../accounts.js";
 import { requireSession } from "../sessions.js";
 import { recordWithdrawal } from "../history.js";
-import { proposeExitAll } from "../agent.js";
 import { chainReady, withdrawAllOnChain, treasuryAddress } from "../chain.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { redeemAll } from "../cashReceipt.js";
@@ -45,9 +45,9 @@ withdrawRouter.post("/withdraw", requireSession("full"), asyncHandler(async (req
     return;
   }
 
-  const positions = store.getPositions(userId);
-  const { grossUsdc: simulatedPositionsUsdc } = await proposeExitAll(positions);
-  store.clearPositions(userId);
+  // Close every 1inch Aqua position first: their value (at today's ETH
+  // price) goes back into the vault, so the vault withdrawal below includes it.
+  const { closed: positionsClosed, valueUsd: positionsUsd } = await closeAllForCustomer(account);
 
   const recipient = destination === "wallet" ? (account.privyWallet as Address) : treasuryAddress;
   const { txHash: vaultTxHash, amount: vaultUsdc } = await withdrawAllOnChain(account.boundAddress as Address, recipient);
@@ -60,7 +60,7 @@ withdrawRouter.post("/withdraw", requireSession("full"), asyncHandler(async (req
     return { burned: 0, txHash: null };
   });
 
-  const grossUsdc = simulatedPositionsUsdc + vaultUsdc;
+  const grossUsdc = vaultUsdc;
   const feeBps = destination === "wallet" ? 0 : config.withdrawFeeBps;
   const fee = (grossUsdc * feeBps) / 10_000;
   const netUsdc = grossUsdc - fee;
@@ -86,7 +86,8 @@ withdrawRouter.post("/withdraw", requireSession("full"), asyncHandler(async (req
   });
 
   res.json({
-    positionsClosed: positions.length,
+    positionsClosed,
+    positionsUsd,
     vaultTxHash,
     grossUsdc,
     feeBps,

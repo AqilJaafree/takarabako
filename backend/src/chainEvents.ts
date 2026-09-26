@@ -44,21 +44,15 @@ export function fromDelivery(d: WebhookDelivery): StoredEvent {
   };
 }
 
-/// Uniswap's position manager and the ENS registry are shared with the rest
-/// of Sepolia, so MultiBaas delivers everyone's events for them. Keep only
-/// ours: NFTs moving to/from the treasury (and later events for those token
-/// ids), and names the treasury registered.
+/// 1inch Aqua and the ENS registry are shared with the rest of Sepolia, so
+/// MultiBaas delivers everyone's events for them. Keep only ours: Aqua
+/// strategies whose maker is the treasury, and names the treasury registered.
 export async function isOurs(e: StoredEvent, treasury: string | undefined): Promise<boolean> {
   const t = treasury?.toLowerCase();
   const is = (v: string | undefined) => Boolean(t && v?.toLowerCase() === t);
   if (e.contractLabel === LABELS.ensRegistry) return is(e.inputs.sender);
-  if (e.contractLabel !== LABELS.uniswapNpm) return true;
-  if (e.name === "Transfer") return is(e.inputs.from) || is(e.inputs.to);
-  const { rowCount } = await pool.query(
-    "select 1 from chain_events where contract_label = $1 and name = 'Transfer' and inputs->>'tokenId' = $2 limit 1",
-    [LABELS.uniswapNpm, e.inputs.tokenId ?? ""],
-  );
-  return (rowCount ?? 0) > 0;
+  if (e.contractLabel === LABELS.aqua) return is(e.inputs.maker);
+  return true;
 }
 
 /// Returns false if this delivery was already stored (MultiBaas retries).

@@ -289,3 +289,22 @@ MultiBaas deployment host (Sepolia, free tier): `lfozlu7lwjb2bl25fgqbersp6u.mult
 
 Plus `treasury` → the treasury signer, and one alias per customer (their
 ENS label → their Privy wallet), created at registration.
+
+## 1inch Aqua yield (Sepolia)
+
+| Contract | Address | Notes |
+|---|---|---|
+| 1inch `Aqua` | `0x1111113ccf1426a8e30e2bff5e005d929bf6a90a` | Same address as mainnet; present on Sepolia though the SDK's address list omits it |
+| `AquaSwapVMRouter` | `0x1111113db0e0ef9d0e3a50d5f094a3a57a26c0de` | The router's previous address; `eip712Domain()` reports "1inch SwapVM v1.0" / 1.0.2 on chain 11155111 and `AQUA()` returns the Aqua address above. The current mainnet router address (`0x11111133…ac0de`) has no code on Sepolia |
+| `MockRiskToken (mETH)` | `0x5A9E9fF59AeBb96C14DFaB7C2a43d0C130ba9282` | Ours — `contracts/script/DeployMockEth.s.sol`, 18 decimals, 1M minted to the treasury; [Etherscan](https://sepolia.etherscan.io/address/0x5A9E9fF59AeBb96C14DFaB7C2a43d0C130ba9282#code) shows it verified (same bytecode as the other mocks) |
+
+Verified on-chain before building on it: a concentrated strategy shipped
+(tx `0x6d8ceb35…`) quoted 100 mUSDC → 0.03318 mETH and 0.01 mETH → 29.90 mUSDC
+around a $3,000 spot; a USDC-only bid at $2,400–2,700 (tx `0x021858f7…`) took a
+real swap from the treasury as taker (tx `0x0fc339df…`), leaving 973.12 of 1,000
+mUSDC. Both probe strategies were docked afterwards. The treasury approved Aqua
+(to pull as maker) and the router (to pay as taker) for mETH and mUSDC.
+
+MultiBaas links the Aqua contract as `oneinch_aqua` (alias `aqua`) in the slot
+that held Uniswap's position manager; a saved query `aqua_pulled_by_token`
+sums swap volume out of our strategies.
