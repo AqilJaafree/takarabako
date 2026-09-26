@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Market, Pool, PositionView, Preview, RiskTier, Shape } from "@/lib/types";
+import type { Market, PositionView, Preview, RiskTier, Shape } from "@/lib/types";
 import { apy, usd } from "@/lib/format";
 import { TreasureStage } from "@/components/treasure/TreasureStage";
 import { useStageDirector } from "@/components/treasure/useStageDirector";
 import { RangeChart } from "./RangeChart";
+import { MarketHero } from "./MarketHero";
+import { QuickStart } from "./QuickStart";
 import { NameField, useResolvedName } from "../send/SendForm";
 import { useWalletSend, type PreparedTx } from "@/lib/useWalletSend";
 
@@ -15,8 +17,6 @@ const bubble = (text: string) => (text.length > 170 ? `${text.slice(0, 167).trim
 
 type Tab = "quick" | "advanced";
 type AdvShape = Exclude<Shape, "full">;
-
-const RISK_DOTS: Record<RiskTier, number> = { low: 1, medium: 2, high: 3 };
 
 const signedPct = (price: number, spot: number) => {
   const v = (price / spot - 1) * 100;
@@ -78,7 +78,14 @@ export function YieldHub({ balance, market, positions: initialPositions }: { bal
 
   return (
     <>
-      <TreasureStage {...stage} balance={box} gems={gems} height={260} />
+      <MarketHero
+        spot={market.spot}
+        candles={market.candles}
+        balance={box}
+        bestApyBps={Math.max(...market.tiers.map((t) => t.apyBps), market.advanced.apyEstBps)}
+        liveCount={open.length}
+      />
+      <TreasureStage {...stage} balance={box} gems={gems} height={240} />
       {error && <div className="notice error">{error}</div>}
       {notice && (
         <div className="notice success">
@@ -114,6 +121,8 @@ export function YieldHub({ balance, market, positions: initialPositions }: { bal
       {tab === "quick" ? (
         <QuickStart
           tiers={market.tiers}
+          candles={market.candles}
+          spot={market.spot}
           balance={box}
           onOpen={async (tier, amount) => {
             setError("");
@@ -169,63 +178,6 @@ function AmountPicker({ balance, amount, setAmount }: { balance: number; amount:
       </div>
       <p className="muted small" style={{ margin: "4px 0 0" }}>{usd(balance)} available in your box</p>
     </div>
-  );
-}
-
-function QuickStart({ tiers, balance, onOpen }: { tiers: Pool[]; balance: number; onOpen: (tier: RiskTier, amount: number) => Promise<void> }) {
-  const [tier, setTier] = useState<RiskTier | null>(null);
-  const [wanted, setAmount] = useState(Math.floor(balance * 100) / 100);
-  const amount = Math.min(wanted, balance); // the box can shrink while this is open
-  const [busy, setBusy] = useState(false);
-  const chosen = tiers.find((t) => t.riskTier === tier);
-
-  return (
-    <section className="card">
-      <h2>Pick how bold to be</h2>
-      <p className="muted small">
-        Your money provides ETH/USDC liquidity through 1inch Aqua and earns a fee on every trade. Narrower ranges earn
-        more while the price stays inside them — and stop earning when it leaves.
-      </p>
-      <div className="tiers" role="group" aria-label="Risk level">
-        {tiers.map((p) => (
-          <button
-            key={p.riskTier}
-            className="btn tier"
-            data-tier={p.riskTier}
-            aria-pressed={tier === p.riskTier}
-            onClick={() => setTier(p.riskTier)}
-            disabled={balance <= 0 || busy}
-          >
-            <span className="spread">
-              <span className="tier-name">
-                {p.label} <span className="risk-dots" aria-label={`${p.riskTier} risk`}>{"●".repeat(RISK_DOTS[p.riskTier])}<span className="off">{"●".repeat(3 - RISK_DOTS[p.riskTier])}</span></span>
-              </span>
-              <span className="amount" style={{ color: "var(--gold)" }}>~{apy(p.apyBps)} APY</span>
-            </span>
-            <span className="small">{p.description}</span>
-            <span className="small muted">
-              {p.fullRange || p.priceLowUsd === null || p.priceHighUsd === null ? "Full range" : `${usd(p.priceLowUsd, 0)} – ${usd(p.priceHighUsd, 0)}`} ·{" "}
-              {(p.feeBps / 100).toFixed(2)}% trading fee
-            </span>
-          </button>
-        ))}
-      </div>
-      <AmountPicker balance={balance} amount={amount} setAmount={setAmount} />
-      <button
-        className="btn btn-gold btn-block"
-        style={{ marginTop: 14 }}
-        disabled={!tier || busy || !(amount > 0) || amount > balance}
-        onClick={async () => {
-          if (!tier) return;
-          setBusy(true);
-          await onOpen(tier, amount);
-          setBusy(false);
-        }}
-      >
-        {busy ? "Placing your strategy…" : chosen ? `Put ${usd(amount)} into ${chosen.label}` : "Pick a risk level"}
-      </button>
-      <p className="muted small" style={{ marginTop: 10, marginBottom: 0 }}>APY is an estimate from the range width, not a promise.</p>
-    </section>
   );
 }
 
