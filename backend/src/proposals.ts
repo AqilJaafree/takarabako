@@ -23,13 +23,17 @@ export interface Proposal {
 const COLUMNS = `id, action, args, rationale, source, status, tx_hash as "txHash", error,
   created_at as "createdAt", decided_at as "decidedAt"`;
 
-/// Amounts of each action already executed since UTC midnight.
-export async function policyContext(): Promise<PolicyContext> {
+/// Amounts of each action committed today (UTC). When filing, pending
+/// proposals count too, so the agent can't queue several that each fit the
+/// daily cap alone; at approval only what was actually executed counts.
+export async function policyContext(opts: { includePending?: boolean } = {}): Promise<PolicyContext> {
   const { rows } = await pool.query(
     `select action, coalesce(sum((args->>'amount')::numeric), 0)::float as total
      from ops_proposals
-     where status = 'executed' and decided_at >= date_trunc('day', now() at time zone 'utc') at time zone 'utc'
+     where (status = 'executed' and decided_at >= date_trunc('day', now() at time zone 'utc') at time zone 'utc')
+        or ($1 and status = 'pending')
      group by action`,
+    [opts.includePending ?? false],
   );
   const total = (a: string) => rows.find((r) => r.action === a)?.total ?? 0;
   return { fundedToday: total("fund_yield_reserve"), mintedToday: total("mint_usdc_float"), knownKiosks: [config.kioskId] };
@@ -43,7 +47,7 @@ export async function createProposal(p: {
   rationale: string;
   source?: "ask" | "monitor";
 }): Promise<CreateResult> {
-  const check = checkPolicy(p.action, p.args, await policyContext());
+  const check = checkPolicy(p.action, p.args, await policyContext({ includePending: true }));
   if (!check.ok) return check;
   const { rows } = await pool.query(
     `insert into ops_proposals (id, action, args, rationale, source) values ($1, $2, $3, $4, $5) returning ${COLUMNS}`,

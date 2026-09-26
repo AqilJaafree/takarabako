@@ -42,6 +42,17 @@ test("approve executes once, through the executor, and records the tx", async ()
   assert.equal(tooMuch.ok, false);
 });
 
+test("pending proposals count toward the daily cap when filing", async () => {
+  await pool.query("truncate ops_proposals");
+  const first = await createProposal({ action: "fund_yield_reserve", args: { amount: 500 }, rationale: "top up" });
+  assert.ok(first.ok);
+  const duplicate = await createProposal({ action: "fund_yield_reserve", args: { amount: 500 }, rationale: "top up again" });
+  assert.equal(duplicate.ok, false);
+  // Rejecting the first frees the cap again.
+  await rejectProposal(first.proposal.id);
+  assert.ok((await createProposal({ action: "fund_yield_reserve", args: { amount: 500 }, rationale: "retry" })).ok);
+});
+
 test("a failed execution is recorded, not retried", async () => {
   const created = await createProposal({ action: "set_apy", args: { bps: 500 }, rationale: "match market" });
   assert.ok(created.ok);
