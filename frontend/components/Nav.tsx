@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/send", label: "Send" },
   { href: "/withdraw", label: "Withdraw" },
   { href: "/history", label: "History" },
+  { href: "/kiosks", label: "Find a kiosk" },
 ] as const;
 
 export function Nav() {

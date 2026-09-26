@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "node scripts/copy-maplibre-worker.mjs",
+    "prebuild": "node scripts/copy-maplibre-worker.mjs",
+    "predev": "node scripts/copy-maplibre-worker.mjs"
   },
   "dependencies": {
     "@privy-io/react-auth": "^3.45.0",
@@ -15,6 +18,7 @@
     "@worldcoin/idkit": "^4.3.0",
     "gsap": "^3.15.0",
     "jsqr": "^1.4.0",
+    "maplibre-gl": "^6.11.2",
     "next": "16.3.6",
     "qrcode": "^1.5.4",
     "react": "19.2.8",

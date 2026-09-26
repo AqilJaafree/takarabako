@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Metadata } from "next";
 import { loadForPage } from "@/lib/serverData";
 import { DepositQr, type DepositQrCode } from "./DepositQr";
@@ -11,7 +12,9 @@ export default async function DepositPage() {
   return (
     <section style={{ textAlign: "center" }}>
       <h1 style={{ fontSize: 26 }}>Deposit cash</h1>
-      <p className="muted">Tap “Scan my QR” on the box and hold your phone up to the camera.</p>
+      <p className="muted">
+        Tap “Scan my QR” on the box and hold your phone up to the camera. <Link href="/kiosks">Find a kiosk →</Link>
+      </p>
       <DepositQr initial={initial} />
       <div className="notice" style={{ textAlign: "left", marginTop: 16 }}>
         💡 This QR changes every 5 minutes and stops working as soon as a new one appears, so a screenshot
