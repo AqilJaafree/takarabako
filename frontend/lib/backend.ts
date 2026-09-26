@@ -31,7 +31,7 @@ function errorMessage(body: unknown, status: number): string {
 
 export async function backendFetch<T>(
   path: string,
-  opts: { token?: string | null; method?: "GET" | "POST"; body?: unknown } = {},
+  opts: { token?: string | null; method?: "GET" | "POST" | "DELETE"; body?: unknown } = {},
 ): Promise<T> {
   const headers: Record<string, string> = {};
   if (opts.token) headers.authorization = `Bearer ${opts.token}`;
@@ -79,7 +79,7 @@ export function clearSessionCookie(res: NextResponse, kind: SessionKind) {
 export async function relay(
   kind: SessionKind,
   path: string,
-  opts: { method?: "GET" | "POST"; body?: unknown } = {},
+  opts: { method?: "GET" | "POST" | "DELETE"; body?: unknown } = {},
 ): Promise<NextResponse> {
   const token = await sessionToken(kind);
   if (!token) return NextResponse.json({ error: "log in first" }, { status: 401 });

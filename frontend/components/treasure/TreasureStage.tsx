@@ -1,7 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useChat } from "@/components/chat/ChatProvider";
 import type { StageProps } from "./types";
 
 // WebGL can't render on the server: the scene loads in the browser only.
@@ -33,10 +34,16 @@ export function TreasureStage(props: StageProps) {
   const enabled = useSyncExternalStore(noop, detect, () => false);
   const bubbleEl = useRef<HTMLDivElement>(null);
   const etchEl = useRef<HTMLDivElement>(null);
+  const chatEl = useRef<HTMLDivElement>(null);
+  // On customer pages the cat opens the chat (there's no chat at the kiosk).
+  const chat = useChat();
+  useEffect(() => {
+    if (enabled && chat) return chat.registerStageCat();
+  }, [enabled, chat]);
   if (!enabled) return null;
   return (
     <div className="stage" style={{ height: props.height ?? 340 }}>
-      <Scene {...props} bubbleEl={bubbleEl} etchEl={etchEl} />
+      <Scene {...props} bubbleEl={bubbleEl} etchEl={etchEl} chatEl={chat ? chatEl : undefined} onCatClick={chat?.openChat} />
       {/* DOM overlays, moved each frame by the scene's anchors */}
       <div ref={bubbleEl} className="stage-anchor">
         {props.line && (
@@ -48,6 +55,19 @@ export function TreasureStage(props: StageProps) {
       <div ref={etchEl} className="stage-anchor">
         {props.etch && <div className="etch">{props.etch}</div>}
       </div>
+      {chat && (
+        <div ref={chatEl} className="stage-anchor">
+          <button
+            className="stage-chat-bubble"
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              chat.openChat({ x: r.left + r.width / 2, y: r.top - 40 });
+            }}
+          >
+            💬 Tap me to chat
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { Nav } from "@/components/Nav";
 import { LogoutButton } from "@/components/LogoutButton";
+import { ChatProvider } from "@/components/chat/ChatProvider";
 
 export default function AuthedLayout({ children }: { children: React.ReactNode }) {
   return (
+    <ChatProvider>
     <main className="shell">
       <header className="topbar">
         <Link href="/" className="brand">
@@ -17,5 +19,6 @@ export default function AuthedLayout({ children }: { children: React.ReactNode }
         <a href="/ops">Treasury dashboard</a> · proof of reserve for every tkCASH
       </footer>
     </main>
+    </ChatProvider>
   );
 }

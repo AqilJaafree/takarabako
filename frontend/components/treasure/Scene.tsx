@@ -67,10 +67,13 @@ export default function Scene(
   props: StageProps & {
     bubbleEl: React.RefObject<HTMLDivElement | null>;
     etchEl: React.RefObject<HTMLDivElement | null>;
+    chatEl?: React.RefObject<HTMLDivElement | null>;
+    onCatClick?: (origin: { x: number; y: number }) => void;
   },
 ) {
-  const { balance, notes, gems, mood, hop, burst, onNoteDone, bubbleEl, etchEl } = props;
+  const { balance, notes, gems, mood, hop, burst, onNoteDone, bubbleEl, etchEl, chatEl, onCatClick } = props;
   const bubbleAnchor = useRef<THREE.Group>(null);
+  const chatAnchor = useRef<THREE.Group>(null);
   const etchAnchor = useRef<THREE.Group>(null);
   const lidOpen = burst > 0 || notes.some((n) => n.status === "pending") ? 2.1 : 1.8;
   const glow = notes.filter((n) => n.status === "confirmed").length;
@@ -86,6 +89,7 @@ export default function Scene(
       <Framing />
       <Anchor target={bubbleAnchor} el={bubbleEl} />
       <Anchor target={etchAnchor} el={etchEl} />
+      {chatEl && <Anchor target={chatAnchor} el={chatEl} />}
 
       <ambientLight intensity={0.55} />
       <directionalLight position={[3, 6, 4]} intensity={1.6} color="#fff1dd" />
@@ -103,7 +107,7 @@ export default function Scene(
       </group>
 
       <group position={[2.2, 0, 0.45]} rotation={[0, -0.45, 0]} scale={0.95}>
-        <ManekiNeko mood={mood} hop={hop} bubbleAnchor={bubbleAnchor} />
+        <ManekiNeko mood={mood} hop={hop} bubbleAnchor={bubbleAnchor} chatAnchor={chatEl ? chatAnchor : undefined} onCatClick={onCatClick} />
       </group>
 
       {/* soft contact shadow under the plinth */}

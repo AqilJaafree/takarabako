@@ -19,11 +19,17 @@ export function ManekiNeko({
   mood,
   hop,
   bubbleAnchor,
+  chatAnchor,
+  onCatClick,
 }: {
   mood: CatMood;
   hop: number;
   /** Where the speech bubble is pinned (see Anchor in Scene). */
   bubbleAnchor: React.RefObject<THREE.Group | null>;
+  /** Under the cat's feet, where the "tap me to chat" bubble is pinned. */
+  chatAnchor?: React.RefObject<THREE.Group | null>;
+  /** Tapping the cat opens the chat, from where it was tapped. */
+  onCatClick?: (origin: { x: number; y: number }) => void;
 }) {
   const root = useRef<THREE.Group>(null);
   const head = useRef<THREE.Group>(null);
@@ -66,7 +72,19 @@ export function ManekiNeko({
   });
 
   return (
-    <group ref={root}>
+    <group
+      ref={root}
+      onClick={
+        onCatClick
+          ? (e) => {
+              e.stopPropagation();
+              onCatClick({ x: e.nativeEvent.clientX, y: e.nativeEvent.clientY });
+            }
+          : undefined
+      }
+      onPointerOver={onCatClick ? () => (document.body.style.cursor = "pointer") : undefined}
+      onPointerOut={onCatClick ? () => (document.body.style.cursor = "") : undefined}
+    >
       {/* body and belly */}
       <mesh position={[0, 0.42, 0]} scale={[0.62, 0.72, 0.55]}>
         <sphereGeometry args={[0.62, 32, 24]} />
@@ -159,6 +177,7 @@ export function ManekiNeko({
       </group>
 
       <group ref={bubbleAnchor} position={[0, 1.5, 0]} />
+      {chatAnchor && <group ref={chatAnchor} position={[0, -0.05, 0]} />}
     </group>
   );
 }
