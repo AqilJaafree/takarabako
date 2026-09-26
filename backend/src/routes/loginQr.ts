@@ -39,6 +39,7 @@ loginQrRouter.post("/login/qr", asyncHandler(async (req, res) => {
     token: session.token,
     scope: session.scope,
     expiresAt: session.expiresAt,
+    worldVerified: Boolean(account.worldVerifiedAt), // the deposit terminal offers World ID if not
   });
 }));
 

@@ -60,6 +60,7 @@ export async function loginFull(user: { privyUserId: string; email: string; wall
     qrEmailed,
     qrFallback,
     ensTxHash,
+    worldVerified: Boolean(account.worldVerifiedAt),
   };
 }
 
