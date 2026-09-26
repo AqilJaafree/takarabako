@@ -2,9 +2,11 @@
 // holds no private keys and no Privy/agent credentials of its own.
 // On the real Pi, point this at the backend's LAN address instead of localhost.
 //
-// ATM-style flow (PRD §6.1/§6.2): identify yourself first (email), then the
-// machine knows which account any cash you insert gets credited to — not
-// the other way around.
+// ATM-style flow (PRD §6.1/§6.2): identify yourself first, then the machine
+// knows which account any cash you insert gets credited to. Two ways in:
+//   - email: full access (deposit, yield, withdraw) — also how you register
+//   - wallet QR (emailed at registration): deposit only, no typing
+// The backend enforces the difference; this page just follows the scope.
 const BACKEND_URL = window.BACKEND_URL || "http://localhost:4000";
 
 const screenEl = document.getElementById("screen");
@@ -12,6 +14,11 @@ const logEl = document.getElementById("log");
 
 const state = {
   userId: null,
+  token: null, // backend session token
+  scope: null, // "full" (email login) | "deposit" (wallet-QR login)
+  expiresAt: 0, // ms; the session slides forward on each deposit
+  qrFallback: null, // QR image to show when the registration email couldn't be sent
+  scanStream: null,
   ensName: null,
   balance: 0,
   position: null,
@@ -27,15 +34,46 @@ function log(msg) {
 }
 
 async function api(path, body) {
-  const res = await fetch(`${BACKEND_URL}${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body ?? {}),
-  });
+  const headers = { "content-type": "application/json" };
+  if (state.token) headers.authorization = `Bearer ${state.token}`;
+  const res = await fetch(`${BACKEND_URL}${path}`, { method: "POST", headers, body: JSON.stringify(body ?? {}) });
   const json = await res.json();
-  if (!res.ok) throw new Error(json.error ? JSON.stringify(json.error) : "request failed");
+  if (res.status === 401 && state.token) {
+    log("session expired — please log in again");
+    onDone();
+  }
+  if (!res.ok) throw new Error(typeof json.error === "string" ? json.error : json.error ? JSON.stringify(json.error) : "request failed");
   return json;
 }
+
+// Adopt a session returned by /verify (full) or /login/qr (deposit).
+function startSession(res) {
+  Object.assign(state, {
+    userId: res.userId,
+    token: res.token,
+    scope: res.scope,
+    expiresAt: Date.parse(res.expiresAt),
+    ensName: res.ensName,
+    balance: res.balance,
+  });
+  registerSession();
+  startPulsePolling();
+  renderSession();
+}
+
+function renderSession() {
+  if (state.scope === "deposit") screenDepositOnly();
+  else screenAccount();
+}
+
+// Kiosk sessions are short. Once one lapses, go back to the start screen so
+// the next person never lands in someone else's account.
+setInterval(() => {
+  if (state.token && Date.now() > state.expiresAt) {
+    log("session timed out");
+    onDone();
+  }
+}, 5000);
 
 // GET /agent/pools — the real Uniswap v3 pool + asset each risk tier deposits
 // into (PRD §7.6). Kicked off once at load so it's already resolved by the
@@ -73,6 +111,7 @@ function onBridgeEvent(e) {
   } else if (e.status === "confirmed") {
     delete state.pending[e.id];
     state.balance = e.balance;
+    if (e.expiresAt) state.expiresAt = Date.parse(e.expiresAt);
     const usd = e.currency === "MYR" ? ` → $${e.usdAmount} (1 MYR = $${e.fxRate})` : "";
     log(`bill acceptor: ${cash}${usd} credited — tx ${e.txHash}`);
   } else if (e.status === "failed") {
@@ -94,7 +133,7 @@ function startPulsePolling() {
         state.lastEventSeq = Math.max(state.lastEventSeq, e.seq);
         onBridgeEvent(e);
       }
-      screenAccount();
+      renderSession();
     } catch {
       // bridge or backend briefly unreachable — next poll retries
     }
@@ -108,14 +147,14 @@ function stopPulsePolling() {
   }
 }
 
-// Tell device-agent/server.js which account is currently verified, so a
-// pulse arriving later knows whose /deposit to call — fire-and-forget, since
-// a transient failure here just means the fallback button still works.
+// Hand the session to device-agent/server.js, so a note stacked later is
+// deposited into this account (the bridge calls /deposit with the token).
+// Fire-and-forget: if it fails, the listener refuses notes and hands them back.
 function registerSession() {
   fetch("/session", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ userId: state.userId, ensName: state.ensName, balance: state.balance }),
+    body: JSON.stringify({ token: state.token, ensName: state.ensName, scope: state.scope, expiresAt: state.expiresAt }),
   }).catch(() => {});
 }
 
@@ -127,17 +166,99 @@ function render(html) {
   screenEl.innerHTML = html;
 }
 
-function screenAuth() {
+function screenAuth(message = "") {
   render(`
     <p class="sub">Enter your email to begin — like a card at an ATM.</p>
     <input type="email" id="email-input" placeholder="you@example.com" autofocus />
     <button class="primary" id="btn-verify">Continue</button>
-    <p class="sub" id="verify-status"></p>
+    <p class="sub" id="verify-status">${message}</p>
+    <div class="section-divider"></div>
+    <p class="sub">Registered already? Show the QR from your welcome email to deposit cash.</p>
+    <button id="btn-scan">Scan my QR to deposit</button>
   `);
   document.getElementById("btn-verify").onclick = onVerify;
+  document.getElementById("btn-scan").onclick = screenScan;
   document.getElementById("email-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter") onVerify();
   });
+}
+
+// Wallet-QR quick login. Browsers only allow the camera on a secure page
+// (https or localhost), so on the bench the kiosk is opened through a
+// localhost tunnel to the Pi.
+async function screenScan() {
+  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+    screenAuth("Camera unavailable: open the kiosk via localhost, or log in with email.");
+    return;
+  }
+  render(`
+    <p class="section-label">Show your QR to the camera</p>
+    <div class="scan-frame"><video id="scan-video" playsinline muted></video></div>
+    <p class="sub" id="scan-status">Looking for a QR code…</p>
+    <button id="btn-scan-cancel">Cancel</button>
+  `);
+  document.getElementById("btn-scan-cancel").onclick = () => {
+    stopScan();
+    screenAuth();
+  };
+
+  try {
+    state.scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+  } catch (e) {
+    screenAuth(`Camera unavailable (${e.name}) — log in with email instead.`);
+    return;
+  }
+  const video = document.getElementById("scan-video");
+  video.srcObject = state.scanStream;
+  await video.play();
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const tick = async () => {
+    if (!state.scanStream) return; // cancelled
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+      const code = jsQR(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
+      if (code?.data) {
+        stopScan();
+        await onLoginQr(code.data);
+        return;
+      }
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+function stopScan() {
+  state.scanStream?.getTracks().forEach((t) => t.stop());
+  state.scanStream = null;
+}
+
+async function onLoginQr(text) {
+  try {
+    const res = await api("/login/qr", { qr: text });
+    log(`quick login — ${res.ensName} (deposit only)`);
+    startSession(res);
+  } catch (e) {
+    log(`QR login failed: ${e.message}`);
+    screenAuth(e.message);
+  }
+}
+
+// Wallet-QR sessions can only deposit: no yield, no withdraw, no test button.
+function screenDepositOnly() {
+  render(`
+    <div class="ens">${state.ensName}</div>
+    <div class="balance">$${state.balance.toLocaleString()}</div>
+    ${pendingHtml()}
+    <p class="sub">Insert your cash now. Notes are credited to this account.</p>
+    <p class="sub">To withdraw or earn yield, log in with your email.</p>
+    <button class="primary" id="btn-done">Done — log out</button>
+  `);
+  document.getElementById("btn-done").onclick = onDone;
 }
 
 function formatRange(pool) {
@@ -203,6 +324,13 @@ function screenAccount() {
     ? `<div class="section-divider"></div><button id="btn-get-yield">Get yield →</button>`
     : "";
 
+  const qrHtml = state.qrFallback
+    ? `<div class="qr-fallback">
+         <p class="sub">We couldn't email your quick-deposit QR. Take a photo of it now:</p>
+         <img src="${state.qrFallback}" alt="Your wallet QR" width="200" height="200" />
+       </div>`
+    : "";
+
   render(`
     <div class="ens">${state.ensName}</div>
     <div class="balance">$${state.balance.toLocaleString()}</div>
@@ -210,14 +338,19 @@ function screenAccount() {
     ${positionHtml}
     <div class="row">
       <button class="primary" id="btn-deposit">Deposit</button>
-      <button class="tx-withdraw" id="btn-withdraw" ${canWithdraw ? "" : "disabled"}>Withdraw</button>
+      <button class="tx-withdraw" id="btn-withdraw-cash" ${canWithdraw ? "" : "disabled"}>Withdraw as cash</button>
+      <button class="tx-withdraw" id="btn-withdraw-wallet" ${canWithdraw ? "" : "disabled"}>Withdraw to my wallet</button>
     </div>
     ${yieldHtml}
+    ${qrHtml}
     <button id="btn-done">Done — log out</button>
   `);
   document.getElementById("btn-deposit").onclick = onDeposit;
   document.getElementById("btn-done").onclick = onDone;
-  if (canWithdraw) document.getElementById("btn-withdraw").onclick = onWithdraw;
+  if (canWithdraw) {
+    document.getElementById("btn-withdraw-cash").onclick = () => onWithdraw("cash");
+    document.getElementById("btn-withdraw-wallet").onclick = () => onWithdraw("wallet");
+  }
   if (state.balance > 0) document.getElementById("btn-get-yield").onclick = screenYield;
 }
 
@@ -225,16 +358,26 @@ function screenReceipt(receipt) {
   render(`
     <p class="sub">Withdraw complete.</p>
     <div class="balance">${receipt.receipt}</div>
-    <p class="sub">USDC settled to the dev/treasury wallet — cash payout is a redemption receipt in v1 (PRD §6.6).</p>
+    <p class="sub">${receipt.destination === "wallet"
+      ? "USDC sent to your own wallet on Sepolia."
+      : "USDC settled to the dev/treasury wallet — cash payout is a redemption receipt in v1 (PRD §6.6)."}</p>
     <button class="primary" id="btn-reset">Done</button>
   `);
   document.getElementById("btn-reset").onclick = onDone;
 }
 
 function onDone() {
+  stopScan();
   stopPulsePolling();
   clearSession();
-  Object.assign(state, { userId: null, ensName: null, balance: 0, position: null, lastEventSeq: 0, pending: {} });
+  if (state.token) {
+    // End the backend session too, so the token is useless once they walk away.
+    fetch(`${BACKEND_URL}/logout`, { method: "POST", headers: { authorization: `Bearer ${state.token}` } }).catch(() => {});
+  }
+  Object.assign(state, {
+    userId: null, token: null, scope: null, expiresAt: 0, qrFallback: null,
+    ensName: null, balance: 0, position: null, lastEventSeq: 0, pending: {},
+  });
   screenAuth();
 }
 
@@ -248,14 +391,11 @@ async function onVerify() {
   statusEl.textContent = "Verifying…";
   try {
     const res = await api("/verify", { email });
-    state.userId = res.userId;
-    state.ensName = res.ensName;
-    state.balance = res.balance;
     log(`verified — user ${res.userId}, ${res.ensName}`);
     if (res.fundingTxHash) log(`new wallet funded with 0.001 ETH — tx ${res.fundingTxHash}`);
-    registerSession();
-    startPulsePolling();
-    screenAccount();
+    if (res.qrEmailed) log(`quick-deposit QR emailed to ${email}`);
+    state.qrFallback = res.qrFallback;
+    startSession(res);
   } catch (e) {
     log(`verify failed: ${e.message}`);
     statusEl.textContent = `Failed: ${e.message}`;
@@ -264,7 +404,7 @@ async function onVerify() {
 
 async function onDeposit() {
   try {
-    const res = await api("/deposit", { userId: state.userId, amount: 1000 });
+    const res = await api("/deposit", { amount: 1000 });
     state.balance = res.balance;
     log(`deposit ok — ${res.ensName}, tx ${res.txHash}`);
     screenAccount();
@@ -276,7 +416,6 @@ async function onDeposit() {
 async function onOpenPosition(riskLevel) {
   try {
     const res = await api("/agent/open-position", {
-      userId: state.userId,
       riskLevel,
       amount: state.balance,
     });
@@ -289,9 +428,9 @@ async function onOpenPosition(riskLevel) {
   }
 }
 
-async function onWithdraw() {
+async function onWithdraw(destination) {
   try {
-    const res = await api("/withdraw", { userId: state.userId });
+    const res = await api("/withdraw", { destination });
     log(`withdraw ok — ${res.receipt}`);
     screenReceipt(res);
   } catch (e) {

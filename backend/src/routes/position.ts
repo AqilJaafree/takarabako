@@ -1,12 +1,16 @@
 import { Router } from "express";
 import { store } from "../store.js";
+import { findByPrivyUserId } from "../accounts.js";
+import { requireSession } from "../sessions.js";
+import { asyncHandler } from "../asyncHandler.js";
 
-/// GET /position/:userId — PRD §7.3, for the kiosk screen (PRD §7.2).
+/// GET /position — PRD §7.3, for the kiosk screen (PRD §7.2). The user
+/// comes from the full-access session.
 export const positionRouter = Router();
 
-positionRouter.get("/position/:userId", (req, res) => {
-  const { userId } = req.params;
-  const account = store.getAccount(userId);
+positionRouter.get("/position", requireSession("full"), asyncHandler(async (_req, res) => {
+  const userId: string = res.locals.session.privyUserId;
+  const account = await findByPrivyUserId(userId);
   if (!account) {
     res.status(404).json({ error: "unknown account" });
     return;
@@ -22,4 +26,4 @@ positionRouter.get("/position/:userId", (req, res) => {
   }));
 
   res.json({ ensName: account.ensName, positions });
-});
+}));

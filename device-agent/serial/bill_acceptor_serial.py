@@ -76,7 +76,8 @@ REJECT_WINDOW_S = 3.5
 # this long after a refusal.
 AFTER_REFUSE_QUIET_S = 6.0
 
-DEPOSIT_TIMEOUT_S = 120
+# The backend only queues the deposit (fast); allow for a slow network.
+DEPOSIT_TIMEOUT_S = 30
 
 # How often the logged-in state is refreshed from the bridge. The acceptor
 # holds a note while it waits for 02/0F, so the answer must be ready
@@ -116,15 +117,15 @@ class Bridge:
             time.sleep(SESSION_POLL_S)
 
     def deposit(self, amount):
-        # The bridge answers only after the deposit is mined, and deposits
-        # queue behind each other, so allow well over one Sepolia block per note.
+        # The backend queues the deposit and answers at once (202); the kiosk
+        # screens follow its progress on the backend's live stream.
         try:
             body = self._request("POST", "/pulse-deposit", {"amount": amount, "currency": "MYR"}, timeout=DEPOSIT_TIMEOUT_S)
-            log(f"RM{amount} credited: tx {body.get('txHash')} balance {body.get('balance')}")
+            log(f"RM{amount} queued as deposit {body.get('depositId')} (≈${body.get('estUsd')}), confirming on-chain")
         except urllib.error.HTTPError as e:
-            log(f"RM{amount} NOT CREDITED, note is in the box ({e.code}): {e.read().decode(errors='replace')}")
+            log(f"RM{amount} NOT QUEUED, note is in the box ({e.code}): {e.read().decode(errors='replace')}")
         except Exception as e:
-            log(f"RM{amount} credit unconfirmed, note is in the box: {e}")
+            log(f"RM{amount} queue status unknown, note is in the box: {e}")
 
     def rejected(self, reason):
         try:

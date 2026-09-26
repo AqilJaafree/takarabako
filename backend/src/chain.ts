@@ -75,27 +75,38 @@ function queueSend<T>(send: () => Promise<T>): Promise<T> {
   return run;
 }
 
-export async function depositOnChain(user: Address, amount: number) {
+/// Sends depositFor and returns the hash without waiting for it to be mined.
+/// The deposit queue stores the hash before waiting, so a retry after a crash
+/// waits for this transaction rather than sending another.
+export async function sendDepositTx(user: Address, usdAmount: number): Promise<`0x${string}`> {
   if (!walletClient) throw new Error("chain not configured — set TREASURY_PRIVATE_KEY/USDC_ADDRESS/VAULT_ADDRESS");
-  const raw = parseUnits(amount.toString(), USDC_DECIMALS);
   const request = {
     address: vaultAddress(),
     abi: vaultAbi,
     functionName: "depositFor",
-    args: [user, raw],
+    args: [user, parseUnits(usdAmount.toString(), USDC_DECIMALS)],
     account: walletClient.account!,
   } as const;
 
   // 30% headroom over the estimate, so a small state change between
   // estimation and inclusion can't push the call out of gas.
-  const hash = await queueSend(async () => {
+  return queueSend(async () => {
     const estimate = await publicClient.estimateContractGas(request);
     return walletClient.writeContract({ ...request, gas: (estimate * 13n) / 10n });
   });
+}
+
+/// Waits for a deposit tx, throws if it reverted, and returns the user's
+/// vault value afterwards.
+export async function waitForDepositTx(hash: `0x${string}`, user: Address): Promise<number> {
   const receipt = await publicClient.waitForTransactionReceipt({ hash, pollingInterval: 1_000 });
   if (receipt.status !== "success") throw new Error(`deposit reverted on-chain (tx ${hash})`);
+  return previewValueOnChain(user);
+}
 
-  const value = await previewValueOnChain(user);
+export async function depositOnChain(user: Address, amount: number) {
+  const hash = await sendDepositTx(user, amount);
+  const value = await waitForDepositTx(hash, user);
   return { txHash: hash, value };
 }
 

@@ -5,6 +5,13 @@ import { depositRouter } from "./routes/deposit.js";
 import { agentRouter } from "./routes/agentRoutes.js";
 import { withdrawRouter } from "./routes/withdraw.js";
 import { positionRouter } from "./routes/position.js";
+import { loginQrRouter } from "./routes/loginQr.js";
+import { authPrivyRouter } from "./routes/authPrivy.js";
+import { eventsRouter } from "./routes/events.js";
+import { meRouter } from "./routes/me.js";
+import { depositSessionsRouter } from "./routes/depositSessions.js";
+import { migrate } from "./db.js";
+import { startDepositWorker } from "./depositQueue.js";
 
 const app = express();
 app.use(express.json());
@@ -14,7 +21,7 @@ app.use(express.json());
 // before this ever leaves a hackathon table.
 app.use((_req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Headers", "Content-Type");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.header("Access-Control-Allow-Methods", "GET,POST");
   next();
 });
@@ -22,6 +29,11 @@ app.use((_req, res, next) => {
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
 app.use(verifyRouter);
+app.use(loginQrRouter);
+app.use(authPrivyRouter);
+app.use(eventsRouter);
+app.use(meRouter);
+app.use(depositSessionsRouter);
 app.use(depositRouter);
 app.use(agentRouter);
 app.use(withdrawRouter);
@@ -35,6 +47,16 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
   const message = err instanceof Error ? err.message : "internal error";
   res.status(500).json({ error: message });
 });
+
+try {
+  await migrate();
+} catch (err) {
+  // Connection refusals arrive as an AggregateError with an empty message.
+  const reason = (err as { code?: string })?.code ?? (err instanceof Error ? err.message : String(err));
+  console.error(`[db] cannot reach Postgres (${reason}) — run: cd backend && docker compose up -d`);
+  process.exit(1);
+}
+startDepositWorker();
 
 app.listen(config.port, () => {
   console.log(`takarabako backend listening on :${config.port}`);

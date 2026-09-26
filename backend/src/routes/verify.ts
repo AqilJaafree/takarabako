@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
-import { store, deriveBoundAddress } from "../store.js";
 import { getOrCreateUserWallet } from "../privy.js";
-import { deriveEnsLabel, walletSubname, registerSubname } from "../ens.js";
+import { loginFull } from "../accountsFlow.js";
+import { findByEmail } from "../accounts.js";
 import { asyncHandler } from "../asyncHandler.js";
 
 /// POST /verify — PRD §6.1 (ATM-style: identity first, cash second). Takes
@@ -27,44 +27,17 @@ verifyRouter.post("/verify", asyncHandler(async (req, res) => {
   }
   const { email } = parsed.data;
 
-  const { userId, walletAddress, fundingTxHash } = await getOrCreateUserWallet(email);
-
-  const existing = store.getAccount(userId);
-  if (existing) {
-    res.json({
-      verified: true,
-      userId,
-      ensName: existing.ensName,
-      boundAddress: existing.boundAddress,
-      privyWalletAddress: existing.privyWalletAddress,
-      balance: existing.idleBalance,
-      reused: true,
-    });
+  // Someone already registered (by email code or Google, at the kiosk or on
+  // the web) is found by email in Postgres first. Privy's email lookup
+  // doesn't see Google sign-ups, so without this a Google user typing their
+  // email here would get a second, separate account.
+  const known = await findByEmail(email);
+  if (known) {
+    res.json(await loginFull({ privyUserId: known.privyUserId, email: known.email, walletAddress: known.privyWallet }));
     return;
   }
 
-  const boundAddress = deriveBoundAddress(userId);
-  const ensName = walletSubname(deriveEnsLabel(email));
-  const { txHash: ensTxHash } = await registerSubname(ensName, boundAddress);
+  const { userId, walletAddress, fundingTxHash } = await getOrCreateUserWallet(email);
 
-  store.createAccount({
-    privyUserId: userId,
-    ensName,
-    boundAddress,
-    privyWalletAddress: walletAddress,
-    idleBalance: 0,
-    createdAt: Date.now(),
-  });
-
-  res.json({
-    verified: true,
-    userId,
-    ensName,
-    boundAddress,
-    privyWalletAddress: walletAddress,
-    balance: 0,
-    reused: false,
-    fundingTxHash,
-    ensTxHash,
-  });
+  res.json({ ...(await loginFull({ privyUserId: userId, email, walletAddress })), fundingTxHash });
 }));
