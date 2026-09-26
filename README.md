@@ -19,7 +19,7 @@ independent on-chain verification of each piece, and
 
 ## Live deployments (Ethereum Sepolia, chain 11155111)
 
-Our own four contracts are deployed **and independently verified on
+Our own five contracts are deployed **and independently verified on
 Etherscan** (exact-match source, not just a bytecode match) — click through
 to confirm:
 
@@ -29,6 +29,7 @@ to confirm:
 | `TakarabakoVault` | `0xD069D36Af7DF950EE87002Fc120B90eF5Ea3ce3D` | [Verified ✅](https://sepolia.etherscan.io/address/0xD069D36Af7DF950EE87002Fc120B90eF5Ea3ce3D#code) |
 | `MockRiskToken (mAAVE)` | `0x9c57968055d77d765e4EF1E4F138e9089295eD04` | [Verified ✅](https://sepolia.etherscan.io/address/0x9c57968055d77d765e4EF1E4F138e9089295eD04#code) |
 | `MockRiskToken (mDOGE)` | `0x071436DC66a7C86a7c12Bc7E337A05fb46908c38` | [Verified ✅](https://sepolia.etherscan.io/address/0x071436DC66a7C86a7c12Bc7E337A05fb46908c38#code) |
+| `TakarabakoCashReceipt (tkCASH)` | `0x8023edf927c0a53f5620998f972b3d0740e04ea9` | [Verified ✅](https://sepolia.etherscan.io/address/0x8023edf927c0a53f5620998f972b3d0740e04ea9#code) |
 
 Everything else the app talks to is a canonical, already-verified deployment
 we don't own — real Uniswap v3 (Factory/NPM/WETH9), real ENS v2 Beta
@@ -183,7 +184,7 @@ cd device-agent && cp public/config.example.js public/config.js && node server.j
    and an admin API key (Admin → API Keys). Put them in `backend/.env` as
    `MULTIBAAS_URL` and `MULTIBAAS_API_KEY`. No CORS setup is needed: the
    browser never calls MultiBaas; the dashboard goes through the backend.
-2. Deploy tkCASH and put its address in `CASH_RECEIPT_ADDRESS`:
+2. tkCASH is already deployed at `0x8023edf927c0a53f5620998f972b3d0740e04ea9`; set `CASH_RECEIPT_ADDRESS` to it. To deploy your own:
    ```bash
    cd contracts
    KIOSK_ID=kl-sentral-01 forge script script/DeployCashReceipt.s.sol --rpc-url $RPC_URL --broadcast --private-key $PRIVATE_KEY
