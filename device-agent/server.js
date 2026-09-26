@@ -171,9 +171,28 @@ function handleSessionStatus(res) {
   sendJson(res, 200, { active: sessionActive() });
 }
 
+// The serial listener's reasons, as the backend's History codes.
+const REFUSED_CODE = {
+  "unknown note": "unsupported",
+  "note not recognised": "bad_condition",
+};
+
 async function handleBillRejected(req, res) {
   const { reason } = await readJsonBody(req);
-  sendJson(res, 200, putEvent({ id: `r${++idCounter}`, type: "rejected", reason: reason || "note not recognised" }));
+  const text = reason || "note not recognised";
+  const code = REFUSED_CODE[text] ?? (text.startsWith("log in") ? "no_session" : "bad_condition");
+  const event = putEvent({ id: `r${++idCounter}`, type: "rejected", reason: text, code });
+
+  // Logged in: save it to the customer's History and push it to their
+  // screens. With nobody logged in there's no account to record it against.
+  if (sessionActive() && code !== "no_session") {
+    fetch(`${BACKEND_URL}/refused`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${session.token}` },
+      body: JSON.stringify({ reason: code }),
+    }).catch((err) => console.error("[bridge] could not report refused note:", err.message));
+  }
+  sendJson(res, 200, event);
 }
 
 function handleEvents(url, res) {
