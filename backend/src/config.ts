@@ -54,6 +54,17 @@ export const config = {
   opsAgent: {
     model: process.env.OPS_AGENT_MODEL ?? "claude-opus-5",
     adminToken: process.env.OPS_ADMIN_TOKEN ?? "",
+    // The agent's mandate (mandate.ts): "off" = every action waits for a human.
+    autonomy: process.env.AGENT_AUTONOMY !== "off",
+    // Daily signed treasury reports (report.ts): "off" = only on demand.
+    dailyReports: process.env.AGENT_REPORTS !== "off",
+  },
+  // OpenAI-compatible chat API for both agents (llm.ts), e.g. OpenRouter.
+  // Set = used instead of Anthropic; unset = the Anthropic key above.
+  ai: {
+    apiKey: process.env.AI_API_KEY ?? "",
+    baseUrl: (process.env.AI_BASE_URL ?? "https://openrouter.ai/api/v1").replace(/\/+$/, ""),
+    model: process.env.AI_MODEL ?? "openai/gpt-5-mini",
   },
   // World ID (worldId.ts): proof of personhood, one human per account.
   // IDKit 4: the backend signs each request with the RP signing key and
