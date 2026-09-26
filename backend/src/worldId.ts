@@ -22,7 +22,7 @@ import { chainReady, fundWalletWithEthOnChain, publicClient } from "./chain.js";
 
 export const worldIdReady = Boolean(config.worldId.appId && config.worldId.rpId && config.worldId.signingKey && config.worldId.action);
 
-const VERIFY_URL = (rpId: string) => `https://developer.worldcoin.org/api/v4/verify/${rpId}`;
+const VERIFY_URL = (rpId: string) => `https://developer.world.org/api/v4/verify/${rpId}`;
 const NEW_HUMAN_GAS_ETH = 0.001;
 
 /// What the browser needs to open the World ID widget for this customer.
