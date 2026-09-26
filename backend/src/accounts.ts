@@ -33,6 +33,12 @@ export async function findByWallet(wallet: string): Promise<Account | null> {
   return rows[0] ?? null;
 }
 
+/// The account a World ID proof's nullifier was recorded on (verifyHuman).
+export async function findByWorldNullifier(nullifier: string): Promise<Account | null> {
+  const { rows } = await pool.query(`select ${COLUMNS} from accounts where world_nullifier = $1`, [nullifier.toLowerCase()]);
+  return rows[0] ?? null;
+}
+
 export async function insertAccount(a: Omit<Account, "qrEmailedAt" | "worldVerifiedAt" | "worldCredential">): Promise<Account> {
   const { rows } = await pool.query(
     `insert into accounts (privy_user_id, email, privy_wallet, bound_address, ens_name)

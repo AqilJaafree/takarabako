@@ -6,6 +6,7 @@ import { agentRouter } from "./routes/agentRoutes.js";
 import { withdrawRouter } from "./routes/withdraw.js";
 import { positionRouter } from "./routes/position.js";
 import { loginQrRouter } from "./routes/loginQr.js";
+import { loginWorldRouter } from "./routes/loginWorld.js";
 import { authPrivyRouter } from "./routes/authPrivy.js";
 import { eventsRouter } from "./routes/events.js";
 import { meRouter } from "./routes/me.js";
@@ -41,6 +42,7 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 
 app.use(verifyRouter);
 app.use(loginQrRouter);
+app.use(loginWorldRouter);
 app.use(authPrivyRouter);
 app.use(eventsRouter);
 app.use(meRouter);
