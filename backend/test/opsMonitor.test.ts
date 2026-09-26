@@ -21,6 +21,7 @@ test("a non-zero attestation delta is critical and wakes the agent", () => {
   assert.equal(f?.rule, "reserve_mismatch");
   assert.equal(f?.severity, "critical");
   assert.equal(f?.wakeAgent, true);
+  assert.match(f?.message ?? "", /by −\$5\.00/);
   assert.deepEqual(evaluate(event("ReserveAttested", "takarabako_cash_receipt", { delta: "0" })), []);
 });
 

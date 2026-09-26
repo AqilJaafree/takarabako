@@ -15,6 +15,7 @@ export const RULES = {
 } as const;
 
 const USD = 1e6;
+const signedUsd = (n: number) => `${n < 0 ? "−" : "+"}$${Math.abs(n).toFixed(2)}`;
 let recentWithdrawals: number[] = [];
 let lastAgentRun = 0;
 
@@ -34,7 +35,7 @@ export function evaluate(e: StoredEvent, now = Date.now()): Finding[] {
       out.push({
         rule: "reserve_mismatch",
         severity: "critical",
-        message: `Reserve count mismatch: physical count differs from the chain by $${delta.toFixed(2)} — that kiosk's minting is frozen`,
+        message: `Reserve count mismatch: physical count differs from the chain by ${signedUsd(delta)} — that kiosk's minting is frozen`,
         wakeAgent: true,
       });
   }
