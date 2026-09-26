@@ -93,6 +93,11 @@ export function KioskApp({
   const [busy, setBusy] = useState(false);
   const [ticker, setTicker] = useState<string[]>([]);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
+  // The cash slot (Pi bridge): ready once it accepted the session and while
+  // it keeps answering; "none" when this deployment has no bridge.
+  const [slot, setSlot] = useState<"ready" | "offline" | "none">("none");
+  // A note the slot took whose deposit failed before reaching the backend.
+  const [slotError, setSlotError] = useState<string | null>(null);
   // Deposit terminal: which login the scan screen shows.
   const [loginVia, setLoginVia] = useState<"qr" | "world">("qr");
   const [qrProblem, setQrProblem] = useState<QrProblemKind | null>(null);
@@ -121,6 +126,8 @@ export function KioskApp({
     setPosition(null);
     setReceipt(null);
     setMessage("");
+    setSlot("none");
+    setSlotError(null);
     setScreen(startScreen);
     setLoginVia("qr");
     catSay(GREETING, "idle", 0);
@@ -211,9 +218,16 @@ export function KioskApp({
     let since = 0;
     let stopped = false;
     const seen = new Map<string, string>();
+    const hasBridge = session.bridge !== "skipped";
+    let misses = 0;
     const tick = async () => {
       try {
         const res = await fetch(`/api/kiosk/bridge-events?since=${since}`);
+        if (hasBridge) {
+          misses = res.ok ? 0 : misses + 1;
+          if (res.ok) setSlot("ready");
+          else if (misses >= 3) setSlot("offline");
+        }
         const { events } = (await res.json()) as { events: BridgeEvent[] };
         for (const e of events) {
           since = Math.max(since, e.seq);
@@ -229,12 +243,19 @@ export function KioskApp({
             setRefusal({ code, at: Date.now() });
             continue;
           }
-          if (liveRef.current === "live" || seen.get(e.id) === e.status) continue;
+          // "local…" events are the slot's own: a deposit that failed before it
+          // reached the backend never shows on the live stream, so always show it.
+          const local = e.id.startsWith("local");
+          if ((liveRef.current === "live" && !local) || seen.get(e.id) === e.status) continue;
           seen.set(e.id, e.status);
+          if (local && e.status === "failed") {
+            setSlotError(`${cash(e.amount, e.currency)} was taken but not credited: ${e.error ?? "deposit failed"}. It's recorded on the kiosk — please ask staff.`);
+          }
           applyDeposit(e.id, { ...e, status: e.retry && e.status === "pending" ? "retrying" : e.status });
         }
       } catch {
         // bridge briefly unreachable — next tick retries
+        if (hasBridge && ++misses >= 3) setSlot("offline");
       }
       if (!stopped) timer = setTimeout(tick, 1000);
     };
@@ -248,6 +269,8 @@ export function KioskApp({
   // ---- login ----
   function startSession(login: KioskLogin) {
     setSession(login);
+    setSlot(login.bridge === "ok" ? "ready" : login.bridge === "failed" ? "offline" : "none");
+    setSlotError(null);
     setBalance(login.balance);
     setExpiresAt(Date.parse(login.expiresAt));
     setMessage("");
@@ -460,16 +483,24 @@ export function KioskApp({
         {screen === "account" && session && depositOnly && (
           <>
             <section className="lacquer-card" aria-live="polite">
-              <div className="spread">
-                <span className="label">Depositing to</span>
-                <span className={`pill ${live === "live" ? "ok" : "warn"}`}>{live === "live" ? "Live" : "Reconnecting"}</span>
-              </div>
+              <span className="label">Depositing to</span>
               <div className="ens">{session.ensName}</div>
               <div className="balance">{usd(balance)}</div>
             </section>
-            {session.bridge === "failed" && (
+            <div className="kiosk-status" role="status">
+              <span className={`kiosk-status-item ${slot === "ready" ? "ok" : slot === "offline" ? "bad" : "idle"}`}>
+                <i aria-hidden="true" />
+                Cash slot <b>{slot === "ready" ? "ready" : slot === "offline" ? "offline" : "not connected"}</b>
+              </span>
+              <span className={`kiosk-status-item ${live === "live" ? "ok" : "warn"}`}>
+                <i aria-hidden="true" />
+                Live updates <b>{live === "live" ? "connected" : live === "connecting" ? "connecting…" : "reconnecting…"}</b>
+              </span>
+            </div>
+            {slot === "offline" && (
               <div className="notice error">The cash slot is offline — notes will be handed back. Please ask staff.</div>
             )}
+            {slotError && <div className="notice error" role="alert">{slotError}</div>}
             {session.limit?.limited && session.limit.leftUsd !== null && !session.depositBlocked && (
               <p className="kiosk-limit small">
                 {usd(session.limit.leftUsd)} of today&apos;s {usd(session.limit.limitUsd, 0)} left · verify with a World ID selfie in the app to lift it

@@ -3828,3 +3828,73 @@ a.human-badge {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ---------- kiosk: connection status ---------- */
+.kiosk-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -4px 0 14px;
+}
+
+.kiosk-status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.kiosk-status-item b {
+  color: var(--cream);
+}
+
+.kiosk-status-item i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.kiosk-status-item.ok i {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px rgba(127, 201, 160, 0.2);
+}
+
+.kiosk-status-item.warn i {
+  background: var(--warn);
+}
+
+.kiosk-status-item.bad {
+  border-color: rgba(239, 125, 111, 0.5);
+}
+
+.kiosk-status-item.bad i {
+  background: var(--bad);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .kiosk-status-item.ok i {
+    animation: status-breathe 2s ease-in-out infinite;
+  }
+
+  .kiosk-status-item.warn i {
+    animation: status-blink 1s steps(2, start) infinite;
+  }
+}
+
+@keyframes status-breathe {
+  50% {
+    box-shadow: 0 0 0 6px rgba(127, 201, 160, 0.08);
+  }
+}
+
+@keyframes status-blink {
+  to {
+    visibility: hidden;
+  }
+}
