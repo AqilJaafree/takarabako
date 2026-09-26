@@ -16,9 +16,9 @@ import { chainReady, fundWalletWithEthOnChain, publicClient } from "./chain.js";
 /// anonymous per-app identifier for that person; a unique index on it means
 /// one human, one account.
 ///
-/// A verified human unlocks what needs a real person behind it: holding and
-/// moving tkCASH (its on-chain allowlist), sending by name, and the treasury's
-/// gas for their wallet. Their ENS name gets `takarabako.verified = world-id`.
+/// Customers verify right after creating their wallet (a World ID selfie in
+/// the web app). Until they do, limits.ts caps what they can move in a day;
+/// verifying lifts the cap and their ENS name gets `takarabako.verified = world-id`.
 
 export const worldIdReady = Boolean(config.worldId.appId && config.worldId.rpId && config.worldId.signingKey && config.worldId.action);
 
