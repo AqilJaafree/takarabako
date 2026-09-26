@@ -2446,3 +2446,110 @@ a.human-badge {
   background: rgba(240, 184, 90, 0.12);
   color: var(--warn);
 }
+
+/* ---------- kiosk: unknown-QR pop-up ---------- */
+.qr-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.qr-modal-card {
+  position: relative;
+  width: min(460px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  text-align: center;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  border: 1px solid rgba(227, 179, 106, 0.35);
+  border-radius: 20px;
+  padding: 28px 24px 24px;
+  box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.8);
+}
+
+.qr-modal-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--muted);
+  font: inherit;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.qr-modal-close:hover {
+  color: var(--cream);
+  border-color: var(--gold);
+}
+
+.qr-modal-card h2 {
+  font-size: 22px;
+  margin-bottom: 10px;
+}
+
+.qr-modal-icon {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--gold-soft);
+  border: 1px solid rgba(227, 179, 106, 0.5);
+  color: var(--gold);
+  font-family: var(--font-serif);
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.qr-modal-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.qr-modal-actions .btn {
+  padding: 15px 18px;
+  font-size: 17px;
+}
+
+.qr-modal-qr {
+  width: min(100%, 260px);
+  margin-top: 16px;
+}
+
+.qr-modal-qr-loading {
+  aspect-ratio: 1;
+  background: #eee;
+  border-radius: 8px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .qr-modal {
+    animation: qr-modal-fade 0.2s ease-out both;
+  }
+
+  .qr-modal-card {
+    animation: conn-rise 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+}
+
+@keyframes qr-modal-fade {
+  from {
+    opacity: 0;
+  }
+}
