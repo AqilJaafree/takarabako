@@ -8,6 +8,7 @@ import { apy, cash, usd, without } from "@/lib/format";
 import { TreasureStage } from "@/components/treasure/TreasureStage";
 import { useStageDirector } from "@/components/treasure/useStageDirector";
 import { DepositFlow, type Refusal } from "./DepositFlow";
+import { QrProblem, type QrProblemKind } from "./QrProblem";
 import { ConnectionLost, useBackendDown } from "@/components/ConnectionLost";
 import { MachineBadge } from "@/components/MachineBadge";
 
@@ -91,6 +92,8 @@ export function KioskApp({
   const [busy, setBusy] = useState(false);
   const [ticker, setTicker] = useState<string[]>([]);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
+  const [qrProblem, setQrProblem] = useState<QrProblemKind | null>(null);
+  const emailInput = useRef<HTMLInputElement>(null);
   // Backend unreachable: cover the screen until it's back, then reveal the
   // same screen underneath (session, notes and step all kept).
   const [backendDown, backendRecovered] = useBackendDown();
@@ -267,12 +270,40 @@ export function KioskApp({
     try {
       startSession(await post<KioskLogin>("/api/kiosk/login-qr", { qr: text }));
     } catch (err) {
-      setMessage((err as Error).message);
-      // Deposit terminal: show why, with a button to scan again.
+      const status = (err as Error & { status?: number }).status;
       setScreen("welcome");
+      if (status === 404 || status === 400) {
+        // Unknown or foreign QR: a pop-up to scan again or sign up.
+        setMessage("");
+        setQrProblem(status === 404 ? "unregistered" : "invalid");
+        catSay("Hmm, I don't know this QR…", "thinking", 0);
+      } else {
+        // Deposit terminal: show why, with a button to scan again.
+        setMessage((err as Error).message);
+      }
     } finally {
       setBusy(false);
     }
+  }
+
+  const closeQrProblem = useCallback(() => {
+    setQrProblem(null);
+    setMessage("");
+    catSay(GREETING, "idle", 0);
+  }, [catSay, GREETING]);
+
+  function onRescan() {
+    closeQrProblem();
+    setScreen("scan");
+  }
+
+  // /kiosk: email login registers new customers, so sign-up is the email box.
+  function onSignUpHere() {
+    closeQrProblem();
+    setScreen("welcome");
+    setMessage("New here? Enter your email to sign up — your wallet is created for you.");
+    catSay("Welcome! Sign up with your email 💌", "happy");
+    setTimeout(() => emailInput.current?.focus(), 0);
   }
 
   // ---- actions ----
@@ -333,6 +364,15 @@ export function KioskApp({
           />
         </div>
       )}
+      {qrProblem && (
+        <QrProblem
+          kind={qrProblem}
+          depositOnly={depositOnly}
+          onRescan={onRescan}
+          onSignUpHere={onSignUpHere}
+          onDismiss={closeQrProblem}
+        />
+      )}
       <div className="kiosk-panel">
         <header className="kiosk-head">
           <div className="brand">
@@ -365,7 +405,7 @@ export function KioskApp({
           <section className="card">
             <p className="muted" style={{ textAlign: "center" }}>Enter your email to begin — like a card at an ATM.</p>
             <form onSubmit={onEmail}>
-              <input className="input" type="email" name="email" placeholder="you@example.com" autoComplete="off" required autoFocus />
+              <input ref={emailInput} className="input" type="email" name="email" placeholder="you@example.com" autoComplete="off" required autoFocus />
               <button className="btn btn-gold btn-block" disabled={busy}>{busy ? "Verifying…" : "Continue"}</button>
             </form>
             {message && <p className="muted small" style={{ marginTop: 12, marginBottom: 0 }}>{message}</p>}
