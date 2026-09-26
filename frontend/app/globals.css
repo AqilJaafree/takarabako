@@ -1090,3 +1090,236 @@ code,
     radial-gradient(ellipse 34% 48% at 50% 48%, rgba(18, 8, 7, 0.85), rgba(18, 8, 7, 0.4) 65%, transparent),
     linear-gradient(rgba(18, 8, 7, 0.45), transparent 22%, transparent 78%, rgba(18, 8, 7, 0.6));
 }
+
+/* ---------- login page ---------- */
+.login-shell {
+  max-width: 440px;
+  padding-top: 7vh;
+  text-align: center;
+}
+
+.login-crest {
+  position: relative;
+  width: 168px;
+  height: 138px;
+  margin: 0 auto 18px;
+}
+
+.crest-box {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 14px 22px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 18px rgba(227, 179, 106, 0.25));
+}
+
+/* Soft god-rays turning slowly behind the box. */
+.crest-rays {
+  position: absolute;
+  inset: -70px;
+  border-radius: 50%;
+  background:
+    radial-gradient(closest-side, rgba(227, 179, 106, 0.32), rgba(227, 179, 106, 0.08) 55%, transparent 75%),
+    repeating-conic-gradient(from 0deg, rgba(240, 200, 135, 0.13) 0deg 7deg, transparent 7deg 22deg);
+  mask: radial-gradient(closest-side, #000 35%, transparent 100%);
+  -webkit-mask: radial-gradient(closest-side, #000 35%, transparent 100%);
+}
+
+.crest-glint {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: radial-gradient(closest-side, #fff8e6, rgba(255, 230, 170, 0.6) 40%, transparent);
+  clip-path: polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%);
+  opacity: 0;
+}
+.crest-glint.g1 { top: 14%; left: 14%; }
+.crest-glint.g2 { top: 6%; right: 18%; width: 14px; height: 14px; }
+.crest-glint.g3 { bottom: 20%; right: 4%; }
+
+.login-title {
+  font-size: 34px;
+  margin: 0 0 6px;
+  letter-spacing: 0.01em;
+}
+
+.login-title .kanji {
+  background: linear-gradient(180deg, #fbe3a8, var(--gold) 55%, #b98543);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.login-tagline {
+  color: var(--muted);
+  margin: 0 auto 26px;
+  max-width: 34ch;
+}
+
+/* The card as a small lacquered panel with gold corner fittings. */
+.login-card {
+  position: relative;
+  text-align: left;
+  padding: 26px 24px 22px;
+  background:
+    linear-gradient(180deg, rgba(179, 38, 30, 0.1), transparent 40%),
+    linear-gradient(180deg, rgba(36, 21, 18, 0.92), rgba(22, 12, 10, 0.94));
+  border: 1px solid rgba(227, 179, 106, 0.28);
+  box-shadow:
+    0 24px 60px -20px rgba(0, 0, 0, 0.8),
+    inset 0 1px 0 rgba(255, 236, 200, 0.08);
+  backdrop-filter: blur(6px);
+  overflow: hidden;
+}
+
+.login-card::before,
+.login-card::after {
+  content: "";
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--gold);
+  opacity: 0.85;
+  pointer-events: none;
+}
+.login-card::before {
+  top: 8px;
+  left: 8px;
+  border-right: 0;
+  border-bottom: 0;
+  border-top-left-radius: 6px;
+}
+.login-card::after {
+  bottom: 8px;
+  right: 8px;
+  border-left: 0;
+  border-top: 0;
+  border-bottom-right-radius: 6px;
+}
+
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  position: relative;
+  overflow: hidden;
+  padding-block: 14px;
+  background: linear-gradient(180deg, #f6d397, var(--gold) 60%, #cf9c52);
+  border-color: #f6d397;
+  color: #2a1408;
+  box-shadow: 0 8px 24px -8px rgba(227, 179, 106, 0.55);
+}
+
+.btn-google:hover:not(:disabled) {
+  border-color: var(--cream);
+  box-shadow: 0 10px 30px -8px rgba(227, 179, 106, 0.8);
+}
+
+/* A sheen that sweeps across the gold every few seconds. */
+.btn-google::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.55) 50%, transparent 65%);
+  transform: translateX(-120%);
+}
+
+.google-mark {
+  width: 22px;
+  height: 22px;
+  padding: 3px;
+  background: #fff;
+  border-radius: 50%;
+  flex: none;
+}
+
+.btn-outline {
+  background: transparent;
+  border-color: rgba(227, 179, 106, 0.35);
+  color: var(--cream);
+}
+
+.login-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0;
+  color: var(--muted);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.login-or::before,
+.login-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(227, 179, 106, 0.45), transparent);
+}
+
+.login-perks {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 22px 0 0;
+  padding: 0;
+}
+
+/* Wide screens: let the three perks sit on one line under the card. */
+@media (min-width: 600px) {
+  .login-perks { margin-inline: -64px; }
+}
+
+.login-perks li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(26, 15, 13, 0.7);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .crest-box { animation: crest-float 5s ease-in-out infinite; }
+  .crest-rays { animation: crest-spin 40s linear infinite; }
+  .crest-glint { animation: glint 3.6s ease-in-out infinite; }
+  .crest-glint.g2 { animation-delay: 1.2s; }
+  .crest-glint.g3 { animation-delay: 2.3s; }
+  .btn-google::after { animation: sheen 4.5s ease-in-out 1s infinite; }
+  .login-shell > * { animation: login-rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+  .login-shell > :nth-child(2) { animation-delay: 0.08s; }
+  .login-shell > :nth-child(3) { animation-delay: 0.14s; }
+  .login-shell > :nth-child(4) { animation-delay: 0.2s; }
+  .login-shell > :nth-child(5) { animation-delay: 0.28s; }
+}
+
+@keyframes crest-float {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-7px) rotate(1deg); }
+}
+
+@keyframes crest-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes glint {
+  0%, 100% { opacity: 0; transform: scale(0.4) rotate(0deg); }
+  45% { opacity: 1; transform: scale(1.15) rotate(45deg); }
+  60% { opacity: 0; transform: scale(0.6) rotate(90deg); }
+}
+
+@keyframes sheen {
+  0% { transform: translateX(-120%); }
+  30%, 100% { transform: translateX(120%); }
+}
+
+@keyframes login-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
