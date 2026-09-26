@@ -22,6 +22,13 @@ import { chainReady, fundWalletWithEthOnChain, publicClient } from "./chain.js";
 
 export const worldIdReady = Boolean(config.worldId.appId && config.worldId.rpId && config.worldId.signingKey && config.worldId.action);
 
+if (worldIdReady && config.worldId.environment !== "production" && (!config.worldId.stagingToken || config.worldId.stagingToken === "stg_test")) {
+  console.warn(
+    `[world-id] environment is ${config.worldId.environment} but WORLD_STAGING_VERIFICATION_TOKEN isn't a real token — ` +
+      "sandbox proofs will be refused. Run `npm run world:staging` to open a 24h window.",
+  );
+}
+
 const VERIFY_URL = (rpId: string) => `https://developer.world.org/api/v4/verify/${rpId}`;
 const NEW_HUMAN_GAS_ETH = 0.001;
 
