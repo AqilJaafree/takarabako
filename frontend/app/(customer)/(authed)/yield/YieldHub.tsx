@@ -7,6 +7,8 @@ import { apy, usd } from "@/lib/format";
 import { TreasureStage } from "@/components/treasure/TreasureStage";
 import { useStageDirector } from "@/components/treasure/useStageDirector";
 import { RangeChart } from "./RangeChart";
+import { NameField, useResolvedName } from "../send/SendForm";
+import { useWalletSend, type PreparedTx } from "@/lib/useWalletSend";
 
 // The bubble keeps to a sentence or two; the full rationale is shown below.
 const bubble = (text: string) => (text.length > 170 ? `${text.slice(0, 167).trimEnd()}…` : text);
@@ -86,7 +88,19 @@ export function YieldHub({ balance, market, positions: initialPositions }: { bal
         </div>
       )}
 
-      {open.length > 0 && <PositionsList positions={open} onClose={close} />}
+      {open.length > 0 && (
+        <PositionsList
+          positions={open}
+          onClose={close}
+          onGiven={async (p, to) => {
+            setNotice({ text: `${p.label} position given to ${to} — its ENS deed is in their wallet now` });
+            say(`Sent to ${to}!`, "happy");
+            await refresh();
+            router.refresh();
+          }}
+          onError={onFail}
+        />
+      )}
 
       <div className="yield-tabs" role="tablist" aria-label="Yield mode">
         <button role="tab" aria-selected={tab === "quick"} className={tab === "quick" ? "is-on" : ""} onClick={() => setTab("quick")}>
@@ -376,8 +390,19 @@ function ShapeIcon({ shape }: { shape: AdvShape }) {
   );
 }
 
-function PositionsList({ positions, onClose }: { positions: PositionView[]; onClose: (p: PositionView) => Promise<void> }) {
+function PositionsList({
+  positions,
+  onClose,
+  onGiven,
+  onError,
+}: {
+  positions: PositionView[];
+  onClose: (p: PositionView) => Promise<void>;
+  onGiven: (p: PositionView, to: string) => Promise<void>;
+  onError: (e: unknown) => void;
+}) {
   const [closing, setClosing] = useState<string | null>(null);
+  const [giving, setGiving] = useState<string | null>(null);
   return (
     <section className="card">
       <h2>Your strategies</h2>
@@ -411,17 +436,23 @@ function PositionsList({ positions, onClose }: { positions: PositionView[]; onCl
                 {hasRange ? `${usd(p.priceMin, 0)} – ${usd(p.priceMax, 0)}` : "Full range"} · ETH now {usd(p.spot, 0)} · {p.eth.toFixed(5)} ETH + {p.usdc.toFixed(2)} USDC ·{" "}
                 {p.bins.length} strateg{p.bins.length === 1 ? "y" : "ies"}
               </p>
-              <button
-                className="btn btn-ghost small"
-                disabled={closing === p.id}
-                onClick={async () => {
-                  setClosing(p.id);
-                  await onClose(p);
-                  setClosing(null);
-                }}
-              >
-                {closing === p.id ? "Closing…" : "Close & return to box"}
-              </button>
+              <div className="row">
+                <button
+                  className="btn btn-ghost small"
+                  disabled={closing === p.id}
+                  onClick={async () => {
+                    setClosing(p.id);
+                    await onClose(p);
+                    setClosing(null);
+                  }}
+                >
+                  {closing === p.id ? "Closing…" : "Close & return to box"}
+                </button>
+                <button className="btn btn-ghost small" onClick={() => setGiving(giving === p.id ? null : p.id)}>
+                  {giving === p.id ? "Cancel" : "Give to…"}
+                </button>
+              </div>
+              {giving === p.id && <GiveForm position={p} onGiven={(to) => { setGiving(null); return onGiven(p, to); }} onError={onError} />}
             </li>
           );
         })}
@@ -434,3 +465,46 @@ function PositionsList({ positions, onClose }: { positions: PositionView[]; onCl
   );
 }
 
+
+/// Hands a position to someone else by sending its deed — the position's ENS
+/// v2 name token — from the customer's own wallet to the recipient's.
+function GiveForm({ position, onGiven, onError }: { position: PositionView; onGiven: (to: string) => Promise<void>; onError: (e: unknown) => void }) {
+  const [to, setTo] = useState("");
+  const [busy, setBusy] = useState(false);
+  const resolved = useResolvedName(to);
+  const signAndSend = useWalletSend();
+  const r = resolved.result;
+  const deed = `aqua-${position.id.replace(/-/g, "").slice(0, 8)}`;
+
+  return (
+    <div className="give-form">
+      <p className="muted small" style={{ margin: "10px 0 6px" }}>
+        This position&apos;s deed is the ENS name <span className="mono">{deed}.takarabako.eth</span>, held in your wallet. Send it and the
+        position — its value and future fees — belongs to them.
+      </p>
+      <NameField value={to} onChange={setTo} resolved={resolved} />
+      {r && !r.customer && <div className="notice pending" style={{ marginTop: 10 }}>That&apos;s not a Takarabako customer — they&apos;d hold the deed but couldn&apos;t manage the position here.</div>}
+      <button
+        className="btn btn-gold btn-block"
+        style={{ marginTop: 10 }}
+        disabled={busy || !r}
+        onClick={async () => {
+          if (!r) return;
+          setBusy(true);
+          try {
+            const prep = await postJson<{ tx: PreparedTx; from: string; deed: string }>(`/api/yield/positions/${position.id}/give/prepare`, { to: r.name });
+            const hash = await signAndSend(prep.tx, prep.from, `Give ${prep.deed} to ${r.name}`);
+            await postJson(`/api/yield/positions/${position.id}/give/confirm`, { txHash: hash });
+            await onGiven(r.name);
+          } catch (e) {
+            onError(e);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? "Waiting for your wallet…" : r ? `Give this position to ${r.name}` : "Enter a name"}
+      </button>
+    </div>
+  );
+}

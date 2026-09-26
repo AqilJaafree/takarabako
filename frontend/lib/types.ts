@@ -39,6 +39,8 @@ export interface Deposit {
   usdAmount: number | null;
   txHash: string | null;
   tkcashTxHash?: string | null; // the tkCASH receipt token minted for this note
+  machineName?: string | null; // the kiosk that took it, when its signature checked out against ENS
+  machineVerified?: boolean;
   status: "queued" | "sending" | "confirmed" | "failed";
   attempts: number;
   error: string | null;
@@ -181,6 +183,8 @@ export interface ReceiptNote {
   usdAmount: number | null;
   txHash: string | null;
   tkcashTxHash?: string | null;
+  machineName?: string | null;
+  machineVerified?: boolean;
   status: "queued" | "sending" | "confirmed" | "failed";
   at: string;
 }
@@ -224,7 +228,36 @@ export type HistoryItem =
       ensName: string | null;
       txHash: string | null;
     }
-  | { kind: "refused"; at: string; id: string; reason: "unsupported" | "bad_condition" | "no_session"; sessionId: string | null };
+  | { kind: "refused"; at: string; id: string; reason: "unsupported" | "bad_condition" | "no_session"; sessionId: string | null }
+  | {
+      kind: "transfer";
+      at: string;
+      id: string;
+      asset: "balance" | "tkcash" | "position";
+      direction: "sent" | "received";
+      counterparty: string | null;
+      amountUsd: number | null;
+      positionId: string | null;
+      txHash: string | null;
+    };
+
+/// GET /ens/resolve
+export interface ResolvedName {
+  name: string;
+  address: string;
+  kind: string | null;
+  customer: { ensName: string | null } | null;
+  tkcashAllowlisted: boolean | null;
+}
+
+/// GET /me/wallet
+export interface MyWallet {
+  ensName: string | null;
+  wallet: string;
+  eth: number;
+  tkcash: { balance: number; allowlisted: boolean; dailyLimit: number | null; spentToday: number } | null;
+  chainId: number;
+}
 
 /// What a kiosk login hands the browser. The backend session token stays in
 /// the httpOnly cookie; the browser only gets what it displays.

@@ -9,8 +9,11 @@ const FILTERS = [
   { kind: "deposit_session", label: "Deposits" },
   { kind: "withdrawal", label: "Withdrawals" },
   { kind: "yield", label: "Yield" },
+  { kind: "transfer", label: "Transfers" },
   { kind: "refused", label: "Refused" },
 ] as const;
+
+const ASSET_TEXT = { balance: "Box balance", tkcash: "tkCASH", position: "Yield position" } as const;
 
 const REFUSED_TEXT = {
   unsupported: "Note not supported — handed back",
@@ -94,6 +97,11 @@ export function HistoryList({ items }: { items: HistoryItem[] }) {
                                     {" "}· tkCASH <TxLink hash={n.tkcashTxHash} />
                                   </>
                                 )}
+                                {n.machineVerified && n.machineName && (
+                                  <span className="machine-badge" title="Signed by the kiosk's device key, checked against its ENS name">
+                                    ✓ {n.machineName}
+                                  </span>
+                                )}
                               </>
                             ) : n.status === "failed" ? (
                               <span style={{ color: "var(--bad)" }}>not credited</span>
@@ -154,6 +162,28 @@ export function HistoryList({ items }: { items: HistoryItem[] }) {
                     </span>
                   </div>
                   {item.rationale && <p className="speech small" style={{ marginBottom: 0 }}>{item.rationale}</p>}
+                </li>
+              );
+            }
+            if (item.kind === "transfer") {
+              const sent = item.direction === "sent";
+              return (
+                <li key={item.id} className="spread" style={{ padding: "14px 18px" }}>
+                  <span>
+                    <b>
+                      {ASSET_TEXT[item.asset]} {sent ? "sent to" : "received from"}{" "}
+                      <span className="mono">{item.counterparty ?? "an external wallet"}</span>
+                    </b>
+                    <br />
+                    <span className="muted small">{when(item.at)} · by ENS name</span>
+                  </span>
+                  <span style={{ textAlign: "right" }}>
+                    <span className="amount" style={{ color: sent ? undefined : "var(--ok)" }}>
+                      {item.amountUsd != null ? `${sent ? "−" : "+"}${usd(item.amountUsd)}` : ""}
+                    </span>
+                    <br />
+                    <TxLink hash={item.txHash} />
+                  </span>
                 </li>
               );
             }

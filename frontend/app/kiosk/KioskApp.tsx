@@ -9,6 +9,7 @@ import { TreasureStage } from "@/components/treasure/TreasureStage";
 import { useStageDirector } from "@/components/treasure/useStageDirector";
 import { DepositFlow, type Refusal } from "./DepositFlow";
 import { ConnectionLost, useBackendDown } from "@/components/ConnectionLost";
+import { MachineBadge } from "@/components/MachineBadge";
 
 const GREETINGS = {
   kiosk: "いらっしゃいませ! Tap in with your email or wallet QR.",
@@ -337,6 +338,7 @@ export function KioskApp({
           <div className="brand">
             <span className="kanji">宝箱</span> Takarabako
           </div>
+          <MachineBadge />
         </header>
 
         {screen !== "scan" && (

@@ -184,6 +184,9 @@ export function Dashboard({
                     {d.tkcashTxHash && (
                       <> · <a href={SEPOLIA_TX(d.tkcashTxHash)} target="_blank" rel="noreferrer" title="tkCASH receipt token minted">tkCASH ✓</a></>
                     )}
+                    {d.machineVerified && d.machineName && (
+                      <span className="machine-badge" title="Signed by the kiosk's device key, checked against its ENS name">✓ {d.machineName}</span>
+                    )}
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>

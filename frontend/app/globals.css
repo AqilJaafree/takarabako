@@ -2293,3 +2293,63 @@ body:has(.range-chart svg.is-dragging) {
   .shape-picker button { flex-direction: row; align-items: center; gap: 10px; }
   .range-inputs { grid-template-columns: 1fr; }
 }
+
+/* ---------- ENS: verified machines, sending by name ---------- */
+.machine-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(127, 201, 160, 0.4);
+  color: var(--ok);
+  font-size: 12px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  white-space: nowrap;
+}
+
+.name-field .input {
+  margin: 6px 0 0;
+}
+
+.name-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-top: 6px;
+  min-height: 22px;
+  overflow-wrap: anywhere;
+}
+
+.give-form {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+
+.machine-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  white-space: nowrap;
+}
+
+.machine-id.is-ok { color: var(--ok); border-color: rgba(127, 201, 160, 0.45); }
+.machine-id.is-bad { color: var(--warn); }
+.machine-id .mono { color: var(--cream); }
+.machine-id-note { color: var(--muted); }
+
+@media (max-width: 520px) {
+  .machine-id-note { display: none; }
+}
+
+.kiosk-head .machine-id {
+  margin-top: 8px;
+}
