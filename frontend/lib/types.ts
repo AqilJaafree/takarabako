@@ -1,0 +1,102 @@
+// Shapes returned by the Express backend (backend/src/routes/*). Shared by
+// server components, route handlers and client components.
+
+export type RiskTier = "low" | "medium" | "high";
+
+export interface Position {
+  positionId: string;
+  ensName: string;
+  riskTier: RiskTier;
+  pair: string;
+  amount: number;
+  apyBps: number;
+  openedAt: number;
+  nftTokenId?: string | null;
+}
+
+/// GET /me
+export interface Me {
+  userId: string;
+  ensName: string;
+  privyWallet: string;
+  balance: number;
+  apyBps: number;
+  positions: Position[];
+  expiresAt: string;
+}
+
+/// GET /deposits
+export interface Deposit {
+  id: string;
+  currency: string;
+  amount: number;
+  usdAmount: number | null;
+  txHash: string | null;
+  status: "queued" | "sending" | "confirmed" | "failed";
+  attempts: number;
+  error: string | null;
+  createdAt: string;
+}
+
+/// GET /agent/pools
+export interface Pool {
+  riskTier: RiskTier;
+  pair: string;
+  apyBps: number;
+  poolAddress: string;
+  feeBps: number;
+  fullRange: boolean;
+  priceLowUsdc: number | null;
+  priceHighUsdc: number | null;
+}
+
+/// POST /agent/open-position
+export interface OpenedPosition {
+  positionId: string;
+  ensName: string;
+  pair: string;
+  apyBps: number;
+  nftTokenId: string | null;
+  txHash: string | null;
+  rationale: string | null;
+}
+
+/// POST /withdraw
+export interface WithdrawResult {
+  positionsClosed: number;
+  vaultTxHash: string;
+  grossUsdc: number;
+  feeBps: number;
+  netUsdc: number;
+  destination: "cash" | "wallet";
+  receipt: string;
+}
+
+/// Live events from GET /events/stream (backend/src/events.ts).
+export type LiveEvent =
+  | { type: "deposit.pending"; depositId: string; amount: number; currency: string; estUsd: number | null; ts: number }
+  | { type: "deposit.retrying"; depositId: string; attempt: number; maxAttempts: number; error: string; ts: number }
+  | {
+      type: "deposit.confirmed";
+      depositId: string;
+      amount: number;
+      currency: string;
+      usdAmount: number;
+      fxRate: number;
+      txHash: string;
+      balance: number;
+      ts: number;
+    }
+  | { type: "deposit.failed"; depositId: string; amount: number; currency: string; error: string; ts: number };
+
+/// What a kiosk login hands the browser. The backend session token stays in
+/// the httpOnly cookie; the browser only gets what it displays.
+export interface KioskLogin {
+  ensName: string;
+  balance: number;
+  scope: "full" | "deposit";
+  expiresAt: string;
+  qrFallback: string | null;
+  qrEmailed: boolean;
+  bridge: "ok" | "skipped" | "failed";
+}
