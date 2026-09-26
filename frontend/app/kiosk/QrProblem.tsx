@@ -20,6 +20,8 @@ const COPY: Record<QrProblemKind, { title: string; body: string }> = {
 };
 
 /// Shown when a scanned QR can't log anyone in: scan again, or sign up.
+/// Closing it (×, tapping outside, Esc, or a minute idle) goes back to the
+/// start screen.
 /// On /kiosk, signing up is the email box on this screen (onSignUpHere). On
 /// the deposit terminal there is no email box, so it shows a QR that opens
 /// sign-up on the customer's own phone.
@@ -44,6 +46,15 @@ export function QrProblem({
     return () => clearTimeout(t);
   }, [view, onDismiss]);
 
+  // Esc closes it too (the laptop next to the box has a keyboard).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onDismiss();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onDismiss]);
+
   async function onSignUp() {
     if (!depositOnly) {
       onSignUpHere();
@@ -58,8 +69,20 @@ export function QrProblem({
 
   const copy = COPY[kind];
   return (
-    <div className="qr-modal" role="dialog" aria-modal="true" aria-labelledby="qr-modal-title">
+    // Tapping the dimmed area outside the card closes it.
+    <div
+      className="qr-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="qr-modal-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onDismiss();
+      }}
+    >
       <div className="qr-modal-card">
+        <button className="qr-modal-close" onClick={onDismiss} aria-label="Close">
+          ×
+        </button>
         {view === "choose" ? (
           <>
             <div className="qr-modal-icon" aria-hidden="true">?</div>

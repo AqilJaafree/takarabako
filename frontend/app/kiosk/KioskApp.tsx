@@ -93,6 +93,10 @@ export function KioskApp({
   const [ticker, setTicker] = useState<string[]>([]);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const [qrProblem, setQrProblem] = useState<QrProblemKind | null>(null);
+  // The unknown QR just scanned, and (after "Scan a new QR") a short window in
+  // which the scanner skips it, so the same phone can't re-open the pop-up.
+  const [badQr, setBadQr] = useState<string | null>(null);
+  const [ignoreQr, setIgnoreQr] = useState<{ text: string; until: number } | null>(null);
   const emailInput = useRef<HTMLInputElement>(null);
   // Backend unreachable: cover the screen until it's back, then reveal the
   // same screen underneath (session, notes and step all kept).
@@ -275,6 +279,7 @@ export function KioskApp({
       if (status === 404 || status === 400) {
         // Unknown or foreign QR: a pop-up to scan again or sign up.
         setMessage("");
+        setBadQr(text);
         setQrProblem(status === 404 ? "unregistered" : "invalid");
         catSay("Hmm, I don't know this QR…", "thinking", 0);
       } else {
@@ -294,6 +299,7 @@ export function KioskApp({
 
   function onRescan() {
     closeQrProblem();
+    if (badQr) setIgnoreQr({ text: badQr, until: Date.now() + 5000 });
     setScreen("scan");
   }
 
@@ -418,6 +424,7 @@ export function KioskApp({
         {screen === "scan" && (
           <Scanner
             onResult={onQr}
+            ignore={ignoreQr}
             onCancel={(why) => { setMessage(why ?? ""); setScreen("welcome"); }}
             hint={depositOnly ? "Open My QR on your phone, then hold it up to the camera." : undefined}
             fallback={depositOnly ? "check the camera is connected and allowed, then tap Scan my QR" : "log in with email instead"}
@@ -565,10 +572,13 @@ function Scanner({
   onCancel,
   hint,
   fallback = "log in with email instead",
+  ignore = null,
 }: {
   onResult: (text: string) => void;
   onCancel: (why?: string) => void;
   hint?: string;
+  /** A QR to skip until `until` (the unknown one the customer was just shown). */
+  ignore?: { text: string; until: number } | null;
   fallback?: string; // what to do when there's no camera (the deposit terminal has no email login)
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -605,7 +615,9 @@ function Scanner({
           canvas.height = video.videoHeight;
           ctx.drawImage(video, 0, 0);
           const code = jsQR(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
-          if (code?.data) {
+          if (code?.data && ignore && code.data === ignore.text && Date.now() < ignore.until) {
+            setStatus("That QR isn’t registered — show a different one.");
+          } else if (code?.data) {
             done = true;
             setStatus("Got it — logging you in…");
             onResult(code.data);
