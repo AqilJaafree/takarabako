@@ -90,7 +90,7 @@ export function SendForm({ balance, wallet }: { balance: number; wallet: MyWalle
 
   const unverified = wallet.worldId ? !wallet.worldId.verified : false;
   const problem = unverified
-    ? "Verify you're human with World ID (above) to send."
+    ? "Verify you're human with World ID at a Takarabako kiosk to send."
     : !r
     ? null
     : asset === "balance" && !r.customer

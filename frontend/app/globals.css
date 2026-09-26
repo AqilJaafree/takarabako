@@ -2354,20 +2354,28 @@ body:has(.range-chart svg.is-dragging) {
   margin-top: 8px;
 }
 
-/* ---------- World ID ---------- */
-.world-card {
+/* ---------- World ID (verified at the deposit terminal) ---------- */
+.kiosk-world {
   border-color: rgba(240, 184, 90, 0.35);
 }
 
-.world-card.is-verified {
-  border-color: rgba(127, 201, 160, 0.4);
+.kiosk-world-code {
+  display: grid;
+  place-items: center;
+  min-height: 240px;
+  margin-top: 12px;
 }
 
-.world-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
+.kiosk-world-code img {
+  border-radius: 12px;
+  background: var(--cream);
+}
+
+.kiosk-world-done,
+.kiosk-verified {
+  color: var(--ok);
+  text-align: center;
+  margin: 8px 0;
 }
 
 .human-badge {
@@ -2380,4 +2388,9 @@ body:has(.range-chart svg.is-dragging) {
   font-family: var(--font-sans);
   font-size: 12px;
   vertical-align: 2px;
+}
+
+.human-badge.is-pending {
+  background: rgba(240, 184, 90, 0.12);
+  color: var(--warn);
 }

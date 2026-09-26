@@ -273,4 +273,5 @@ export interface KioskLogin {
   qrEmailed: boolean;
   bridge: "ok" | "skipped" | "failed";
   depositSessionId: string | null;
+  worldVerified: boolean; // World ID: the deposit terminal offers to verify if not
 }

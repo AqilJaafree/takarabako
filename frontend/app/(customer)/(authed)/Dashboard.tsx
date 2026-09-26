@@ -9,7 +9,6 @@ import { apy, cash, SEPOLIA_TX, shortHex, timeAgo, usd, without } from "@/lib/fo
 import { RollingNumber } from "@/components/RollingNumber";
 import { TreasureStage } from "@/components/treasure/TreasureStage";
 import { useStageDirector } from "@/components/treasure/useStageDirector";
-import { WorldIdCard } from "@/components/WorldIdCard";
 
 interface Pending {
   amount: number;
@@ -119,7 +118,11 @@ export function Dashboard({
         <RollingNumber value={balance} className="balance" />
         <div className="ens">
           {me.ensName}
-          {me.worldId?.verified && <span className="human-badge">✓ verified human</span>}
+          {me.worldId?.verified ? (
+            <span className="human-badge">✓ verified human</span>
+          ) : me.worldId ? (
+            <span className="human-badge is-pending" title="Scan your QR at a Takarabako deposit terminal and verify with World App">not verified · verify at a kiosk</span>
+          ) : null}
         </div>
         <p className="small" style={{ marginTop: 10, marginBottom: 0, color: "rgba(244,233,218,.8)" }}>
           Earning {apy(me.apyBps)} APY in the Takarabako vault
@@ -133,8 +136,6 @@ export function Dashboard({
         </div>
       )}
       {failure && <div className="notice error">{failure}</div>}
-
-      {me.worldId && !me.worldId.verified && <WorldIdCard verified={false} />}
 
       {receipts?.configured && <CashReceiptsCard r={receipts} balance={tkBalance} />}
 

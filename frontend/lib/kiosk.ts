@@ -49,6 +49,7 @@ interface BackendLogin {
   expiresAt: string;
   qrFallback?: string | null;
   qrEmailed?: boolean;
+  worldVerified?: boolean;
 }
 
 /// Finishes a kiosk login: hand the session to the Pi bridge, keep the token
@@ -71,6 +72,7 @@ export async function kioskLoginResponse(req: NextRequest, login: BackendLogin) 
     qrEmailed: login.qrEmailed ?? false,
     bridge: bridgeStatus,
     depositSessionId: depositSession?.id ?? null,
+    worldVerified: login.worldVerified ?? false,
   };
   const res = NextResponse.json(body);
   setSessionCookie(res, req, "kiosk", login.token);

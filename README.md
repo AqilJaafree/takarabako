@@ -137,8 +137,10 @@ key), `npm run ens:migrate` (re-issue names).
 
 ## World ID: one human, one account
 
-Customers prove they're a unique human with **World ID** (IDKit 4) on the web
-app. The backend signs each request with the RP signing key (it never reaches
+Customers prove they're a unique human with **World ID** (IDKit 4) at the
+kiosk: after scanning their wallet QR on the `/deposit` terminal, the screen
+shows a World ID code that they scan with World App on their own phone. The
+web app only shows whether they're verified. The backend signs each request with the RP signing key (it never reaches
 the browser) and binds it to the customer's own wallet as the signal; World
 App returns a proof, which the backend forwards to the Developer Portal's v4
 verify endpoint. The proof's nullifier — World ID's anonymous per-app id for a
