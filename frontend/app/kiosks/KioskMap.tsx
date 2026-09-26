@@ -17,16 +17,39 @@ setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 export interface KioskMapHandle {
   replay: () => void;
   showUser: (pos: { lat: number; lng: number }) => void;
+  /** Dive the camera into the building (resolves when the dive is done). */
+  diveIn: () => Promise<void>;
+  /** Back out to the street view after being inside. */
+  surface: () => void;
 }
 
 function pinElement(label: string) {
-  const el = document.createElement("div");
+  const el = document.createElement("button");
+  el.type = "button";
   el.className = "kiosk-pin";
-  el.innerHTML = `<span class="kiosk-pin-ring"></span><span class="kiosk-pin-ring r2"></span><span class="kiosk-pin-head"><i>宝</i></span><span class="kiosk-pin-label">${label}</span>`;
+  el.setAttribute("aria-label", `${label}: go inside`);
+  el.innerHTML = `<span class="kiosk-pin-ring"></span><span class="kiosk-pin-ring r2"></span><span class="kiosk-pin-head"><i>宝</i></span><span class="kiosk-pin-label">${label} · Go inside ▸</span>`;
   return el;
 }
 
-export default function KioskMap({ kiosk, onReady, ref }: { kiosk: KioskLocation; onReady?: () => void; ref?: Ref<KioskMapHandle> }) {
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+export default function KioskMap({
+  kiosk,
+  onReady,
+  onEnter,
+  ref,
+}: {
+  kiosk: KioskLocation;
+  onReady?: () => void;
+  /** The pin was tapped: go inside the building. */
+  onEnter?: () => void;
+  ref?: Ref<KioskMapHandle>;
+}) {
+  const onEnterRef = useRef(onEnter);
+  useEffect(() => {
+    onEnterRef.current = onEnter;
+  });
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibre | null>(null);
   const orbit = useRef<number | null>(null);
@@ -65,6 +88,21 @@ export default function KioskMap({ kiosk, onReady, ref }: { kiosk: KioskLocation
 
   useImperativeHandle(ref, () => ({
     replay: flyIn,
+    diveIn: () =>
+      new Promise<void>((resolve) => {
+        const m = map.current;
+        if (!m || reducedMotion()) return resolve();
+        stopOrbit();
+        m.flyTo({ center: [kiosk.lng, kiosk.lat], zoom: 19.6, pitch: 74, bearing: m.getBearing() + 35, duration: 1500, essential: true });
+        m.once("moveend", () => resolve());
+      }),
+    surface: () => {
+      const m = map.current;
+      if (!m) return;
+      const zoom = m.getContainer().clientWidth < 600 ? 16.2 : 17.2;
+      m.flyTo({ center: [kiosk.lng, kiosk.lat], zoom, pitch: 62, bearing: -28, duration: 1600, essential: true });
+      m.once("moveend", startOrbit);
+    },
     showUser: (pos) => {
       const m = map.current;
       if (!m) return;
@@ -137,7 +175,12 @@ export default function KioskMap({ kiosk, onReady, ref }: { kiosk: KioskLocation
           },
         });
       }
-      new Marker({ element: pinElement(`${kiosk.id} · ${kiosk.floor}`), anchor: "bottom" }).setLngLat([kiosk.lng, kiosk.lat]).addTo(m);
+      const pin = pinElement(`${kiosk.id} · ${kiosk.floor}`);
+      pin.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        onEnterRef.current?.();
+      });
+      new Marker({ element: pin, anchor: "bottom" }).setLngLat([kiosk.lng, kiosk.lat]).addTo(m);
       onReady?.();
       flyIn();
     });

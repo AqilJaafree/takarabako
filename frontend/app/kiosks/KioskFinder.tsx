@@ -24,6 +24,21 @@ export function KioskFinder({ kiosks }: { kiosks: Kiosk[] }) {
   const [me, setMe] = useState<{ lat: number; lng: number } | null>(null);
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState("");
+  // Map and floor plan share one frame: "entering" while the camera dives in,
+  // "inside" once the floor plan has taken over.
+  const [view, setView] = useState<"street" | "entering" | "inside">("street");
+
+  async function goInside() {
+    if (view !== "street") return;
+    setView("entering");
+    await map.current?.diveIn();
+    setView("inside");
+  }
+
+  function goOutside() {
+    setView("street");
+    map.current?.surface();
+  }
   const distance = me ? distanceM(me, kiosk) : null;
 
   function locate() {
@@ -61,14 +76,28 @@ export function KioskFinder({ kiosks }: { kiosks: Kiosk[] }) {
         <p className="muted">Insert banknotes, watch them land in your treasure box. {kiosks.length === 1 ? "One kiosk is live right now." : `${kiosks.length} kiosks are live.`}</p>
       </section>
 
-      <div className="finder-map-wrap">
-        <KioskMap ref={map} kiosk={kiosk} />
-        <div className="finder-map-actions">
-          <button className="btn btn-gold small" onClick={locate} disabled={locating}>
-            {locating ? "Finding you…" : me ? "Update my location" : "◎ Use my location"}
-          </button>
-          <button className="btn small" onClick={() => map.current?.replay()}>↻ Fly in again</button>
+      <div className={`finder-map-wrap view-${view}`}>
+        <div className="finder-street" aria-hidden={view === "inside"}>
+          <KioskMap ref={map} kiosk={kiosk} onEnter={goInside} />
         </div>
+        {view !== "street" && (
+          <div className="finder-indoor" role="region" aria-label={`Inside the venue, floor ${kiosk.floor}`}>
+            <div className="finder-indoor-head">
+              <button className="btn small" onClick={goOutside}>← Back to the map</button>
+              <span className="muted small">{kiosk.venue} · the kiosk is on {kiosk.floor}</span>
+            </div>
+            <FloorPlan kioskId={kiosk.id} />
+          </div>
+        )}
+        {view === "street" && (
+          <div className="finder-map-actions">
+            <button className="btn btn-gold small" onClick={goInside}>🏢 Go inside</button>
+            <button className="btn small" onClick={locate} disabled={locating}>
+              {locating ? "Finding you…" : me ? "Update my location" : "◎ Use my location"}
+            </button>
+            <button className="btn small" onClick={() => map.current?.replay()}>↻ Fly in again</button>
+          </div>
+        )}
       </div>
 
       <section className="finder-card">
@@ -101,15 +130,11 @@ export function KioskFinder({ kiosks }: { kiosks: Kiosk[] }) {
 
         <div className="row" style={{ marginTop: 14 }}>
           <a className="btn btn-gold" href={directionsUrl(kiosk)} target="_blank" rel="noreferrer">Directions ↗</a>
+          <button className="btn" onClick={() => { window.scrollTo({ top: 0, behavior: "smooth" }); void goInside(); }}>🏢 Show me inside</button>
           <Link className="btn" href="/qr">Get my deposit QR</Link>
         </div>
       </section>
 
-      <section className="finder-card">
-        <h2>Inside the venue</h2>
-        <p className="muted small">The kiosk is on 5F, the hackathon floor. Follow the gold line.</p>
-        <FloorPlan kioskId={kiosk.id} />
-      </section>
     </main>
   );
 }
