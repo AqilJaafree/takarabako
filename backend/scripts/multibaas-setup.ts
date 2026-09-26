@@ -13,7 +13,8 @@ import { readFile } from "node:fs/promises";
 import { parseAbi, type Abi } from "viem";
 import type { EventQuery } from "@curvegrid/multibaas-sdk";
 import { config } from "../src/config.js";
-import { ALIASES, LABELS, mb, mbError, multibaasReady } from "../src/multibaas.js";
+import { ALIASES, LABELS, mb, mbCall, mbError, mbSend, multibaasReady, toAlias } from "../src/multibaas.js";
+import { pool } from "../src/db.js";
 import { treasuryAddress } from "../src/chain.js";
 
 if (!multibaasReady) {
@@ -203,6 +204,26 @@ if (!config.publicBackendUrl) {
   } catch (err) {
     console.error(`  ✗ webhook: ${mbError(err).message}`);
   }
+}
+
+console.log("5. Existing customers");
+// Accounts registered before MultiBaas was set up: allowlist their wallet
+// for tkCASH and give it an alias (new accounts get both at registration).
+try {
+  const { rows } = await pool.query("select ens_name, privy_wallet from accounts where ens_name is not null");
+  for (const a of rows as Array<{ ens_name: string; privy_wallet: string }>) {
+    const alias = toAlias(a.ens_name.split(".")[0] ?? a.ens_name);
+    await step(`alias ${alias} → ${a.privy_wallet}`, () => mb.addresses.setAddress({ alias, address: a.privy_wallet }), false);
+    if (!config.cashReceiptAddress) continue;
+    const allowed = await mbCall<boolean>(ALIASES.tkcash, LABELS.cashReceipt, "allowlist", [a.privy_wallet]).catch(() => false);
+    if (allowed) console.log(`  · ${alias} allowlisted for tkCASH (already there)`);
+    else await step(`allowlist ${alias} for tkCASH`, () => mbSend(ALIASES.tkcash, LABELS.cashReceipt, "setAllowlisted", [a.privy_wallet, true]), false);
+  }
+  if (!rows.length) console.log("  - no accounts yet");
+} catch (err) {
+  console.error(`  ✗ ${err instanceof Error ? err.message : err}`);
+} finally {
+  await pool.end();
 }
 
 console.log("Done.");

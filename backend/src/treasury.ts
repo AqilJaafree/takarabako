@@ -1,3 +1,4 @@
+import { stringToHex } from "viem";
 import { config } from "./config.js";
 import { treasuryAddress, treasuryEthBalance } from "./chain.js";
 import { ALIASES, LABELS, mbCall, mbQuery, mbSend, multibaasReady } from "./multibaas.js";
@@ -59,10 +60,25 @@ export interface Attestation {
   at: string | null;
 }
 
-const decodeKiosk = (v: string) => Buffer.from(v.replace(/^0x/, ""), "hex").toString("utf8").replace(/\0+$/, "") || v;
+/// A bytes32 kiosk id as text. Event Queries return fixed bytes as a string
+/// like "[107, 108, …]" (byte values); webhooks and calls give 0x-hex.
+function decodeKiosk(v: unknown): string {
+  if (typeof v === "string" && v.startsWith("[")) {
+    try {
+      v = JSON.parse(v);
+    } catch {}
+  }
+  const bytes = Array.isArray(v)
+    ? Buffer.from(v.map(Number))
+    : typeof v === "string" && v.startsWith("0x")
+      ? Buffer.from(v.slice(2), "hex")
+      : null;
+  if (!bytes) return String(v ?? "");
+  return bytes.toString("utf8").replace(/\0+$/, "");
+}
 
 export async function reserveAttestations(limit = 20): Promise<Attestation[]> {
-  const rows = await mbQuery<Record<string, string>>("reserve_attestations", limit).catch(async () => {
+  const rows = await mbQuery<Record<string, unknown>>("reserve_attestations", limit).catch(async () => {
     // The saved query isn't there (setup not run yet): use the webhook log.
     const { rows } = await pool.query(
       "select inputs, triggered_at from chain_events where name = 'ReserveAttested' order by triggered_at desc limit $1",
@@ -71,7 +87,7 @@ export async function reserveAttestations(limit = 20): Promise<Attestation[]> {
     return rows.map((r) => ({ ...r.inputs, at: r.triggered_at?.toISOString?.() ?? null }));
   });
   return rows.map((r) => ({
-    kioskId: decodeKiosk(String(r.kioskId ?? r.kioskid ?? "")),
+    kioskId: decodeKiosk(r.kioskId ?? r.kioskid),
     counted: fromTkUnits(String(r.counted ?? "0")),
     onChain: fromTkUnits(String(r.onChain ?? r.onchain ?? "0")),
     delta: Number(r.delta ?? 0) / USDC,
@@ -89,6 +105,21 @@ export async function reserveStatus() {
     kiosks: [kiosk],
     attestations,
   };
+}
+
+/// An operator counted a kiosk's cash box (proof of reserve). A count that
+/// differs from the chain freezes the kiosk's minting, on-chain.
+export async function attestReserve(kioskId: string, countedUsd: number, auditRef: string) {
+  return mbSend(ALIASES.tkcash, LABELS.cashReceipt, "attestReserve", [
+    kioskIdBytes(kioskId),
+    BigInt(Math.round(countedUsd * USDC)).toString(),
+    stringToHex(auditRef.slice(0, 31), { size: 32 }),
+  ]);
+}
+
+/// A human resolved a count mismatch.
+export async function unfreezeKiosk(kioskId: string) {
+  return mbSend(ALIASES.tkcash, LABELS.cashReceipt, "unfreezeKiosk", [kioskIdBytes(kioskId)]);
 }
 
 /// Executes an approved proposal through MultiBaas (signed by the treasury).
