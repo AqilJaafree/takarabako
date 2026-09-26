@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useLoginWithEmail, useLoginWithOAuth, usePrivy } from "@privy-io/react-auth";
+import { useBoxTransition } from "@/components/BoxTransition";
 
 // Google first; email + code is the fallback behind "Use email instead".
 type Step = "choose" | "email" | "code";
@@ -10,7 +10,7 @@ type Step = "choose" | "email" | "code";
 /// Privy email one-time code → Privy access token → POST /api/session, which
 /// has the backend verify the token and sets the httpOnly session cookie.
 export function LoginForm() {
-  const router = useRouter();
+  const box = useBoxTransition();
   const { ready, authenticated, getAccessToken, logout } = usePrivy();
   const { sendCode, loginWithCode } = useLoginWithEmail();
   // Google redirects away and back; on return Privy finishes the login here,
@@ -39,8 +39,7 @@ export function LoginForm() {
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "login failed");
-      router.replace("/");
-      router.refresh();
+      await box.openInto("/"); // the box opens onto the customer's page
     } catch (e) {
       exchanging.current = false;
       setError(e instanceof Error ? e.message : "login failed");

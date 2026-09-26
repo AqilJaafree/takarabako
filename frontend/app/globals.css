@@ -1323,3 +1323,221 @@ code,
   from { opacity: 0; transform: translateY(14px); }
   to { opacity: 1; transform: none; }
 }
+
+/* ---------- box open / close transition (components/BoxTransition.tsx) ---------- */
+.box-tx {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  perspective: 1400px;
+  overflow: hidden;
+  pointer-events: all;
+}
+
+.box-tx-half {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 50.5%;
+  overflow: hidden;
+  backface-visibility: hidden;
+}
+
+/* Lacquer: deep red with a soft highlight and fine brushed grain. */
+.box-tx-lid {
+  top: 0;
+  transform-origin: 50% 0;
+  background:
+    radial-gradient(120% 90% at 30% 10%, rgba(255, 220, 200, 0.14), transparent 55%),
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.05) 0 2px, transparent 2px 7px),
+    linear-gradient(180deg, #8f1d16 0%, #b3261e 60%, #7d1812 100%);
+  border-bottom: 4px solid var(--gold);
+  box-shadow: 0 6px 30px rgba(0, 0, 0, 0.6), inset 0 -2px 0 #fbe3a8;
+}
+
+.box-tx-body {
+  bottom: 0;
+  transform-origin: 50% 100%;
+  background:
+    radial-gradient(100% 70% at 70% 100%, rgba(255, 200, 170, 0.08), transparent 60%),
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.06) 0 2px, transparent 2px 7px),
+    linear-gradient(180deg, #6e140f 0%, #3c0b08 100%);
+  border-top: 4px solid #a8752f;
+  box-shadow: 0 -6px 30px rgba(0, 0, 0, 0.6);
+}
+
+/* Inner gold frame on each half. */
+.box-tx-lid::before,
+.box-tx-body::before {
+  content: "";
+  position: absolute;
+  inset: 22px 22px 18px;
+  border: 1px solid rgba(227, 179, 106, 0.45);
+  border-radius: 10px;
+}
+.box-tx-lid::before { border-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; bottom: 0; }
+.box-tx-body::before { border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; top: 0; }
+
+.box-tx-fit {
+  position: absolute;
+  width: clamp(48px, 9vw, 90px);
+  height: clamp(48px, 9vw, 90px);
+  border: 6px solid transparent;
+  border-image: linear-gradient(135deg, #fbe3a8, #e3b36a 50%, #a8752f) 1;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
+}
+.box-tx-fit.tl { top: 10px; left: 10px; border-right: 0; border-bottom: 0; }
+.box-tx-fit.tr { top: 10px; right: 10px; border-left: 0; border-bottom: 0; }
+.box-tx-fit.bl { bottom: 10px; left: 10px; border-right: 0; border-top: 0; }
+.box-tx-fit.br { bottom: 10px; right: 10px; border-left: 0; border-top: 0; }
+
+.box-tx-mon {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-serif);
+  font-size: clamp(56px, 12vw, 140px);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  /* engraved into the lacquer, catching a little gold light */
+  color: rgba(70, 10, 6, 0.38);
+  text-shadow: 0 1px 0 rgba(255, 214, 150, 0.22), 0 -1px 0 rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+}
+
+.box-tx-seam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  background: linear-gradient(90deg, transparent, #fff3d0 20%, #fff 50%, #fff3d0 80%, transparent);
+  box-shadow: 0 0 18px 4px rgba(255, 220, 150, 0.8);
+  opacity: 0;
+}
+
+/* The light inside the box, pouring out as the lid lifts. */
+.box-tx-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(60% 45% at 50% 50%, rgba(255, 236, 190, 0.95), rgba(227, 179, 106, 0.5) 40%, transparent 75%);
+  opacity: 0;
+}
+
+.box-tx-clasp {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: clamp(72px, 10vw, 104px);
+  aspect-ratio: 1;
+  margin: 0;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 35% 30%, #fff1c8, #e3b36a 45%, #9c6a2c 100%);
+  border: 3px solid #8a5f2a;
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 6px rgba(138, 95, 42, 0.35),
+    0 0 30px rgba(255, 215, 140, 0.45);
+}
+
+.box-tx-clasp span {
+  font-family: var(--font-serif);
+  font-size: clamp(30px, 4.4vw, 46px);
+  font-weight: 700;
+  color: #5a1410;
+  line-height: 1;
+}
+
+/* closing: the halves slide shut, the clasp drops in and locks */
+.box-tx[data-phase="closing"] .box-tx-lid { animation: lid-shut-in 0.55s cubic-bezier(0.55, 0, 0.35, 1) both; }
+.box-tx[data-phase="closing"] .box-tx-body { animation: body-shut-in 0.55s cubic-bezier(0.55, 0, 0.35, 1) both; }
+.box-tx[data-phase="closing"] .box-tx-clasp { animation: clasp-lock 0.6s 0.45s cubic-bezier(0.3, 1.5, 0.5, 1) both; }
+.box-tx[data-phase="closing"] { animation: box-thud 0.25s 0.55s ease-out; }
+
+/* closed: waiting for the next page, the clasp breathes */
+.box-tx[data-phase="closed"] .box-tx-clasp { animation: clasp-breathe 1.4s ease-in-out infinite; }
+
+/* opening: clasp turns, the seam glows, the lid lifts away, light spills out */
+.box-tx[data-phase="opening"] .box-tx-clasp { animation: clasp-open 0.75s cubic-bezier(0.5, 0, 0.3, 1) both; }
+.box-tx[data-phase="opening"] .box-tx-seam { animation: seam-glow 0.9s 0.25s ease-out both; }
+.box-tx[data-phase="opening"] .box-tx-lid { animation: lid-lift 1s 0.45s cubic-bezier(0.6, 0, 0.25, 1) both; }
+.box-tx[data-phase="opening"] .box-tx-body { animation: body-drop 0.95s 0.5s cubic-bezier(0.6, 0, 0.25, 1) both; }
+.box-tx[data-phase="opening"] .box-tx-glow { animation: glow-burst 1.05s 0.4s ease-out both; }
+
+/* leaving (logout): the closed box sinks away onto the login page */
+.box-tx[data-phase="leaving"] .box-tx-half,
+.box-tx[data-phase="leaving"] .box-tx-clasp,
+.box-tx[data-phase="leaving"] .box-tx-seam { animation: box-sink 0.75s cubic-bezier(0.5, 0, 0.75, 0) both; }
+.box-tx[data-phase="leaving"] .box-tx-clasp { animation-name: clasp-sink; }
+
+@keyframes lid-shut-in {
+  from { transform: translateY(-101%); }
+  to { transform: none; }
+}
+
+@keyframes body-shut-in {
+  from { transform: translateY(101%); }
+  to { transform: none; }
+}
+
+@keyframes box-thud {
+  0% { transform: none; }
+  35% { transform: scale(1.012) translateY(2px); }
+  100% { transform: none; }
+}
+
+@keyframes clasp-lock {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.2) rotate(-90deg); }
+  70% { opacity: 1; transform: translate(-50%, -50%) scale(1.08) rotate(6deg); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+}
+
+@keyframes clasp-breathe {
+  0%, 100% { box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55), inset 0 0 0 6px rgba(138, 95, 42, 0.35), 0 0 24px rgba(255, 215, 140, 0.35); }
+  50% { box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55), inset 0 0 0 6px rgba(138, 95, 42, 0.35), 0 0 46px rgba(255, 215, 140, 0.75); }
+}
+
+@keyframes clasp-open {
+  0% { opacity: 1; transform: translate(-50%, -50%) rotate(0deg) scale(1); }
+  40% { opacity: 1; transform: translate(-50%, -50%) rotate(-100deg) scale(1.12); filter: brightness(1.35); }
+  60% { opacity: 1; transform: translate(-50%, -50%) rotate(-90deg) scale(1.1); filter: brightness(1.5); }
+  100% { opacity: 0; transform: translate(-50%, -140%) rotate(-90deg) scale(0.9); }
+}
+
+@keyframes seam-glow {
+  0% { opacity: 0; transform: scaleX(0.2); }
+  30% { opacity: 1; transform: scaleX(1); height: 2px; }
+  100% { opacity: 0; transform: scaleX(1); height: 40px; margin-top: -20px; }
+}
+
+@keyframes lid-lift {
+  0% { transform: none; }
+  20% { transform: translateY(-3%) rotateX(4deg); }
+  100% { transform: translateY(-112%) rotateX(38deg); }
+}
+
+@keyframes body-drop {
+  0% { transform: none; }
+  100% { transform: translateY(108%) rotateX(-18deg); }
+}
+
+@keyframes glow-burst {
+  0% { opacity: 0; transform: scale(0.6, 0.05); }
+  35% { opacity: 1; transform: scale(1, 0.5); }
+  100% { opacity: 0; transform: scale(1.6, 1.6); }
+}
+
+@keyframes box-sink {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(6%) scale(0.9); }
+}
+
+@keyframes clasp-sink {
+  from { opacity: 1; transform: translate(-50%, -50%); }
+  to { opacity: 0; transform: translate(-50%, -30%) scale(0.8); }
+}
