@@ -19,6 +19,12 @@ export async function findByPrivyUserId(privyUserId: string): Promise<Account | 
   return rows[0] ?? null;
 }
 
+/// Case-insensitive: the kiosk may type Ali@Gmail.com for ali@gmail.com.
+export async function findByEmail(email: string): Promise<Account | null> {
+  const { rows } = await pool.query(`select ${COLUMNS} from accounts where lower(email) = lower($1)`, [email.trim()]);
+  return rows[0] ?? null;
+}
+
 export async function findByWallet(wallet: string): Promise<Account | null> {
   const { rows } = await pool.query(`select ${COLUMNS} from accounts where privy_wallet = $1`, [wallet.toLowerCase()]);
   return rows[0] ?? null;

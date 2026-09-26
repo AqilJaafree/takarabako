@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useLoginWithEmail, usePrivy } from "@privy-io/react-auth";
+import { useLoginWithEmail, useLoginWithOAuth, usePrivy } from "@privy-io/react-auth";
 
-type Step = "email" | "code";
+// Google first; email + code is the fallback behind "Use email instead".
+type Step = "choose" | "email" | "code";
 
 /// Privy email one-time code → Privy access token → POST /api/session, which
 /// has the backend verify the token and sets the httpOnly session cookie.
@@ -12,7 +13,13 @@ export function LoginForm() {
   const router = useRouter();
   const { ready, authenticated, getAccessToken, logout } = usePrivy();
   const { sendCode, loginWithCode } = useLoginWithEmail();
-  const [step, setStep] = useState<Step>("email");
+  // Google redirects away and back; on return Privy finishes the login here,
+  // `authenticated` flips to true and the effect below completes it.
+  const { initOAuth, state: oauthState } = useLoginWithOAuth({
+    onError: () => setError("Google sign-in didn't finish. Try again, or use your email."),
+  });
+  const googleBusy = oauthState.status === "loading";
+  const [step, setStep] = useState<Step>("choose");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -38,7 +45,7 @@ export function LoginForm() {
       exchanging.current = false;
       setError(e instanceof Error ? e.message : "login failed");
       // Start over cleanly: a Privy session the backend refused is no use.
-      setStep("email");
+      setStep("choose");
       await logout().catch(() => {});
     }
   }
@@ -91,7 +98,38 @@ export function LoginForm() {
   return (
     <div className="card">
       {error && <div className="notice error">{error}</div>}
-      {step === "email" ? (
+      {step === "choose" ? (
+        <div>
+          <button
+            type="button"
+            className="btn btn-gold btn-block"
+            disabled={googleBusy}
+            onClick={() => {
+              setError("");
+              void initOAuth({ provider: "google" });
+            }}
+          >
+            {googleBusy ? "Opening Google…" : "Continue with Google"}
+          </button>
+          <p className="muted small" style={{ textAlign: "center", margin: "16px 0 0" }}>
+            No Google account?{" "}
+            <button
+              type="button"
+              className="btn btn-ghost small"
+              style={{ display: "inline", padding: "4px 6px", textDecoration: "underline", minHeight: 0 }}
+              onClick={() => {
+                setError("");
+                setStep("email");
+              }}
+            >
+              Use email instead
+            </button>
+          </p>
+          <p className="muted small" style={{ textAlign: "center", marginTop: 14, marginBottom: 0 }}>
+            Use the same email as at the kiosk to see the same box.
+          </p>
+        </div>
+      ) : step === "email" ? (
         <form onSubmit={onSendCode}>
           <label className="label" htmlFor="email">Email</label>
           <input
@@ -111,6 +149,17 @@ export function LoginForm() {
           <p className="muted small" style={{ marginTop: 14, marginBottom: 0 }}>
             Use the same email as at the kiosk to see the same box.
           </p>
+          <button
+            type="button"
+            className="btn btn-ghost small"
+            style={{ marginTop: 12 }}
+            onClick={() => {
+              setError("");
+              setStep("choose");
+            }}
+          >
+            ← Continue with Google instead
+          </button>
         </form>
       ) : (
         <form onSubmit={onLogin}>

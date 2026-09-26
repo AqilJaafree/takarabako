@@ -32,6 +32,16 @@ export interface PrivyUserWallet {
   fundingTxHash?: string;
 }
 
+/// The user's email, whichever way they logged in: an email-code login stores
+/// it as an `email` account, "Sign in with Google" as a `google_oauth` one.
+function findEmail(linkedAccounts: LinkedAccount[]): string | undefined {
+  for (const a of linkedAccounts) {
+    if (a.type === "email" && "address" in a && a.address) return String(a.address).toLowerCase();
+    if (a.type === "google_oauth" && "email" in a && a.email) return String(a.email).toLowerCase();
+  }
+  return undefined;
+}
+
 function findEthereumWallet(linkedAccounts: LinkedAccount[]): string | undefined {
   const wallet = linkedAccounts.find((a) => a.type === "wallet" && a.chain_type === "ethereum");
   return wallet && "address" in wallet ? wallet.address : undefined;
@@ -94,8 +104,8 @@ export async function userFromAccessToken(accessToken: string): Promise<PrivyUse
   });
 
   let user = await privy.users()._get(userId);
-  const emailAccount = user.linked_accounts.find((a) => a.type === "email");
-  if (!emailAccount || !("address" in emailAccount)) throw new Error(`Privy user ${userId} has no email`);
+  const email = findEmail(user.linked_accounts);
+  if (!email) throw new Error(`Privy user ${userId} has no email`);
 
   let walletAddress = findEthereumWallet(user.linked_accounts);
   let fundingTxHash: string | undefined;
@@ -112,5 +122,5 @@ export async function userFromAccessToken(accessToken: string): Promise<PrivyUse
   }
   if (!walletAddress) throw new Error(`Privy user ${userId} has no ethereum embedded wallet`);
 
-  return { userId, walletAddress, fundingTxHash, email: emailAccount.address as string };
+  return { userId, walletAddress, fundingTxHash, email };
 }
