@@ -7,7 +7,7 @@ dashboard and a policy-bound AI agent.**
 
 An ATM-style cash-in kiosk: verify your identity with just an email (Privy —
 real embedded wallet, no seed phrase, no app), *then* insert cash, and it's
-credited to an ENS-named on-chain wallet (`*.wantest.eth`) with optional
+credited to an ENS-named on-chain wallet (`*.takarabako.eth`) with optional
 risk-tiered yield as 1inch Aqua liquidity strategies (Uniswap v3 before), with a Claude Haiku
 4.5 call. Built for ETHGlobal Online 2026. Full product spec lives in
 `takarabako-prd.md` (gitignored, local-only).
@@ -138,25 +138,64 @@ key), `npm run ens:migrate` (re-issue names).
 ## World ID: one human, one account
 
 Right after a customer creates their wallet in the web app, they take a
-**World ID selfie** (IDKit 4, Selfie Check) in World App — on their phone the
-button opens World App directly. The backend signs each request with the RP
-signing key (it never reaches the browser) and binds it to the new wallet's
-address as the signal, so the proof only ever verifies that account; it then
-checks the proof with the Developer Portal's v4 verify endpoint. The proof's
-nullifier — World ID's anonymous per-app id for a person — is stored under a
+**World ID Selfie Check** in World App (`/verify`). On a phone the button
+opens World App directly; on a computer they scan a QR code. The backend
+signs each request with the RP signing key (it never reaches the browser)
+and binds it to the new wallet's address as the signal, so the proof only
+ever verifies that account. It then checks the proof with the Developer
+Portal's v4 verify endpoint (`backend/src/worldId.ts`). The proof's
+nullifier, World ID's anonymous per-app id for a person, is stored under a
 unique index, so one human can't run two accounts.
+
+Before asking World, the backend refuses a proof that:
+
+- was made for another account (signal) or another action,
+- comes from a different World ID environment than the backend runs in (so
+  sandbox test identities can't pass as real humans in production),
+- carries a weaker credential than `WORLD_PRESET` asks for (the preset isn't
+  covered by the request signature, so the browser could swap it).
+
+It also requires every per-credential entry in World's answer to succeed,
+not only the top-level `success`.
+
+The Selfie Check is requested as a **World ID 3.0** proof (IDKit's
+`selfieCheckLegacy` preset). The 4.0 version needs World ID 4.0 in the
+customer's World App, and World App reports `world_id_4_not_available`
+without it. The customer needs a completed Selfie Check in World App.
 
 The selfie can be skipped. An unverified account can move **$1,000 a day**
 (UTC) across everything: cash deposited at the kiosk, withdrawals, yield
 positions opened, and anything sent by name (`backend/src/limits.ts`). A
 kiosk visit won't start once the day's limit is used (notes already taken are
 always credited). Verifying lifts the limit, and the customer's ENS name gets
-`takarabako.verified = world-id`. At the kiosk nothing changes: customers show
-their QR to the camera as usual.
+`takarabako.verified = world-id`.
 
-Config (backend/.env): `WORLD_APP_ID`, `WORLD_RP_ID`, `WORLD_APP_SIGNING_KEY`,
-`WORLD_ACTION`, `WORLD_ENVIRONMENT` (`sandbox` for the sandbox World App),
-`WORLD_PRESET` (`selfie`, `selfie-v4` or `device`), `UNVERIFIED_DAILY_LIMIT_USD`.
+### Logging in with World ID at the deposit terminal
+
+`/deposit` has two ways in: **Scan my QR** (the wallet QR, for everyone) and
+**World ID** (for customers who have verified). The World ID tab shows a
+World App QR code. The backend binds that request to a one-time nonce in
+Redis (5 minutes), and the proof has to carry it. The backend then spends
+the nonce, checks the proof as above, and finds the account whose stored
+nullifier matches. It opens the same deposit-only session a wallet QR does
+(`backend/src/worldLogin.ts`, `GET /login/world/request`,
+`POST /login/world`). A World ID that hasn't verified an account is told to
+scan their QR instead.
+
+Login uses the same action and preset as verification, because a person's
+nullifier differs between actions and between credentials. Changing either
+means verified customers have to verify again before World ID login finds
+them. World's v4 endpoint accepts the same person proving the same action
+repeatedly, which is what makes repeat logins work.
+
+Config (`backend/.env`): `WORLD_APP_ID`, `WORLD_RP_ID`,
+`WORLD_APP_SIGNING_KEY`, `WORLD_ACTION` (`selfie`), `WORLD_ENVIRONMENT`
+(`production`, or `sandbox` for the sandbox World App), `WORLD_PRESET`
+(`selfie` = 3.0 Selfie Check, `selfie-v4`, or `device` for any World App
+user), `UNVERIFIED_DAILY_LIMIT_USD`. For sandbox testing,
+`npm run world:staging` opens a 24-hour staging verification window and
+saves its token as `WORLD_STAGING_VERIFICATION_TOKEN` (needs
+`WORLD_TEAM_API_KEY`); production doesn't use it.
 
 ## Yield on 1inch Aqua
 
@@ -199,7 +238,8 @@ The pair is mETH (a mintable ETH stand-in priced off live ETH/USD) and mUSDC.
   rationale.
 - **`frontend/`** — Next.js web app: the customer app (Privy email-code
   login, live balance, quick-deposit QR, yield, withdraw), `/kiosk`, the
-  box's new screen, `/deposit`, the public cash-deposit terminal, and
+  box's new screen, `/deposit`, the public cash-deposit terminal (wallet QR
+  or World ID login), and
   `/ops`, the treasury dashboard. See [`frontend/README.md`](./frontend/README.md).
 - **`device-agent/`** — kiosk page for the Raspberry Pi 4 touchscreen, plus
   the software bridge for a real TB74 pulse bill acceptor (`gpio/`).
@@ -214,14 +254,14 @@ sequenceDiagram
     participant Privy
     participant Claude as Claude Haiku 4.5
     participant Aqua as 1inch Aqua (SwapVM)
-    participant ENS as ENS v2 (wantest.eth)
+    participant ENS as ENS v2 (takarabako.eth)
     participant Vault as TakarabakoVault
 
     User->>Kiosk: enter email
     Kiosk->>API: POST /verify {email}
     API->>Privy: getByEmailAddress / create
     Privy-->>API: userId + embedded wallet
-    API->>ENS: register <label>.wantest.eth (new account only)
+    API->>ENS: register <label>.takarabako.eth (new account only)
     API-->>Kiosk: {userId, ensName, balance: 0}
 
     User->>Kiosk: insert cash (or fallback button)
@@ -235,7 +275,7 @@ sequenceDiagram
     Claude-->>API: rationale (tier is never overridden)
     API->>Vault: withdrawTo(treasury, amount's shares)
     API->>Aqua: ship SwapVM strategies (one per bin)
-    API->>ENS: register aqua-<id>.wantest.eth
+    API->>ENS: register aqua-<id>.takarabako.eth
     API-->>Kiosk: {ensName, pair, apyBps, rationale}
 
     User->>Kiosk: withdraw
@@ -287,9 +327,10 @@ cd device-agent && cp public/config.example.js public/config.js && node server.j
 
 ```bash
 cd contracts && forge test          # vault + tkCASH (18 tests, incl. a supply == reserve fuzz)
-cd backend && npm test              # needs Postgres (npm run services); 40 tests: webhook
-                                    # signatures, tkCASH encoding, policy limits, proposal
-                                    # lifecycle with the executor stubbed, monitor rules, …
+cd backend && npm test              # needs Postgres + Redis (npm run services); 78 tests:
+                                    # webhook signatures, tkCASH encoding, policy limits,
+                                    # proposal lifecycle with the executor stubbed, monitor
+                                    # rules, World ID proof checks and login, …
 cd backend && npm run typecheck
 ```
 
