@@ -77,3 +77,19 @@ test("re-verifying the same account is fine", async () => {
   const r = await verifyHuman(await fresh("u-alice"), proof(ALICE.privyWallet, "0xABC123"));
   assert.deepEqual(r, { ok: true, credential: "proof_of_human", alreadyVerified: true });
 });
+
+test("sandbox proofs carry the staging verification token", async () => {
+  const { config } = await import("../src/config.js");
+  config.worldId.stagingToken = "stg_test";
+  let headers: Record<string, string> = {};
+  mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+    headers = init.headers as Record<string, string>;
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  });
+  await pool.query("update accounts set world_nullifier = null, world_verified_at = null where privy_user_id = 'u-bob'");
+  await verifyHuman(await fresh("u-bob"), { ...proof(BOB.privyWallet, "0xsandbox"), environment: "sandbox" });
+  assert.equal(headers["x-staging-verification-token"], "stg_test");
+  await verifyHuman(await fresh("u-bob"), { ...proof(BOB.privyWallet, "0xsandbox"), environment: "production" });
+  assert.equal(headers["x-staging-verification-token"], undefined);
+  config.worldId.stagingToken = "";
+});

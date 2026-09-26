@@ -68,6 +68,9 @@ export const config = {
     // Which credential to ask for: "device" (any World App user), "selfie"
     // (Selfie Check, World ID 3 proofs) or "selfie-v4" (Selfie Check, World ID 4 only).
     preset: (process.env.WORLD_PRESET ?? "device") as "device" | "selfie" | "selfie-v4",
+    // Sandbox/staging proofs only verify while the app's staging window is
+    // open (24h, opened from the Developer Portal); this is the token it issues.
+    stagingToken: process.env.WORLD_STAGING_VERIFICATION_TOKEN ?? "",
   },
   // Customers who haven't verified with World ID can move this much a day
   // (deposits, withdrawals, yield, sends — limits.ts).

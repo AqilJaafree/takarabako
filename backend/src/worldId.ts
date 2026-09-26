@@ -76,7 +76,12 @@ export async function verifyHuman(account: Account, result: IdkitResult): Promis
 
   const res = await fetch(VERIFY_URL(config.worldId.rpId), {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(result.environment && result.environment !== "production" && config.worldId.stagingToken
+        ? { "x-staging-verification-token": config.worldId.stagingToken }
+        : {}),
+    },
     body: JSON.stringify(result),
     signal: AbortSignal.timeout(15_000),
   });
