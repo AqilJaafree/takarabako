@@ -62,7 +62,7 @@ export interface Attestation {
 
 /// A bytes32 kiosk id as text. Event Queries return fixed bytes as a string
 /// like "[107, 108, …]" (byte values); webhooks and calls give 0x-hex.
-function decodeKiosk(v: unknown): string {
+export function decodeKiosk(v: unknown): string {
   if (typeof v === "string" && v.startsWith("[")) {
     try {
       v = JSON.parse(v);
