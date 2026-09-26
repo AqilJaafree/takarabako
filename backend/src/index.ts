@@ -14,6 +14,8 @@ import { webhooksRouter } from "./routes/webhooks.js";
 import { opsRouter } from "./routes/ops.js";
 import { dashboardRouter } from "./routes/dashboard.js";
 import { yieldRouter } from "./routes/yieldRoutes.js";
+import { ensRouter } from "./routes/ensRoutes.js";
+import { startDeedWatcher } from "./ensTransfers.js";
 import { startOpsMonitor } from "./opsMonitor.js";
 import { startAquaSimulator } from "./aquaSimulator.js";
 import { migrate } from "./db.js";
@@ -45,6 +47,7 @@ app.use(depositSessionsRouter);
 app.use(depositRouter);
 app.use(agentRouter);
 app.use(yieldRouter);
+app.use(ensRouter);
 app.use(withdrawRouter);
 app.use(positionRouter);
 app.use(opsRouter);
@@ -70,6 +73,7 @@ try {
 startDepositWorker();
 startOpsMonitor();
 startAquaSimulator();
+startDeedWatcher();
 
 app.listen(config.port, () => {
   console.log(`takarabako backend listening on :${config.port}`);

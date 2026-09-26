@@ -70,7 +70,7 @@ depositSessionsRouter.post("/refused", requireSession("deposit"), asyncHandler(a
   res.json({ ok: true });
 }));
 
-const KINDS: HistoryKind[] = ["deposit_session", "withdrawal", "yield", "refused"];
+const KINDS: HistoryKind[] = ["deposit_session", "withdrawal", "yield", "refused", "transfer"];
 
 /// GET /history?kind=&limit= — everything that happened to the box, newest first.
 depositSessionsRouter.get("/history", requireSession("full"), asyncHandler(async (req, res) => {

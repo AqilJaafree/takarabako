@@ -34,7 +34,7 @@ export const LABELS = {
   cashReceipt: "takarabako_cash_receipt",
   usdc: "mock_usdc",
   aqua: "oneinch_aqua", // 1inch Aqua registry — the yield strategies
-  ensRegistry: "ens_user_registry",
+  ensRegistry: "takarabako_names", // our ENS v2 UserRegistry under takarabako.eth
 } as const;
 
 /// Address aliases, so calls read as "vault" rather than a hex address.

@@ -16,6 +16,7 @@ import { config } from "../src/config.js";
 import { ALIASES, LABELS, mb, mbCall, mbError, mbSend, multibaasReady, toAlias } from "../src/multibaas.js";
 import { pool } from "../src/db.js";
 import { aq } from "../src/aquaSdk.js";
+import { registryAbi } from "../src/ensV2.js";
 import { treasuryAddress } from "../src/chain.js";
 
 if (!multibaasReady) {
@@ -23,9 +24,14 @@ if (!multibaasReady) {
   process.exit(1);
 }
 
-// Replaced by 1inch Aqua; unlinked on the next run (the free tier allows five).
-const RETIRED = { alias: "uniswap-npm", label: "uniswap_v3_npm" };
-const ENS_USER_REGISTRY = "0x786441fDe1a4006EadD745A8b90d8621F7a99916";
+// Retired links, unlinked first so the new ones fit the free tier's five:
+// Uniswap's position manager (replaced by 1inch Aqua) and the beta ENS
+// registry under wantest.eth (replaced by takarabako.eth on official ENS v2).
+const RETIRED = [
+  { alias: "uniswap-npm", label: "uniswap_v3_npm" },
+  { alias: "ens-wantest", label: "ens_user_registry" },
+];
+
 const VERSION = "1.0";
 
 interface Artifact {
@@ -44,11 +50,13 @@ async function foundryArtifact(contract: string): Promise<Artifact> {
 }
 
 // Only the parts of these third-party contracts we call or index.
-const ensAbi = parseAbi([
-  "event LabelRegistered(uint256 indexed tokenId, bytes32 indexed labelHash, string label, address owner, uint64 expiry, address indexed sender)",
-  "function register(string label, address owner, address registry, address resolver, uint256 roleBitmap, uint64 expiry) returns (uint256)",
-  "function findOwner(string label) view returns (address)",
-]);
+const ensAbi = [
+  ...registryAbi,
+  ...parseAbi([
+    "event NameRegistered(uint256 indexed tokenId, bytes32 indexed labelHash, string label, address owner, uint64 expiry, address indexed sender)",
+    "event TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values)",
+  ]),
+] as Abi;
 
 // Third-party contracts: only the ABI subset; we never deploy them, so a
 // placeholder bytecode satisfies MultiBaas.
@@ -59,7 +67,7 @@ const contracts: Array<{ label: string; name: string; alias: string; address: st
   { label: LABELS.cashReceipt, name: "TakarabakoCashReceipt", alias: ALIASES.tkcash, address: config.cashReceiptAddress, artifact: () => foundryArtifact("TakarabakoCashReceipt") },
   { label: LABELS.usdc, name: "MockUSDC", alias: ALIASES.musdc, address: config.usdcAddress, artifact: () => foundryArtifact("MockUSDC") },
   { label: LABELS.aqua, name: "Aqua", alias: "aqua", address: config.aqua.address, artifact: external(aq.ABI.AQUA_ABI as unknown as Abi) },
-  { label: LABELS.ensRegistry, name: "UserRegistry", alias: "ens-wantest", address: ENS_USER_REGISTRY, artifact: external(ensAbi) },
+  { label: LABELS.ensRegistry, name: "UserRegistry", alias: "takarabako-names", address: config.ens.registryAddress, artifact: external(ensAbi) },
 ];
 
 const status = (err: unknown) => (err as { response?: { status?: number } })?.response?.status;
@@ -93,7 +101,9 @@ for (const c of contracts) {
 
 console.log("2. Addresses, aliases and links");
 // Free the retired contract's slot first so the new link fits the five-contract cap.
-await step(`unlink ${RETIRED.alias} ↔ ${RETIRED.label} (retired)`, () => mb.contracts.unlinkAddressContract(RETIRED.alias, RETIRED.label), false, true);
+for (const r of RETIRED) {
+  await step(`unlink ${r.alias} ↔ ${r.label} (retired)`, () => mb.contracts.unlinkAddressContract(r.alias, r.label), false, true);
+}
 if (treasuryAddress) await step(`alias ${ALIASES.treasury} → ${treasuryAddress}`, () => mb.addresses.setAddress({ alias: ALIASES.treasury, address: treasuryAddress! }), false);
 for (const c of contracts) {
   if (!c.address) {
