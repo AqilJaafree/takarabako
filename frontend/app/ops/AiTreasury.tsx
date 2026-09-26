@@ -265,7 +265,7 @@ function ReportCard({ reports, token, onChanged }: { reports: AgentReportSummary
     <article className="card ai-card ai-report">
       <div className="spread">
         <h3>Daily report</h3>
-        {latest && <span className="muted small">{timeAgo(latest.createdAt)}</span>}
+        {latest && <span className="muted small" suppressHydrationWarning>{timeAgo(latest.createdAt)}</span>}
       </div>
       {!reports ? (
         <p className="ops-empty">Reports unavailable.</p>

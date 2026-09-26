@@ -86,7 +86,7 @@ export function OpsDashboard({ initial }: { initial: OpsData }) {
               <span className={`pill ${summary.cashReceipt ? "ok" : "warn"}`}>{summary.cashReceipt ? "tkCASH live" : "tkCASH not deployed"}</span>
             </>
           )}
-          <button className="btn btn-ghost small" onClick={refresh} disabled={refreshing}>
+          <button className="btn btn-ghost small" onClick={refresh} disabled={refreshing} suppressHydrationWarning>
             {refreshing ? "Refreshing…" : `Updated ${new Date(data.loadedAt).toLocaleTimeString()}`}
           </button>
         </div>
