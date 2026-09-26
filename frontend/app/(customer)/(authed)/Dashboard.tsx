@@ -228,7 +228,7 @@ function CashReceiptsCard({ r, balance }: { r: Extract<CashReceipts, { configure
         One tkCASH for every dollar of notes you put in the box. It lives in your wallet and is redeemed when you withdraw.
       </p>
       <p className="small tk-proof">
-        {r.backed ? "✓" : "✗"} {usd(r.supply)} tkCASH issued · {usd(r.reserve)} of banknotes held in kiosk{" "}
+        {r.backed ? "✓" : "✗"} {usd(r.supply)} tkCASH issued · {usd(r.reserve)} of banknotes held in Takarabako kiosks · this kiosk{" "}
         <span className="mono">{r.kiosk.kioskId}</span>
         {r.kiosk.lastAuditAt ? ` · last counted ${timeAgo(new Date(r.kiosk.lastAuditAt * 1000).toISOString())}` : ""}
       </p>

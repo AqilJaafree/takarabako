@@ -7,7 +7,7 @@ const pool = await freshDb();
 const { checkMachine, primeKioskForTest, sessionHash, DOMAIN, TYPES } = await import("../src/machine.js");
 after(() => pool.end());
 
-const KIOSK = "kl-sentral-01.takarabako.eth";
+const KIOSK = "tokyo-01.takarabako.eth";
 const device = privateKeyToAccount(generatePrivateKey());
 const token = "session-token-abc";
 primeKioskForTest(KIOSK, device.address);

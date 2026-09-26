@@ -2,7 +2,7 @@
 // first time the bridge starts (kept in ~/.takarabako/device-key.json,
 // readable only by this user) signs every note the bill acceptor takes. Its
 // address is published as the addr record of the kiosk's ENS name (e.g.
-// kl-sentral-01.takarabako.eth), so the backend — or anyone — can check that
+// tokyo-01.takarabako.eth), so the backend — or anyone — can check that
 // a deposit really came from this machine: resolve the name, recover the
 // signer, compare.
 //
@@ -15,7 +15,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 const KEY_FILE = process.env.DEVICE_KEY_FILE || join(homedir(), ".takarabako", "device-key.json");
-export const KIOSK_NAME = process.env.KIOSK_ENS_NAME || "kl-sentral-01.takarabako.eth";
+export const KIOSK_NAME = process.env.KIOSK_ENS_NAME || "tokyo-01.takarabako.eth";
 
 export const DOMAIN = { name: "Takarabako Kiosk", version: "1", chainId: 11155111 };
 export const TYPES = {

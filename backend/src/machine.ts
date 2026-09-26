@@ -3,7 +3,7 @@ import { config } from "./config.js";
 import { pool } from "./db.js";
 import { resolveName, textRecord } from "./ens.js";
 
-/// Verifiable kiosks. Each kiosk has an ENS name (kl-sentral-01.takarabako.eth)
+/// Verifiable kiosks. Each kiosk has an ENS name (tokyo-01.takarabako.eth)
 /// whose addr record is a signing key generated on the machine itself
 /// (device-agent/machine.js). The machine signs every note it takes; a note
 /// is credited as "verified" only if the signer recovered from the signature

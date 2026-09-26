@@ -112,14 +112,14 @@ UserRegistry (subnames are ERC-1155 tokens) and PermissionedResolver
 `UniversalResolverV2` — any ENS-aware app sees them.
 
 - **Verifiable machines.** Each kiosk is a name, e.g.
-  `kl-sentral-01.takarabako.eth`, whose address record is a signing key
+  `tokyo-01.takarabako.eth`, whose address record is a signing key
   generated on the Raspberry Pi itself (`device-agent/machine.js`). The Pi
   signs every note it accepts (EIP-712 `NoteAccepted`: kiosk, amount,
   currency, session hash, nonce, time). `/deposit` resolves the kiosk's name,
   recovers the signer and credits the note as verified only if they match; a
   fake box or a replayed signature can't mint deposits
   (`MACHINE_SIGNATURE=required` rejects unsigned ones outright). The kiosk
-  screen, receipts and History show "✓ kl-sentral-01.takarabako.eth".
+  screen, receipts and History show "✓ tokyo-01.takarabako.eth".
 - **Customer names** (`alice-1a2b.takarabako.eth`) are owned by, and resolve
   to, the customer's own Privy wallet.
 - **Send by name.** Type a name, it resolves through ENS: box balance moves
@@ -249,7 +249,7 @@ cd device-agent && cp public/config.example.js public/config.js && node server.j
 2. tkCASH is already deployed at `0x8023edf927c0a53f5620998f972b3d0740e04ea9`; set `CASH_RECEIPT_ADDRESS` to it. To deploy your own:
    ```bash
    cd contracts
-   KIOSK_ID=kl-sentral-01 forge script script/DeployCashReceipt.s.sol --rpc-url $RPC_URL --broadcast --private-key $PRIVATE_KEY
+   KIOSK_ID=tokyo-01 forge script script/DeployCashReceipt.s.sol --rpc-url $RPC_URL --broadcast --private-key $PRIVATE_KEY
    ```
 3. Expose the backend for webhooks, e.g. `cloudflared tunnel --url http://localhost:4000`,
    and set `PUBLIC_BACKEND_URL` to the tunnel URL.

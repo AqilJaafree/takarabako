@@ -13,7 +13,7 @@ export const cashReceiptReady = multibaasReady && Boolean(config.cashReceiptAddr
 
 const TK_DECIMALS = 6;
 
-/// bytes32 kiosk id, as the contract stores it ("kl-sentral-01" right-padded).
+/// bytes32 kiosk id, as the contract stores it ("tokyo-01" right-padded).
 export function kioskIdBytes(kioskId = config.kioskId): `0x${string}` {
   return stringToHex(kioskId, { size: 32 });
 }
@@ -49,18 +49,28 @@ export async function recordCashIn(d: { depositId: string; wallet: string; usdAm
   return hash;
 }
 
-/// Cash leaves the box: burn the customer's whole tkCASH balance, capped at
-/// what this kiosk's reserve can cover. Returns the USD burned.
+/// Every kiosk this backend knows: the current one first, then retired ones
+/// whose reserve is still redeemable.
+export const knownKioskIds = () => [config.kioskId, ...config.previousKioskIds.filter((k) => k !== config.kioskId)];
+
+/// Cash leaves the box: burn the customer's whole tkCASH balance against
+/// kiosk reserves — the current kiosk first, then retired ones. Returns the
+/// USD burned and the last burn's tx.
 export async function redeemAll(wallet: string): Promise<{ burned: number; txHash: string | null }> {
   if (!cashReceiptReady) return { burned: 0, txHash: null };
-  const [balance, kiosk] = await Promise.all([
-    mbCall<string>(ALIASES.tkcash, LABELS.cashReceipt, "balanceOf", [wallet]),
-    kioskState(),
-  ]);
-  const amount = BigInt(balance) < BigInt(kiosk.reserveRaw) ? BigInt(balance) : BigInt(kiosk.reserveRaw);
-  if (amount === 0n) return { burned: 0, txHash: null };
-  const txHash = await mbSend(ALIASES.tkcash, LABELS.cashReceipt, "redeem", [kioskIdBytes(), wallet, amount.toString()]);
-  return { burned: fromTkUnits(amount), txHash };
+  let left = BigInt(await mbCall<string>(ALIASES.tkcash, LABELS.cashReceipt, "balanceOf", [wallet]));
+  let burned = 0n;
+  let txHash: string | null = null;
+  for (const id of knownKioskIds()) {
+    if (left === 0n) break;
+    const kiosk = await kioskState(id);
+    const amount = left < BigInt(kiosk.reserveRaw) ? left : BigInt(kiosk.reserveRaw);
+    if (amount === 0n) continue;
+    txHash = await mbSend(ALIASES.tkcash, LABELS.cashReceipt, "redeem", [kioskIdBytes(id), wallet, amount.toString()]);
+    left -= amount;
+    burned += amount;
+  }
+  return { burned: fromTkUnits(burned), txHash };
 }
 
 /// New customers may hold and move tkCASH: identity-verified via Privy.

@@ -335,3 +335,16 @@ the kiosk name's address record.
 tkCASH's daily transfer limit is now set on-chain to $500
 (`setDailyTransferLimit`, tx `0xae068973…`). MultiBaas links our UserRegistry
 as `takarabako_names` (the beta registry link was retired).
+
+### Kiosk renamed: kl-sentral-01 → tokyo-01
+
+The kiosk is now `tokyo-01`. On tkCASH, `setKiosk(tokyo-01, true)` (tx
+`0x52fe4df9…`) put it in service and `setKiosk(kl-sentral-01, false)` (tx
+`0x1a656cbe…`) retired the old one: no new cash-ins there, but its reserve
+(122.33 at the switch) stays redeemable — the backend burns against the
+current kiosk first, then retired ones (`KIOSK_PREVIOUS_IDS`). On ENS,
+`tokyo-01.takarabako.eth` resolves to the same Pi device key
+(`0xb3F9…C9f5`, `takarabako.kind=kiosk`), and `kl-sentral-01.takarabako.eth`
+is marked `takarabako.kind=retired-kiosk`, so notes signed as the old kiosk
+no longer verify. The first note signed as `tokyo-01.takarabako.eth`
+verified end to end and minted against Tokyo's reserve.

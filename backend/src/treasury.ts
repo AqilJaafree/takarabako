@@ -2,7 +2,7 @@ import { stringToHex } from "viem";
 import { config } from "./config.js";
 import { treasuryAddress, treasuryEthBalance } from "./chain.js";
 import { ALIASES, LABELS, mbCall, mbQuery, mbSend, multibaasReady } from "./multibaas.js";
-import { cashReceiptReady, fromTkUnits, kioskIdBytes, kioskState, tkSupply } from "./cashReceipt.js";
+import { cashReceiptReady, fromTkUnits, kioskIdBytes, kioskState, knownKioskIds, tkSupply } from "./cashReceipt.js";
 import { pool } from "./db.js";
 import type { ProposalAction } from "./policy.js";
 
@@ -97,12 +97,12 @@ export async function reserveAttestations(limit = 20): Promise<Attestation[]> {
 
 export async function reserveStatus() {
   if (!cashReceiptReady) return { configured: false as const };
-  const [supply, kiosk, attestations] = await Promise.all([tkSupply(), kioskState(), reserveAttestations(5)]);
+  const [supply, kiosks, attestations] = await Promise.all([tkSupply(), Promise.all(knownKioskIds().map((id) => kioskState(id))), reserveAttestations(5)]);
   return {
     configured: true as const,
     ...supply,
     backed: Math.abs(supply.supply - supply.reserve) < 1e-6,
-    kiosks: [kiosk],
+    kiosks,
     attestations,
   };
 }
