@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Shippori_Mincho } from "next/font/google";
+import { CurrencyTunnel } from "@/components/CurrencyTunnel";
 import "./globals.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
@@ -17,7 +18,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} ${mincho.variable}`}>
-      <body>{children}</body>
+      <body>
+        <CurrencyTunnel />
+        {children}
+      </body>
     </html>
   );
 }
