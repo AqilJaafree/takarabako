@@ -17,7 +17,9 @@ export type UserEvent =
     }
   | { type: "deposit.failed"; depositId: string; amount: number; currency: string; error: string }
   // A note the acceptor handed back: not a supported note, or in poor condition.
-  | { type: "deposit.refused"; reason: "unsupported" | "bad_condition"; sessionId: string | null };
+  | { type: "deposit.refused"; reason: "unsupported" | "bad_condition"; sessionId: string | null }
+  // The note's tkCASH receipt token was minted to the customer's wallet.
+  | { type: "tkcash.minted"; depositId: string; amount: number; txHash: string };
 
 const channel = (privyUserId: string) => `user:${privyUserId}`;
 

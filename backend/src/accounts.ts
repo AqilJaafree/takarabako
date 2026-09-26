@@ -54,11 +54,13 @@ export interface DepositRow {
   attempts: number;
   error: string | null;
   sessionId: string | null;
+  tkcashTxHash: string | null;
   createdAt: Date;
 }
 
 const DEPOSIT_COLUMNS = `id, privy_user_id as "privyUserId", currency, amount::float as amount,
-  usd_amount::float as "usdAmount", tx_hash as "txHash", status, attempts, error, session_id as "sessionId", created_at as "createdAt"`;
+  usd_amount::float as "usdAmount", tx_hash as "txHash", status, attempts, error, session_id as "sessionId",
+  tkcash_tx_hash as "tkcashTxHash", created_at as "createdAt"`;
 
 /// A deposit starts as a queued row; the deposit queue (depositQueue.ts)
 /// sends it and moves it to sending → confirmed | failed.

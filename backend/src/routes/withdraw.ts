@@ -65,7 +65,16 @@ withdrawRouter.post("/withdraw", requireSession("full"), asyncHandler(async (req
   const fee = (grossUsdc * feeBps) / 10_000;
   const netUsdc = grossUsdc - fee;
 
-  await recordWithdrawal({ privyUserId: userId, destination, grossUsd: grossUsdc, feeBps, netUsd: netUsdc, txHash: vaultTxHash });
+  await recordWithdrawal({
+    privyUserId: userId,
+    destination,
+    grossUsd: grossUsdc,
+    feeBps,
+    netUsd: netUsdc,
+    txHash: vaultTxHash,
+    tkcashBurned: tkcash.burned,
+    tkcashTxHash: tkcash.txHash,
+  });
 
   store.logWithdraw({
     id: crypto.randomUUID(),

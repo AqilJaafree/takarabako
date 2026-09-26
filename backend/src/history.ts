@@ -12,6 +12,7 @@ export interface ReceiptNote {
   currency: string;
   usdAmount: number | null;
   txHash: string | null;
+  tkcashTxHash: string | null; // the tkCASH minted for this note
   status: "queued" | "sending" | "confirmed" | "failed";
   at: Date;
 }
@@ -31,7 +32,18 @@ export interface Receipt {
 
 export type HistoryItem =
   | ({ kind: "deposit_session"; at: Date } & Receipt)
-  | { kind: "withdrawal"; at: Date; id: string; destination: "cash" | "wallet"; grossUsd: number; feeBps: number; netUsd: number; txHash: string | null }
+  | {
+      kind: "withdrawal";
+      at: Date;
+      id: string;
+      destination: "cash" | "wallet";
+      grossUsd: number;
+      feeBps: number;
+      netUsd: number;
+      txHash: string | null;
+      tkcashBurned: number;
+      tkcashTxHash: string | null;
+    }
   | {
       kind: "yield";
       at: Date;
@@ -99,7 +111,7 @@ function buildReceipt(session: { id: string; privyUserId: string; status: "open"
   };
 }
 
-const NOTE_COLUMNS = `id, amount::float as amount, currency, usd_amount::float as "usdAmount", tx_hash as "txHash", status,
+const NOTE_COLUMNS = `id, amount::float as amount, currency, usd_amount::float as "usdAmount", tx_hash as "txHash", tkcash_tx_hash as "tkcashTxHash", status,
   created_at as at, session_id as "sessionId"`;
 
 export async function getReceipt(id: string): Promise<Receipt | null> {
@@ -122,10 +134,13 @@ export async function recordWithdrawal(w: {
   feeBps: number;
   netUsd: number;
   txHash: string | null;
+  tkcashBurned?: number;
+  tkcashTxHash?: string | null;
 }) {
   await pool.query(
-    "insert into withdrawals (id, privy_user_id, destination, gross_usd, fee_bps, net_usd, tx_hash) values ($1, $2, $3, $4, $5, $6, $7)",
-    [crypto.randomUUID(), w.privyUserId, w.destination, w.grossUsd, w.feeBps, w.netUsd, w.txHash],
+    `insert into withdrawals (id, privy_user_id, destination, gross_usd, fee_bps, net_usd, tx_hash, tkcash_burned, tkcash_tx_hash)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [crypto.randomUUID(), w.privyUserId, w.destination, w.grossUsd, w.feeBps, w.netUsd, w.txHash, w.tkcashBurned ?? 0, w.tkcashTxHash ?? null],
   );
 }
 
@@ -189,7 +204,7 @@ export async function listHistory(privyUserId: string, opts: { limit: number; ki
   if (want("withdrawal")) {
     const { rows } = await pool.query(
       `select id, destination, gross_usd::float as "grossUsd", fee_bps as "feeBps", net_usd::float as "netUsd",
-              tx_hash as "txHash", created_at as at
+              tx_hash as "txHash", tkcash_burned::float as "tkcashBurned", tkcash_tx_hash as "tkcashTxHash", created_at as at
        from withdrawals where privy_user_id = $1 order by created_at desc limit $2`,
       [privyUserId, limit],
     );

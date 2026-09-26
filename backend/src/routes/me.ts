@@ -6,6 +6,9 @@ import { requireSession } from "../sessions.js";
 import { store } from "../store.js";
 import { chainReady, previewValueOnChain, currentApyBpsOnChain } from "../chain.js";
 import { asyncHandler } from "../asyncHandler.js";
+import { config } from "../config.js";
+import { ALIASES, LABELS, mbCall } from "../multibaas.js";
+import { cashReceiptReady, fromTkUnits, kioskState, tkSupply } from "../cashReceipt.js";
 
 /// Read endpoints for the web app (full sessions only): the account at a
 /// glance, deposit history, and the quick-deposit QR to show at the kiosk.
@@ -46,5 +49,34 @@ meRouter.get("/me/qr", requireSession("full"), asyncHandler(async (_req, res) =>
   res.json({
     wallet: account.privyWallet,
     dataUrl: await QRCode.toDataURL(account.privyWallet, { width: 480, margin: 2 }),
+  });
+}));
+
+/// GET /me/cash-receipts — the customer's tkCASH: their balance (a claim on
+/// banknotes in the kiosk's box) and the proof that it's backed.
+meRouter.get("/me/cash-receipts", requireSession("full"), asyncHandler(async (_req, res) => {
+  const account = await findByPrivyUserId(res.locals.session.privyUserId);
+  if (!account) {
+    res.status(404).json({ error: "unknown account" });
+    return;
+  }
+  if (!cashReceiptReady) {
+    res.json({ configured: false });
+    return;
+  }
+  const [balance, kiosk, supply] = await Promise.all([
+    mbCall<string>(ALIASES.tkcash, LABELS.cashReceipt, "balanceOf", [account.privyWallet]),
+    kioskState(),
+    tkSupply(),
+  ]);
+  res.json({
+    configured: true,
+    contract: config.cashReceiptAddress,
+    wallet: account.privyWallet,
+    balance: fromTkUnits(balance),
+    kiosk: { kioskId: kiosk.kioskId, reserve: kiosk.reserve, active: kiosk.active, frozen: kiosk.frozen, lastAuditAt: kiosk.lastAuditAt },
+    supply: supply.supply,
+    reserve: supply.reserve,
+    backed: Math.abs(supply.supply - supply.reserve) < 1e-6,
   });
 }));
