@@ -22,6 +22,8 @@ interface Props {
   limits: { lo: number; hi: number }; // allowed range (−90% … +300%)
   bins: PreviewBin[];
   onChange: (min: number, max: number) => void;
+  /// No draggable range (a full-range position covers every price).
+  locked?: boolean;
 }
 
 type Drag = { kind: "min" | "max" | "band"; startY: number; startMin: number; startMax: number; domain: { lo: number; hi: number } } | null;
@@ -41,7 +43,7 @@ function niceTicks(lo: number, hi: number, count = 5): number[] {
   return [...new Set(out)];
 }
 
-export function RangeChart({ candles, spot, min, max, limits, bins, onChange }: Props) {
+export function RangeChart({ candles, spot, min, max, limits, bins, onChange, locked = false }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [W, setW] = useState(720);
   const [drag, setDrag] = useState<Drag>(null);
@@ -152,7 +154,7 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange }: 
         <span><i className="rl-candle" />ETH/USDC · 1h candles</span>
         <span><i className="rl-sw usdc" />USDC</span>
         <span><i className="rl-sw eth" />ETH</span>
-        <span className="muted">Drag the gold lines, or the band</span>
+        <span className="muted">{locked ? "Full range covers every price" : "Drag the gold lines, or the band"}</span>
       </div>
       <svg
         ref={svgRef}
@@ -187,7 +189,8 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange }: 
           y={y(max)}
           height={Math.max(2, y(min) - y(max))}
           className="rc-band"
-          onPointerDown={(e) => startDrag("band", e)}
+          onPointerDown={locked ? undefined : (e) => startDrag("band", e)}
+          style={locked ? { cursor: "default" } : undefined}
         />
 
         {/* price: hourly candles, like a trading chart */}
@@ -227,7 +230,7 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange }: 
         <text x={PAD.left + 6} y={y(spot) - 6} className="rc-spot-label">Now {usd(spot, 0)}</text>
 
         {/* draggable range lines */}
-        {(["max", "min"] as const).map((k) => {
+        {(locked ? [] : (["max", "min"] as const)).map((k) => {
           const p = k === "max" ? max : min;
           const py = y(p);
           return (

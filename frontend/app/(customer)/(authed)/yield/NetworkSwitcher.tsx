@@ -101,7 +101,7 @@ function NetworkPanel({ info, live, market }: { info: NetworkInfo; live: Network
 
   return (
     <div className="net-body">
-      {info.selfCustody && <SelfCustodyPanel network={info} />}
+      {info.selfCustody && <SelfCustodyPanel network={info} market={market} />}
       <dl className="net-facts">
         <div><dt>Chain</dt><dd>{info.name} · id {info.chainId}</dd></div>
         <div><dt>Pays gas in</dt><dd>{info.nativeSymbol}</dd></div>

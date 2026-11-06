@@ -1,7 +1,9 @@
 // Shapes returned by the Express backend's /self/arc/* routes
 // (backend/src/routes/selfRoutes.ts, selfPositions.ts).
 
-export type SelfMode = "low" | "medium" | "high" | "hybrid";
+/// What a position is: one of the advanced shapes over a price range, or the full range.
+export type SelfShape = "full" | "spot" | "curve" | "bidask" | "hybrid";
+export type SelfMode = SelfShape;
 
 export interface SelfWallet {
   address: string;

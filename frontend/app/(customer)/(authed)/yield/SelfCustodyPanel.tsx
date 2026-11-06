@@ -1,25 +1,38 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { NetworkInfo } from "@/lib/networks";
-import type { SelfMode, SelfPosition, SelfPrepared, SelfStep, SelfWallet } from "@/lib/selfCustody";
+import type { Market, Preview, PreviewBin } from "@/lib/types";
+import type { SelfPosition, SelfPrepared, SelfShape, SelfStep, SelfWallet } from "@/lib/selfCustody";
 import { shortHex, usd } from "@/lib/format";
 import { useArcWallets, type ArcWalletsApi } from "@/lib/useArcWallets";
 import { ConfirmRealMoney } from "./RealMoney";
+import { RangeChart } from "./RangeChart";
 
 /// Open and close Aqua positions on Arc mainnet with the customer's own wallet:
 /// the wallet is the Aqua maker, so the tokens never leave it and the customer
 /// signs every transaction. It can be their Takarabako wallet or one they connect,
-/// such as MetaMask; opening this view asks that wallet to switch to Arc. The
-/// backend only prepares the transactions and checks the result.
+/// such as MetaMask; opening this view asks that wallet to switch to Arc. The chart
+/// draws the chosen strategy's liquidity over the live candles (USDC below the
+/// price, ETH above), and the range and shape can be changed. The backend only
+/// prepares the transactions and checks the result.
 
-const MODES: Array<{ id: SelfMode; name: string; hint: string }> = [
-  { id: "low", name: "Full range", hint: "Earns on every trade and swings the least" },
-  { id: "medium", name: "Balanced ±25%", hint: "More fees while ETH stays within 25% of today's price" },
-  { id: "high", name: "Bold ±8%", hint: "Most fees while the price holds, and nothing once it leaves" },
-  { id: "hybrid", name: "Hybrid", hint: "A tight core near today's price plus the whole range as a safety net" },
+/// Ready-made strategies: choosing one sets the shape and range the chart draws.
+const PRESETS: Array<{ id: string; name: string; hint: string; shape: SelfShape; lo?: number; hi?: number }> = [
+  { id: "full", name: "Full range", hint: "Earns on every trade and swings the least", shape: "full" },
+  { id: "balanced", name: "Balanced ±25%", hint: "More fees while ETH stays within 25% of today's price", shape: "spot", lo: 0.75, hi: 1.25 },
+  { id: "bold", name: "Bold ±8%", hint: "Most fees while the price holds, and nothing once it leaves", shape: "spot", lo: 0.92, hi: 1.08 },
+  { id: "hybrid", name: "Hybrid", hint: "A tight core near today's price plus the whole range as a safety net", shape: "hybrid", lo: 0.5, hi: 2 },
 ];
-const MODE_NAME = Object.fromEntries(MODES.map((m) => [m.id, m.name])) as Record<SelfMode, string>;
+
+const SHAPES: Array<{ id: SelfShape; name: string; hint: string }> = [
+  { id: "spot", name: "Spot", hint: "Even across the range" },
+  { id: "curve", name: "Curve", hint: "Most near today's price" },
+  { id: "bidask", name: "Bid-Ask", hint: "Most at the edges" },
+  { id: "hybrid", name: "Hybrid", hint: "A tight core plus the whole range" },
+  { id: "full", name: "Full range", hint: "Every price" },
+];
+const SHAPE_NAME = Object.fromEntries(SHAPES.map((s) => [s.id, s.name])) as Record<SelfShape, string>;
 
 const RISKS = [
   "Your tokens stay in your own wallet. 1inch Aqua pays traders out of them, up to the amounts you approve, so the position's value follows ETH's price and can fall below what you put in.",
@@ -39,24 +52,41 @@ const num = (n: number, digits: number) => n.toLocaleString("en-US", { maximumFr
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 /// The version that signs with the customer's Privy wallets (embedded and connected).
-export function SelfCustodyPanel({ network }: { network: NetworkInfo }) {
+export function SelfCustodyPanel({ network, market }: { network: NetworkInfo; market: Market }) {
   const wallets = useArcWallets();
-  return <SelfCustodyView network={network} wallets={wallets} />;
+  return <SelfCustodyView network={network} market={market} wallets={wallets} />;
 }
 
 /// The panel with its wallets passed in, so it can be exercised without Privy.
-export function SelfCustodyView({ network, wallets }: { network: NetworkInfo; wallets: ArcWalletsApi }) {
+export function SelfCustodyView({ network, market, wallets }: { network: NetworkInfo; market: Market; wallets: ArcWalletsApi }) {
   const [chosen, setChosen] = useState<string | null>(null);
+  // The chart's coordinates come from floating-point maths that can differ in the last digits between the server and
+  // the browser, so it is drawn only in the browser: the server HTML always matches.
+  const inBrowser = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
   // The Takarabako wallet unless the customer picked another one.
   const current = wallets.wallets.find((w) => w.address.toLowerCase() === chosen?.toLowerCase()) ?? wallets.wallets.find((w) => w.kind === "embedded") ?? wallets.wallets[0];
   const address = current?.address;
   const onArc = current?.onArc ?? false;
 
+  const spot = market.spot;
+  const limits = useMemo(() => ({ lo: market.advanced.minPrice, hi: market.advanced.maxPrice }), [market.advanced.minPrice, market.advanced.maxPrice]);
+
+  // What the chart draws: a strategy to start from, then whatever the customer changes.
+  const [presetId, setPresetId] = useState("hybrid"); // "custom" once the range or shape is edited
+  const [basePreset, setBasePreset] = useState("hybrid");
+  const [shape, setShape] = useState<SelfShape>("hybrid");
+  const [range, setRange] = useState({ min: spot * 0.5, max: spot * 2 });
+  const [amount, setAmount] = useState(25);
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [previewError, setPreviewError] = useState("");
+
   const [wallet, setWallet] = useState<{ forAddress: string; data: SelfWallet } | null>(null);
   const [positions, setPositions] = useState<SelfPosition[]>([]);
   const [loadError, setLoadError] = useState("");
-  const [mode, setMode] = useState<SelfMode>("hybrid");
-  const [amount, setAmount] = useState(25);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
@@ -66,6 +96,49 @@ export function SelfCustodyView({ network, wallets }: { network: NetworkInfo; wa
   const [copied, setCopied] = useState(false);
   const busy = progress !== "";
   const walletData = wallet && wallet.forAddress === address ? wallet.data : null;
+
+  function choosePreset(id: string) {
+    const p = PRESETS.find((x) => x.id === id)!;
+    setPresetId(id);
+    setBasePreset(id);
+    setShape(p.shape);
+    if (p.lo !== undefined && p.hi !== undefined) setRange({ min: spot * p.lo, max: spot * p.hi });
+  }
+  function chooseShape(s: SelfShape) {
+    setShape(s);
+    setPresetId("custom");
+    // coming from the full range, start the range around today's price
+    if (shape === "full" && s !== "full") setRange({ min: spot * 0.75, max: spot * 1.25 });
+  }
+  function changeRange(min: number, max: number) {
+    setRange({ min, max });
+    setPresetId("custom");
+  }
+
+  // Liquidity for the chart: a full-range position is one block over the whole chart, the rest come from the backend's maths.
+  const full = shape === "full";
+  const fullBins = useMemo<PreviewBin[]>(
+    () => [{ min: limits.lo, max: limits.hi, weight: 1, usd: amount, eth: amount / 2 / spot, usdc: amount / 2 }],
+    [limits.lo, limits.hi, amount, spot],
+  );
+  const seq = useRef(0);
+  useEffect(() => {
+    if (full) return;
+    const id = ++seq.current;
+    const t = setTimeout(() => {
+      api<Preview>("/api/yield/preview", { amount: amount >= 5 ? amount : 100, shape, priceMin: range.min, priceMax: range.max })
+        .then((p) => {
+          if (id !== seq.current) return;
+          setPreview(p);
+          setPreviewError("");
+        })
+        .catch((e) => id === seq.current && setPreviewError(e instanceof Error ? e.message : "could not draw the liquidity"));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [full, shape, range.min, range.max, amount]);
+  const bins = full ? fullBins : (preview?.bins ?? []);
+  const totals = bins.reduce((s, b) => ({ eth: s.eth + b.eth, usdc: s.usdc + b.usdc }), { eth: 0, usdc: 0 });
+  const ethShare = totals.eth * spot + totals.usdc > 0 ? ((totals.eth * spot) / (totals.eth * spot + totals.usdc)) * 100 : 0;
 
   /// Asks the wallet to switch to Arc (MetaMask shows its own prompt, and adds the network if it is missing).
   const switchToArc = useCallback(
@@ -143,6 +216,8 @@ export function SelfCustodyView({ network, wallets }: { network: NetworkInfo; wa
     return hashes;
   }
 
+  const label = full ? "Full range" : `${SHAPE_NAME[shape]} ${usd(range.min, 0)} – ${usd(range.max, 0)}`;
+
   async function open() {
     if (!address) return;
     setError("");
@@ -152,11 +227,11 @@ export function SelfCustodyView({ network, wallets }: { network: NetworkInfo; wa
     if (!ok) return;
     try {
       setProgress("Checking your wallet and preparing the transactions…");
-      const prepared = await api<SelfPrepared>("/api/self/arc/prepare", { mode, amount, wallet: address });
+      const prepared = await api<SelfPrepared>("/api/self/arc/prepare", { shape, ...(full ? {} : { priceMin: range.min, priceMax: range.max }), amount, wallet: address });
       const hashes = await signAll(prepared.steps, address, "Opening");
       setProgress("Waiting for Arc to confirm, and checking Aqua…");
       await api("/api/self/arc/record", { positionId: prepared.positionId, txHashes: hashes });
-      setDone(`Your ${MODE_NAME[mode]} position is open. Your tokens are still in your wallet.`);
+      setDone(`Your ${label} position is open. Your tokens are still in your wallet.`);
       await Promise.all([loadWallet(address), loadPositions()]);
     } catch (e) {
       setError(
@@ -201,7 +276,7 @@ export function SelfCustodyView({ network, wallets }: { network: NetworkInfo; wa
 
   const empty = walletData ? walletData.usdc === 0 && walletData.weth === 0 : false;
   const cap = walletData?.maxUsd ?? 100;
-  const valid = Boolean(walletData) && amount >= 5 && amount <= cap && !busy;
+  const valid = Boolean(walletData) && amount >= 5 && amount <= cap && !busy && (full || bins.length > 0);
   const mine = positions.filter((p) => p.status === "open");
 
   return (
@@ -253,13 +328,56 @@ export function SelfCustodyView({ network, wallets }: { network: NetworkInfo; wa
         {empty && <span className="muted small">Send USDC and WETH on {network.name} to this address first. Arc pays network fees in USDC.</span>}
       </p>
 
+      <h3>Pick a strategy, then shape it</h3>
       <div className="self-modes" role="radiogroup" aria-label="Strategy">
-        {MODES.map((m) => (
-          <button key={m.id} type="button" role="radio" aria-checked={mode === m.id} className={mode === m.id ? "is-on" : ""} onClick={() => setMode(m.id)} disabled={busy}>
-            <b>{m.name}</b>
-            <span className="muted small">{m.hint}</span>
+        {PRESETS.map((p) => (
+          <button key={p.id} type="button" role="radio" aria-checked={presetId === p.id} className={presetId === p.id ? "is-on" : ""} onClick={() => choosePreset(p.id)} disabled={busy}>
+            <b>{p.name}</b>
+            <span className="muted small">{p.hint}</span>
           </button>
         ))}
+      </div>
+
+      <div className="self-chart">
+        {inBrowser ? (
+          <RangeChart
+            candles={market.candles}
+            spot={spot}
+            min={full ? limits.lo : range.min}
+            max={full ? limits.hi : range.max}
+            limits={limits}
+            bins={bins}
+            onChange={changeRange}
+            locked={full}
+          />
+        ) : (
+          <div style={{ height: 356 }} aria-hidden="true" />
+        )}
+        <p className="muted small self-chart-note">
+          {previewError
+            ? previewError
+            : full
+              ? "Full range spreads your liquidity over every price, half in WETH and half in USDC."
+              : `Your liquidity sits between ${usd(range.min, 0)} and ${usd(range.max, 0)}. Below today's price it holds USDC, above it WETH.`}
+          {" "}
+          {bins.length > 0 && `At today's price that is ${num(100 - ethShare, 0)}% USDC and ${num(ethShare, 0)}% WETH.`}
+        </p>
+      </div>
+
+      <div className="self-shape">
+        <span className="label">Liquidity shape</span>
+        <div className="row" style={{ gap: 6, flexWrap: "wrap" }} role="radiogroup" aria-label="Liquidity shape">
+          {SHAPES.map((s) => (
+            <button key={s.id} type="button" role="radio" aria-checked={shape === s.id} title={s.hint} className={`chip btn btn-ghost small${shape === s.id ? " is-on" : ""}`} onClick={() => chooseShape(s.id)} disabled={busy}>
+              {s.name}
+            </button>
+          ))}
+          {presetId === "custom" && (
+            <button type="button" className="link-btn" onClick={() => choosePreset(basePreset)} disabled={busy}>
+              Reset to {PRESETS.find((p) => p.id === basePreset)?.name}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="self-amount">
@@ -271,7 +389,7 @@ export function SelfCustodyView({ network, wallets }: { network: NetworkInfo; wa
       </div>
 
       <button type="button" className="btn btn-gold btn-block" disabled={!valid} onClick={open}>
-        {busy ? "Working…" : `Open ${usd(amount, 0)} · ${MODE_NAME[mode]}`}
+        {busy ? "Working…" : `Open ${usd(amount, 0)} · ${label}`}
       </button>
       {busy && <p className="notice pending self-progress" role="status">{progress}</p>}
       {error && <div className="notice error" role="alert">{error}</div>}
@@ -286,7 +404,7 @@ export function SelfCustodyView({ network, wallets }: { network: NetworkInfo; wa
               return (
                 <li key={p.id}>
                   <div className="spread">
-                    <b>{MODE_NAME[p.mode]}</b>
+                    <b>{SHAPE_NAME[p.mode] ?? p.mode}</b>
                     <span className="pill ok">Open</span>
                   </div>
                   <p className="muted small" style={{ margin: "4px 0" }}>
@@ -311,7 +429,7 @@ export function SelfCustodyView({ network, wallets }: { network: NetworkInfo; wa
         <ConfirmRealMoney
           title="Open a position from your own wallet?"
           confirmLabel="Confirm and sign"
-          summary={`${usd(amount, 0)} as ${MODE_NAME[mode]} from ${current.name} (${short(current.address)})`}
+          summary={`${usd(amount, 0)} as ${label} from ${current.name} (${short(current.address)})`}
           network={network.name}
           risks={RISKS}
           onResult={confirming}
