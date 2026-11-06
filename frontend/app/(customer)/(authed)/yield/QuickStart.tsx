@@ -86,12 +86,18 @@ export function QuickStart({
   spot,
   balance,
   onOpen,
+  confirm,
+  showEstimates = true,
 }: {
   tiers: Pool[];
   candles: Candle[];
   spot: number;
   balance: number;
   onOpen: (tier: RiskTier, amount: number) => Promise<void>;
+  /// Asked before anything is placed (on a real-money network); false cancels.
+  confirm?: (summary: string) => Promise<boolean>;
+  /// The APY and earnings figures are rough guesses: hidden where real money is at stake.
+  showEstimates?: boolean;
 }) {
   const preview = balance <= 0;
   const cap = preview ? PREVIEW_AMOUNT * 10 : balance;
@@ -137,7 +143,11 @@ export function QuickStart({
                 <span className="qs-tier-name">{t.label}</span>
                 <span className="qs-check" aria-hidden="true">{on ? "✓" : ""}</span>
               </span>
-              <span className="qs-apy amount">~{apy(t.apyBps)}<small> APY</small></span>
+              {showEstimates ? (
+                <span className="qs-apy amount">~{apy(t.apyBps)}<small> APY</small></span>
+              ) : (
+                <span className="qs-apy amount">{t.fullRange || t.rangePct === null ? "Full" : `±${t.rangePct}%`}<small> range</small></span>
+              )}
               <RangeSpark candles={candles} tier={t} spot={spot} />
               <span className="qs-range small">{range(t)}</span>
               <span className="qs-tier-foot">
@@ -193,6 +203,8 @@ export function QuickStart({
           </p>
         </div>
 
+        {showEstimates && (
+        <>
         <div className="qs-earn" aria-live="polite">
           <p className="label" style={{ margin: 0 }}>With {chosen?.label ?? "this strategy"} you could earn</p>
           <div className="qs-earn-grid">
@@ -218,6 +230,8 @@ export function QuickStart({
             </div>
           ))}
         </div>
+        </>
+        )}
       </div>
 
       {preview ? (
@@ -229,16 +243,19 @@ export function QuickStart({
           className="btn btn-gold btn-block qs-cta"
           disabled={busy || !(amount > 0) || amount > balance}
           onClick={async () => {
+            if (confirm && !(await confirm(`${usd(amount)} into ${chosen?.label ?? tier}`))) return;
             setBusy(true);
             await onOpen(tier, amount);
             setBusy(false);
           }}
         >
-          {busy ? "Placing your strategy on 1inch Aqua…" : `Put ${usd(amount)} into ${chosen?.label} · ~${apy(chosen?.apyBps ?? 0)} APY`}
+          {busy ? "Placing your strategy on 1inch Aqua…" : showEstimates ? `Put ${usd(amount)} into ${chosen?.label} · ~${apy(chosen?.apyBps ?? 0)} APY` : `Put ${usd(amount)} into ${chosen?.label}`}
         </button>
       )}
       <p className="muted small" style={{ margin: "10px 0 0", textAlign: "center" }}>
-        APY is an estimate from the range width, not a promise. Earnings pause while ETH is outside the range.
+        {showEstimates
+          ? "APY is an estimate from the range width, not a promise. Earnings pause while ETH is outside the range."
+          : "Earnings are trading fees, which depend on how much people trade: none is promised. Earnings pause while ETH is outside the range, and the value can fall if ETH moves."}
       </p>
     </section>
   );

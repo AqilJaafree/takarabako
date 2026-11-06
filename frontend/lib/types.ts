@@ -99,6 +99,10 @@ export interface Market {
   candles: Candle[];
   tiers: Pool[];
   advanced: { minPrice: number; maxPrice: number; feeBps: number; apyEstBps: number; bins: number };
+  /// Absent on an older backend, which means: show the estimates, no real money.
+  showEstimates?: boolean;
+  realMoney?: boolean;
+  network?: { key: string; name: string; explorerUrl: string };
 }
 
 /// POST /yield/preview

@@ -10,6 +10,7 @@ import { useStageDirector } from "@/components/treasure/useStageDirector";
 import { RangeChart } from "./RangeChart";
 import { MarketHero } from "./MarketHero";
 import { NetworkSwitcher } from "./NetworkSwitcher";
+import { ConfirmRealMoney, RealMoneyNotice } from "./RealMoney";
 import { QuickStart } from "./QuickStart";
 import { NameField, useResolvedName } from "../send/SendForm";
 import { useWalletSend, type PreparedTx } from "@/lib/useWalletSend";
@@ -57,6 +58,12 @@ function YieldHubBody({ balance, market, positions: initialPositions }: { balanc
   const { stage, say } = useStageDirector(
     box > 0 ? "Quick start picks a range for you — or go Advanced and draw your own." : "Your box is empty. Feed me a note at the kiosk first!",
   );
+  // On a real-money network every open asks first; resolves false if the customer cancels.
+  const real = market.realMoney === true;
+  const showEstimates = market.showEstimates !== false;
+  const [pending, setPending] = useState<{ summary: string; resolve: (ok: boolean) => void } | null>(null);
+  const confirmReal = (summary: string) =>
+    real ? new Promise<boolean>((resolve) => setPending({ summary, resolve })) : Promise.resolve(true);
   const gems = open.map((p) => ({ id: p.id, riskTier: (p.mode === "advanced" ? "high" : p.mode) as RiskTier, apyBps: p.apyEstBps }));
 
   const refresh = useCallback(async () => {
@@ -93,11 +100,14 @@ function YieldHubBody({ balance, market, positions: initialPositions }: { balanc
 
   return (
     <>
+      {real && <RealMoneyNotice network={market.network?.name ?? "this network"} />}
       <MarketHero
         spot={market.spot}
         candles={market.candles}
         balance={box}
         bestApyBps={Math.max(...market.tiers.map((t) => t.apyBps), market.advanced.apyEstBps)}
+        showEstimates={showEstimates}
+        feeBps={market.advanced.feeBps}
         liveCount={open.length}
       />
       <TreasureStage {...stage} balance={box} gems={gems} height={240} />
@@ -139,6 +149,8 @@ function YieldHubBody({ balance, market, positions: initialPositions }: { balanc
           candles={market.candles}
           spot={market.spot}
           balance={box}
+          showEstimates={showEstimates}
+          confirm={confirmReal}
           onOpen={async (tier, amount) => {
             setError("");
             say(`Placing your ${tier}-risk strategy on 1inch Aqua…`, "thinking", 0);
@@ -154,6 +166,7 @@ function YieldHubBody({ balance, market, positions: initialPositions }: { balanc
         <Advanced
           market={market}
           balance={box}
+          confirm={confirmReal}
           onOpen={async (req) => {
             setError("");
             say("Shipping your strategies to 1inch Aqua…", "thinking", 0);
@@ -163,6 +176,16 @@ function YieldHubBody({ balance, market, positions: initialPositions }: { balanc
             } catch (e) {
               onFail(e);
             }
+          }}
+        />
+      )}
+      {pending && (
+        <ConfirmRealMoney
+          summary={pending.summary}
+          network={market.network?.name ?? "this network"}
+          onResult={(ok) => {
+            pending.resolve(ok);
+            setPending(null);
           }}
         />
       )}
@@ -207,10 +230,13 @@ function Advanced({
   market,
   balance,
   onOpen,
+  confirm,
 }: {
   market: Market;
   balance: number;
   onOpen: (req: { amount: number; shape: AdvShape; priceMin: number; priceMax: number }) => Promise<void>;
+  /// Asked before anything is placed (on a real-money network); false cancels.
+  confirm?: (summary: string) => Promise<boolean>;
 }) {
   const spot = market.spot;
   const limits = { lo: market.advanced.minPrice, hi: market.advanced.maxPrice };
@@ -325,7 +351,10 @@ function Advanced({
               {preview.bins.length} strateg{preview.bins.length === 1 ? "y" : "ies"} · {totals.usdc.toFixed(2)} USDC + {totals.eth.toFixed(5)} ETH
               {amount > 0 ? "" : " (preview for $100)"}
             </span>
-            <span className="muted small">~{apy(market.advanced.apyEstBps)} APY estimate · {(market.advanced.feeBps / 100).toFixed(2)}% fee</span>
+            <span className="muted small">
+              {market.showEstimates !== false ? `~${apy(market.advanced.apyEstBps)} APY estimate · ` : ""}
+              {(market.advanced.feeBps / 100).toFixed(2)}% fee
+            </span>
           </>
         ) : (
           <span className="muted small">Working out the split…</span>
@@ -336,6 +365,7 @@ function Advanced({
         className="btn btn-gold btn-block"
         disabled={busy || !(amount > 0) || amount > balance || Boolean(previewError)}
         onClick={async () => {
+          if (confirm && !(await confirm(`${usd(amount)} into an Advanced ${shape} strategy, ${usd(range.min, 0)} – ${usd(range.max, 0)}`))) return;
           setBusy(true);
           await onOpen({ amount, shape, priceMin: range.min, priceMax: range.max });
           setBusy(false);
