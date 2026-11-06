@@ -4614,6 +4614,7 @@ body.chat-lock {
 .net-tabs { grid-template-columns: repeat(3, 1fr); margin-bottom: 12px; }
 .net-tabs button { text-align: center; }
 .net-panel { margin-bottom: 20px; }
+.net-notice { margin-bottom: 12px; }
 .net-panel summary { cursor: pointer; font-weight: 600; }
 .net-panel h3 { font-size: 15px; margin: 18px 0 8px; color: var(--gold); }
 .net-body { margin-top: 12px; }

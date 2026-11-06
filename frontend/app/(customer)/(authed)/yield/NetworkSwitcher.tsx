@@ -31,7 +31,7 @@ export function NetworkSwitcher({
   const info = networks.networks.find((n) => n.key === view)!;
   const live = networks.networks.find((n) => n.active)!;
   const isLive = info.active;
-  const panel = <NetworkPanel info={info} live={live} market={market} withSelf={!isLive} />;
+  const panel = <NetworkPanel info={info} live={live} market={market} />;
 
   return (
     <section className="net-switch" aria-label="Network">
@@ -44,38 +44,36 @@ export function NetworkSwitcher({
         ))}
       </div>
 
-      {isLive ? (
-        <>
-          {info.selfCustody && (
-            <div className="card net-panel">
-              <SelfCustodyPanel network={info} market={market} />
-            </div>
-          )}
-          <details className="card net-panel">
-            <summary>How it works on {info.name}</summary>
-            {panel}
-          </details>
-        </>
-      ) : (
-        <div className="card net-panel">
-          <div className="notice">
-            You are looking at <b>{info.name}</b>
-            {info.key === "arc" ? " (mainnet, real money)" : ""}.{" "}
-            {info.selfCustody
-              ? `Below you can open positions by signing with your own wallet. Your box and the positions the treasury manages live on ${live.name}.`
-              : `This is a read-only view: nothing here sends a transaction. Your box and positions live on ${live.name}.`}{" "}
-            <button type="button" className="link-btn" onClick={() => onView(live.key)}>
-              Back to {live.name}
-            </button>
-          </div>
-          {panel}
+      {/* Every network has the same structure as the one the backend runs on: the self-custody card (where
+          the customer can sign with their own wallet), then the "How it works" box. A network the backend
+          does not run on adds a notice saying where the customer's box and positions live. */}
+      {!isLive && (
+        <div className="notice net-notice">
+          You are looking at <b>{info.name}</b>
+          {info.key === "arc" ? " (mainnet, real money)" : ""}.{" "}
+          {info.selfCustody
+            ? `Below you can open positions by signing with your own wallet. Your box and the positions the treasury manages live on ${live.name}.`
+            : `This is a read-only view: nothing here sends a transaction. Your box and positions live on ${live.name}.`}{" "}
+          <button type="button" className="link-btn" onClick={() => onView(live.key)}>
+            Back to {live.name}
+          </button>
         </div>
       )}
+      {info.selfCustody && (
+        <div className="card net-panel">
+          <SelfCustodyPanel network={info} market={market} />
+        </div>
+      )}
+      {/* open by default only when there is no self-custody card above it, so a view-only network is not blank */}
+      <details className="card net-panel" open={!info.selfCustody}>
+        <summary>How it works on {info.name}</summary>
+        {panel}
+      </details>
     </section>
   );
 }
 
-function NetworkPanel({ info, live, market, withSelf }: { info: NetworkInfo; live: NetworkInfo; market: Market; withSelf: boolean }) {
+function NetworkPanel({ info, live, market }: { info: NetworkInfo; live: NetworkInfo; market: Market }) {
   const [result, setResult] = useState<{ key: NetworkKey; status: NetworkStatus | null } | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const status = result?.key === info.key ? result.status : undefined; // undefined = still checking
@@ -108,7 +106,6 @@ function NetworkPanel({ info, live, market, withSelf }: { info: NetworkInfo; liv
 
   return (
     <div className="net-body">
-      {withSelf && info.selfCustody && <SelfCustodyPanel network={info} market={market} />}
       <dl className="net-facts">
         <div><dt>Chain</dt><dd>{info.name} · id {info.chainId}</dd></div>
         <div><dt>Pays gas in</dt><dd>{info.nativeSymbol}</dd></div>
