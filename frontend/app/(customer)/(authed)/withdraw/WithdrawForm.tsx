@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { WithdrawResult } from "@/lib/types";
-import { SEPOLIA_TX, shortHex, usd } from "@/lib/format";
+import { txUrl, shortHex, usd } from "@/lib/format";
 import { TreasureStage } from "@/components/treasure/TreasureStage";
 import { useStageDirector } from "@/components/treasure/useStageDirector";
 
@@ -49,14 +49,14 @@ export function WithdrawForm({ balance, positions, wallet }: { balance: number; 
         <div className="notice success">{result.receipt}</div>
         <p className="small muted" style={{ margin: 0 }}>
           Transaction{" "}
-          <a href={SEPOLIA_TX(result.vaultTxHash)} target="_blank" rel="noreferrer" className="mono">
+          <a href={txUrl(result.vaultTxHash)} target="_blank" rel="noreferrer" className="mono">
             {shortHex(result.vaultTxHash)}
           </a>
         </p>
         {result.tkcashTxHash && (
           <p className="small muted" style={{ margin: "6px 0 0" }}>
             {usd(result.tkcashBurned ?? 0)} of tkCASH cash receipts redeemed ·{" "}
-            <a href={SEPOLIA_TX(result.tkcashTxHash)} target="_blank" rel="noreferrer" className="mono">
+            <a href={txUrl(result.tkcashTxHash)} target="_blank" rel="noreferrer" className="mono">
               {shortHex(result.tkcashTxHash)}
             </a>
           </p>

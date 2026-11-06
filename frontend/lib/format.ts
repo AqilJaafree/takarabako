@@ -15,7 +15,7 @@ export function shortHex(hex: string, head = 6, tail = 4): string {
   return hex.length <= head + tail + 1 ? hex : `${hex.slice(0, head)}…${hex.slice(-tail)}`;
 }
 
-export const SEPOLIA_TX = (hash: string) => `https://sepolia.etherscan.io/tx/${hash}`;
+export { addressUrl, NETWORK_NAME, tokenUrl, txUrl } from "./explorer";
 
 export function timeAgo(iso: string): string {
   const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);

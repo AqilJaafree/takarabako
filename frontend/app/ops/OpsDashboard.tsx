@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { ActionItem, ChainEvent, KioskState, OpsData, Severity, Summary, Holders, Flows, Positions } from "@/lib/opsTypes";
-import { apy, shortHex, SEPOLIA_TX, timeAgo, usd } from "@/lib/format";
+import { addressUrl, apy, shortHex, timeAgo, txUrl, usd } from "@/lib/format";
 import { FlowsChart, HBars } from "./charts";
 import { AgentPanel } from "./AgentPanel";
 import { AiTreasury } from "./AiTreasury";
@@ -346,7 +346,7 @@ function PositionsPanel({ positions, error }: { positions: Positions | null; err
       <h2>1inch Aqua strategies</h2>
       <p className="muted small">
         ETH/USDC SwapVM strategies the treasury has shipped through{" "}
-        {positions ? <a href={`https://sepolia.etherscan.io/address/${positions.aqua}`} target="_blank" rel="noreferrer">Aqua</a> : "Aqua"}, valued live
+        {positions ? <a href={addressUrl(positions.aqua)} target="_blank" rel="noreferrer">Aqua</a> : "Aqua"}, valued live
         {positions?.spot ? ` at ETH ${usd(positions.spot, 0)}` : ""}.
       </p>
       {!positions ? (
@@ -410,7 +410,7 @@ function EventsPanel({ events, source }: { events: ChainEvent[] | null; source: 
               <span className="muted small">
                 {e.contractLabel} · {timeAgo(e.triggeredAt)}
                 {e.txHash && (
-                  <> · <a href={SEPOLIA_TX(e.txHash)} target="_blank" rel="noreferrer">{shortHex(e.txHash)}</a></>
+                  <> · <a href={txUrl(e.txHash)} target="_blank" rel="noreferrer">{shortHex(e.txHash)}</a></>
                 )}
               </span>
             </li>
@@ -487,7 +487,7 @@ function CountForm({ kiosk, token, onChanged }: { kiosk: KioskState; token: stri
         <p className={`small ${msg.ok ? "tone-ok" : "tone-bad"}`}>
           {msg.text}
           {msg.tx && (
-            <> · <a href={SEPOLIA_TX(msg.tx)} target="_blank" rel="noreferrer">{shortHex(msg.tx)}</a></>
+            <> · <a href={txUrl(msg.tx)} target="_blank" rel="noreferrer">{shortHex(msg.tx)}</a></>
           )}
         </p>
       )}

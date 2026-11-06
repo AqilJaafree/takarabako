@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Market, PositionView, Preview, RiskTier, Shape } from "@/lib/types";
-import { apy, usd } from "@/lib/format";
+import { addressUrl, apy, usd } from "@/lib/format";
 import { TreasureStage } from "@/components/treasure/TreasureStage";
 import { useStageDirector } from "@/components/treasure/useStageDirector";
 import { RangeChart } from "./RangeChart";
@@ -411,7 +411,7 @@ function PositionsList({
         })}
       </ul>
       <p className="muted small" style={{ marginBottom: 0 }}>
-        Strategies run on <a href={`https://sepolia.etherscan.io/address/0x1111113ccf1426a8e30e2bff5e005d929bf6a90a`} target="_blank" rel="noreferrer">1inch Aqua</a> —
+        Strategies run on <a href={addressUrl("0x1111113ccf1426a8e30e2bff5e005d929bf6a90a")} target="_blank" rel="noreferrer">1inch Aqua</a> —
         the tokens stay in the Takarabako treasury; Aqua tracks each strategy&apos;s share.
       </p>
     </section>

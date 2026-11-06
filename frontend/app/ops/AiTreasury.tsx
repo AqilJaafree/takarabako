@@ -4,7 +4,7 @@ import { Fragment, useState } from "react";
 import { createPublicClient, http, keccak256, slice, toBytes, type Hex } from "viem";
 import { sepolia } from "viem/chains";
 import type { AgentReportSummary, AgentRun, IntegrityReport, MandateStatus } from "@/lib/opsTypes";
-import { shortHex, SEPOLIA_TX, timeAgo, usd } from "@/lib/format";
+import { NETWORK_NAME, shortHex, timeAgo, txUrl, usd } from "@/lib/format";
 
 /// The AI treasury agent at a glance: it checks the cash (three independent
 /// records per kiosk), acts within a visible mandate, and publishes a daily
@@ -158,7 +158,7 @@ function AgentVerdict({ title, run }: { title: string; run: AgentRun }) {
             )}{" "}
             <span className="mono">{t.tool.replace("propose_", "")}</span>
             {out.txHash && (
-              <> · <a href={SEPOLIA_TX(out.txHash)} target="_blank" rel="noreferrer" className="mono">{shortHex(out.txHash)}</a></>
+              <> · <a href={txUrl(out.txHash)} target="_blank" rel="noreferrer" className="mono">{shortHex(out.txHash)}</a></>
             )}
             {out.reason && <span className="muted"> — {out.reason}</span>}
           </p>
@@ -278,7 +278,7 @@ function ReportCard({ reports, token, onChanged }: { reports: AgentReportSummary
             <span className="label">keccak256</span>
             <code className="mono small" title={latest.hash}>{shortHex(latest.hash, 10, 8)}</code>
             {latest.anchorTx ? (
-              <a href={SEPOLIA_TX(latest.anchorTx)} target="_blank" rel="noreferrer" className="small">Anchored on Sepolia ↗</a>
+              <a href={txUrl(latest.anchorTx)} target="_blank" rel="noreferrer" className="small">Anchored on {NETWORK_NAME} ↗</a>
             ) : (
               <span className="muted small">not anchored</span>
             )}

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { HistoryItem } from "@/lib/types";
-import { SEPOLIA_TX, apy, cash, shortHex, usd } from "@/lib/format";
+import { txUrl, apy, cash, shortHex, usd } from "@/lib/format";
 
 const FILTERS = [
   { kind: null, label: "All" },
@@ -28,7 +28,7 @@ function when(iso: string) {
 function TxLink({ hash }: { hash: string | null }) {
   if (!hash) return null;
   return (
-    <a className="mono small" href={SEPOLIA_TX(hash)} target="_blank" rel="noreferrer">
+    <a className="mono small" href={txUrl(hash)} target="_blank" rel="noreferrer">
       {shortHex(hash)} ↗
     </a>
   );

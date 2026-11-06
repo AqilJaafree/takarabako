@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { AgentRun, Alert, Proposal } from "@/lib/opsTypes";
-import { shortHex, SEPOLIA_TX, timeAgo } from "@/lib/format";
+import { shortHex, txUrl, timeAgo } from "@/lib/format";
 
 const EXAMPLES = [
   "Is the yield reserve enough for the next 30 days?",
@@ -190,7 +190,7 @@ export function AgentPanel({
                     {p.autonomous && <span className="pill ok" title="Executed by the agent within its mandate">agent · on its own</span>}
                   </span>
                   <span className="muted small">
-                    {p.txHash ? <a href={SEPOLIA_TX(p.txHash)} target="_blank" rel="noreferrer">{shortHex(p.txHash)}</a> : p.error ?? ""}
+                    {p.txHash ? <a href={txUrl(p.txHash)} target="_blank" rel="noreferrer">{shortHex(p.txHash)}</a> : p.error ?? ""}
                   </span>
                 </li>
               ))}

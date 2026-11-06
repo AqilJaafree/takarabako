@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { CashReceipts, Deposit, LiveEvent, Me } from "@/lib/types";
 import { useLiveEvents } from "@/lib/useLiveEvents";
 import { useRouter } from "next/navigation";
-import { apy, cash, SEPOLIA_TX, shortHex, timeAgo, usd, without } from "@/lib/format";
+import { apy, cash, shortHex, timeAgo, tokenUrl, txUrl, usd, without } from "@/lib/format";
 import { RollingNumber } from "@/components/RollingNumber";
 import { TreasureStage } from "@/components/treasure/TreasureStage";
 import { useStageDirector } from "@/components/treasure/useStageDirector";
@@ -188,10 +188,10 @@ export function Dashboard({
                   <div className="small muted">
                     {timeAgo(d.createdAt)}
                     {d.txHash && (
-                      <> · <a href={SEPOLIA_TX(d.txHash)} target="_blank" rel="noreferrer" className="mono">{shortHex(d.txHash)}</a></>
+                      <> · <a href={txUrl(d.txHash)} target="_blank" rel="noreferrer" className="mono">{shortHex(d.txHash)}</a></>
                     )}
                     {d.tkcashTxHash && (
-                      <> · <a href={SEPOLIA_TX(d.tkcashTxHash)} target="_blank" rel="noreferrer" title="tkCASH receipt token minted">tkCASH ✓</a></>
+                      <> · <a href={txUrl(d.tkcashTxHash)} target="_blank" rel="noreferrer" title="tkCASH receipt token minted">tkCASH ✓</a></>
                     )}
                     {d.machineVerified && d.machineName && (
                       <span className="machine-badge" title="Signed by the kiosk's device key, checked against its ENS name">✓ {d.machineName}</span>
@@ -217,7 +217,6 @@ function DepositStatus({ d }: { d: Deposit }) {
   return <span className="pill warn">{d.attempts > 1 ? `Retrying ${d.attempts}/5` : "Confirming"}</span>;
 }
 
-const ADDRESS_URL = (a: string) => `https://sepolia.etherscan.io/token/${a}`;
 
 /// tkCASH: a token for the banknotes this customer put into the kiosk,
 /// with the proof that every token is backed by cash in the box.
@@ -241,7 +240,7 @@ function CashReceiptsCard({ r, balance }: { r: Extract<CashReceipts, { configure
         <span className="mono">{r.kiosk.kioskId}</span>
         {r.kiosk.lastAuditAt ? ` · last counted ${timeAgo(new Date(r.kiosk.lastAuditAt * 1000).toISOString())}` : ""}
       </p>
-      <a href={ADDRESS_URL(r.contract)} target="_blank" rel="noreferrer" className="small">
+      <a href={tokenUrl(r.contract)} target="_blank" rel="noreferrer" className="small">
         View tkCASH on Etherscan →
       </a>
     </section>

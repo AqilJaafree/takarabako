@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { MyWallet, ResolvedName } from "@/lib/types";
-import { SEPOLIA_TX, shortHex, usd } from "@/lib/format";
+import { txUrl, shortHex, usd } from "@/lib/format";
 import { useWalletSend, type PreparedTx } from "@/lib/useWalletSend";
 
 type Asset = "balance" | "tkcash";
@@ -163,7 +163,7 @@ export function SendForm({ balance, wallet }: { balance: number; wallet: MyWalle
         <div className="notice success" style={{ marginTop: 12 }}>
           {done.text}
           {done.tx && (
-            <> · <a href={SEPOLIA_TX(done.tx)} target="_blank" rel="noreferrer" className="mono">{shortHex(done.tx)}</a></>
+            <> · <a href={txUrl(done.tx)} target="_blank" rel="noreferrer" className="mono">{shortHex(done.tx)}</a></>
           )}
         </div>
       )}
