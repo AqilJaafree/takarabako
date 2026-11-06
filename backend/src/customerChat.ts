@@ -114,7 +114,7 @@ async function runTool(name: string, input: Record<string, unknown>, account: Ac
     case "find_kiosk":
       return {
         kiosk: config.kioskId,
-        where: "ETHTokyo hackathon venue, floor 5F, south Hacking Space by the Partners and Mentor Station",
+        where: "Mumbai (the demo kiosk; the exact venue is set in frontend/lib/kiosks.ts)",
         map: "/kiosks",
         accepts: "Malaysian ringgit notes",
       };

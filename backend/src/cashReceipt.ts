@@ -72,7 +72,7 @@ const coerce = (v: unknown): unknown => (typeof v === "string" && /^\d+$/.test(v
 
 const TK_DECIMALS = 6;
 
-/// bytes32 kiosk id, as the contract stores it ("tokyo-01" right-padded).
+/// bytes32 kiosk id, as the contract stores it ("mumbai-01" right-padded).
 export function kioskIdBytes(kioskId = config.kioskId): `0x${string}` {
   return stringToHex(kioskId, { size: 32 });
 }

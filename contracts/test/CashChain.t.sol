@@ -15,7 +15,7 @@ contract CashChainTest is Test {
     address constant ARC_USDC = 0x3600000000000000000000000000000000000000;
     uint256 constant ONE = 1e6;
     uint256 constant DAILY_LIMIT_USD = 1000;
-    bytes32 constant KIOSK = "tokyo-01";
+    bytes32 constant KIOSK = "mumbai-01";
 
     address treasury = address(this);
     address alice = address(0xA11CE);

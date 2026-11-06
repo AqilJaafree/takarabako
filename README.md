@@ -182,7 +182,7 @@ sepolia arc-testnet 1` moves $1 of treasury USDC end to end.
   `NoteAccepted`). An operator registers the key's public address against the
   kiosk id and its home chain:
   ```bash
-  cd backend && npm run kiosk:register -- tokyo-01 0xDEVICE_ADDRESS sepolia
+  cd backend && npm run kiosk:register -- mumbai-01 0xDEVICE_ADDRESS sepolia
   ```
   (or `POST /ops/kiosks` with the operator token). A note counts as
   machine-verified only if it is signed by the registered key of an active
@@ -305,7 +305,7 @@ cd device-agent && cp public/config.example.js public/config.js && node server.j
 2. tkCASH is already deployed at `0x8023edf927c0a53f5620998f972b3d0740e04ea9`; set `CASH_RECEIPT_ADDRESS` to it. To deploy your own:
    ```bash
    cd contracts
-   KIOSK_ID=tokyo-01 forge script script/DeployCashReceipt.s.sol --rpc-url $RPC_URL --broadcast --private-key $PRIVATE_KEY
+   KIOSK_ID=mumbai-01 forge script script/DeployCashReceipt.s.sol --rpc-url $RPC_URL --broadcast --private-key $PRIVATE_KEY
    ```
 3. Expose the backend for webhooks, e.g. `cloudflared tunnel --url http://localhost:4000`,
    and set `PUBLIC_BACKEND_URL` to the tunnel URL.

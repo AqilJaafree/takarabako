@@ -33,7 +33,7 @@ PRIVY_APP_SECRET=demo
 OPS_ADMIN_TOKEN=demo-operator
 AQUA_SIM=0
 AGENT_REPORTS=off
-KIOSK_ID=tokyo-01
+KIOSK_ID=mumbai-01
 EOF
 # enable the Arc kiosk id in tkCASH (an operator step for every new kiosk id)
 cast send ${ARC[2]} "setKiosk(bytes32,bool)" $(cast format-bytes32-string arc-01) true --rpc-url http://127.0.0.1:8545 --private-key $PK >/dev/null

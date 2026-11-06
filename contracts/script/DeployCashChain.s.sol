@@ -13,7 +13,7 @@ import {TakarabakoCashReceipt} from "../src/TakarabakoCashReceipt.sol";
 ///
 ///   USDC_ADDRESS      default Arc's USDC (0x3600…0000, 6 decimals as an ERC-20);
 ///                     for Ethereum Sepolia use Circle's 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238
-///   KIOSK_ID          kiosk to register in tkCASH (default tokyo-01)
+///   KIOSK_ID          kiosk to register in tkCASH (default mumbai-01)
 ///   DAILY_LIMIT_USD   per-address daily tkCASH transfer limit, same figure as the backend (default 1000)
 ///   APY_BPS           the vault's advertised APY (default 420 = 4.20%)
 ///   SKIP_TKCASH=1     deploy only the vault (when tkCASH already exists on this chain)
@@ -34,7 +34,7 @@ contract DeployCashChain is Script {
 
     function run() external {
         address usdc = vm.envOr("USDC_ADDRESS", ARC_USDC);
-        string memory kioskId = vm.envOr("KIOSK_ID", string("tokyo-01"));
+        string memory kioskId = vm.envOr("KIOSK_ID", string("mumbai-01"));
         uint256 dailyLimitUsd = vm.envOr("DAILY_LIMIT_USD", uint256(1000));
         uint256 apyBps = vm.envOr("APY_BPS", uint256(420));
         bool skipTk = vm.envOr("SKIP_TKCASH", false);

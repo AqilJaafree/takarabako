@@ -31,7 +31,7 @@ update yield_events set label = split_part(label, '.', 1) where label like '%.%'
 -- Positions are owned by the account row, not by a name token.
 alter table aqua_positions drop column if exists deed_holder;
 
--- Deposits record the kiosk id that took the note ("tokyo-01").
+-- Deposits record the kiosk id that took the note ("mumbai-01").
 update deposits set machine_name = split_part(machine_name, '.', 1) where machine_name like '%.%';
 
 -- Registered kiosks. The signer is the public address of the key the kiosk

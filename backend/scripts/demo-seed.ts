@@ -12,12 +12,12 @@ import { indexChainOnce } from "../src/logIndexer.js";
 import { config } from "../src/config.js";
 
 await migrate();
-await registerKiosk({ id: "tokyo-01", signer: "0x00000000000000000000000000000000000000a1", chain: "sepolia", label: "ETHTokyo" });
+await registerKiosk({ id: "mumbai-01", signer: "0x00000000000000000000000000000000000000a1", chain: "sepolia", label: "Mumbai demo kiosk" });
 await registerKiosk({ id: "hedera-01", signer: "0x00000000000000000000000000000000000000a3", chain: "hedera-testnet", label: "Hedera demo kiosk" });
 await registerKiosk({ id: "arc-01", signer: "0x00000000000000000000000000000000000000a2", chain: "arc-testnet", label: "Arc demo kiosk" });
 const mail = (n: string) => `${n}${String.fromCharCode(64)}example.com`;
 
-const kioskFor = (c: string) => (c === "sepolia" ? "tokyo-01" : c === "arc-testnet" ? "arc-01" : "hedera-01");
+const kioskFor = (c: string) => (c === "sepolia" ? "mumbai-01" : c === "arc-testnet" ? "arc-01" : "hedera-01");
 const people = [
   { id: "demo-alice", name: "alice", wallet: "0x000000000000000000000000000000000000d001", cash: [{ chain: "sepolia" as const, usd: 120 }, { chain: "arc-testnet" as const, usd: 60 }] },
   { id: "demo-bob", name: "bob", wallet: "0x000000000000000000000000000000000000d002", cash: [{ chain: "arc-testnet" as const, usd: 200 }, { chain: "hedera-testnet" as const, usd: 35 }] },
@@ -39,7 +39,7 @@ for (const p of people) {
   }
 }
 // A counted reserve on Sepolia (matches the chain).
-await attestReserve("tokyo-01", 165, "demo-count", "sepolia").catch((e) => console.log("count skipped:", e.message));
+await attestReserve("mumbai-01", 165, "demo-count", "sepolia").catch((e) => console.log("count skipped:", e.message));
 for (const c of config.enabledChains) console.log(c, "indexed", await indexChainOnce(c), "events");
 console.log("seeded");
 await pool.end();

@@ -9,13 +9,13 @@ const { createProposal } = await import("../src/proposals.js");
 after(() => pool.end());
 
 test("the mandate: pause always, amounts within the daily limit, APY never", () => {
-  assert.deepEqual(checkMandate("pause_kiosk", { kioskId: "tokyo-01", reason: "x" }, {}, true), { autonomous: true });
+  assert.deepEqual(checkMandate("pause_kiosk", { kioskId: "mumbai-01", reason: "x" }, {}, true), { autonomous: true });
   assert.deepEqual(checkMandate("fund_yield_reserve", { amount: 60 }, { fund_yield_reserve: 30 }, true), { autonomous: true });
   const over = checkMandate("fund_yield_reserve", { amount: 80 }, { fund_yield_reserve: 30 }, true);
   assert.equal(over.autonomous, false);
   assert.match((over as { reason: string }).reason, /100 USDC a day/);
   assert.equal(checkMandate("set_apy", { bps: 500 }, {}, true).autonomous, false);
-  assert.equal(checkMandate("pause_kiosk", { kioskId: "tokyo-01", reason: "x" }, {}, false).autonomous, false);
+  assert.equal(checkMandate("pause_kiosk", { kioskId: "mumbai-01", reason: "x" }, {}, false).autonomous, false);
 });
 
 test("inside the mandate it executes on its own; outside, it waits for a human", async () => {

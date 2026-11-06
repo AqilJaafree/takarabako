@@ -134,7 +134,7 @@ export const config = {
   publicBackendUrl: (process.env.PUBLIC_BACKEND_URL ?? "").replace(/\/+$/, ""),
   // tkCASH (contracts/src/TakarabakoCashReceipt.sol) and this kiosk's id in it.
   cashReceiptAddress: primaryCfg?.cashReceiptAddress ?? process.env.CASH_RECEIPT_ADDRESS ?? "",
-  kioskId: process.env.KIOSK_ID ?? "tokyo-01",
+  kioskId: process.env.KIOSK_ID ?? "mumbai-01",
   // Kiosks this backend used before (their tkCASH reserve is still redeemable).
   previousKioskIds: (process.env.KIOSK_PREVIOUS_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
   // Treasury ops agent (opsAgent.ts): the model, and the token a human

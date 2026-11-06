@@ -6,7 +6,7 @@ const NOW = Date.parse("2026-09-27T12:00:00Z");
 const ago = (min: number) => new Date(NOW - min * 60_000).toISOString();
 
 const clean = (): IntegrityInput => ({
-  kioskId: "tokyo-01",
+  kioskId: "mumbai-01",
   reserve: 20,
   frozen: false,
   notes: [
