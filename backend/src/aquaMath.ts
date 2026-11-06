@@ -133,7 +133,8 @@ const ethIsLt = (t: PairTokens) => t.eth.address.toLowerCase() < t.usdc.address.
 export function allocate(usd: number, bin: { min: number; max: number } | null, spot: number, t: PairTokens): { eth: bigint; usdc: bigint } {
   const ethUnit = 10n ** t.eth.decimals;
   const usdcUnit = 10n ** t.usdc.decimals;
-  const toEth = (usdValue: number) => BigInt(Math.floor((usdValue / spot) * 1e9)) * (ethUnit / 10n ** 9n);
+  // Multiply before dividing: ethUnit / 1e9 is 0 for a token with fewer than 9 decimals (EURC has 6).
+  const toEth = (usdValue: number) => (BigInt(Math.floor((usdValue / spot) * 1e9)) * ethUnit) / 10n ** 9n;
   const toUsdc = (usdValue: number) => BigInt(Math.floor(usdValue * Number(usdcUnit)));
 
   if (bin === null) return { eth: toEth(usd / 2), usdc: toUsdc(usd / 2) }; // full range: 50/50 at spot

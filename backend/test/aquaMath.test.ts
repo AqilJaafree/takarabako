@@ -94,3 +94,19 @@ test("a hybrid position is worth what was put in, and both bins hold both tokens
   }
   close(total, 1000, 0.5);
 });
+
+test("a base token with fewer than 9 decimals (EURC, 6) is sized correctly, not truncated to zero", () => {
+  const eurc = { eth: { address: "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1", decimals: 6n }, usdc: { address: "0x3600000000000000000000000000000000000000", decimals: 6n } };
+  const spot = 1.1165;
+  // a range entirely above the price is base token only: $100 of it is 100 / 1.1165 EURC
+  const above = allocate(100, { min: 1.2, max: 1.3 }, spot, eurc);
+  assert.equal(above.usdc, 0n);
+  assert.ok(Math.abs(Number(above.eth) / 1e6 - 100 / spot) < 0.001, `got ${above.eth}`);
+  // full range is half and half
+  const full = allocate(100, null, spot, eurc);
+  assert.ok(Math.abs(Number(full.eth) / 1e6 - 50 / spot) < 0.001);
+  assert.equal(full.usdc, 50_000_000n);
+  // and the 18-decimal case is unchanged
+  const weth = { eth: { address: "0x128cc466b61f542da60c70e3aa11c10e19b84edb", decimals: 18n }, usdc: eurc.usdc };
+  assert.ok(Math.abs(Number(allocate(100, { min: 2500, max: 3000 }, 2200, weth).eth) / 1e18 - 100 / 2200) < 1e-6);
+});
