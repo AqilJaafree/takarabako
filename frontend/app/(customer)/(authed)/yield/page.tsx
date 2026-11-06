@@ -1,14 +1,16 @@
 import type { Metadata } from "next";
 import type { Market, Me, PositionView } from "@/lib/types";
+import type { NetworksResponse } from "@/lib/networks";
 import { loadForPage, loadPublic } from "@/lib/serverData";
 import { YieldHub } from "./YieldHub";
 
 export const metadata: Metadata = { title: "Yield · Takarabako" };
 
 export default async function YieldPage() {
-  const [me, market, { positions }] = await Promise.all([
+  const [me, market, networks, { positions }] = await Promise.all([
     loadForPage<Me>("/me"),
     loadPublic<Market>("/yield/market"),
+    loadPublic<NetworksResponse>("/networks"),
     loadForPage<{ positions: PositionView[] }>("/yield/positions"),
   ]);
   return (
@@ -17,7 +19,7 @@ export default async function YieldPage() {
       <p className="muted">
         Put your balance to work as ETH/USDC liquidity on 1inch Aqua. Start simple, or draw your own price range.
       </p>
-      <YieldHub balance={me.balance} market={market} positions={positions} />
+      <YieldHub networks={networks} balance={me.balance} market={market} positions={positions} />
     </>
   );
 }

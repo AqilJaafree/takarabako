@@ -4608,3 +4608,23 @@ body.chat-lock {
     translate: 0 -4px;
   }
 }
+
+/* Network switcher on the yield page */
+.net-tabs { grid-template-columns: repeat(3, 1fr); margin-bottom: 12px; }
+.net-tabs button { text-align: center; }
+.net-panel { margin-bottom: 20px; }
+.net-panel summary { cursor: pointer; font-weight: 600; }
+.net-panel h3 { font-size: 15px; margin: 18px 0 8px; color: var(--gold); }
+.net-body { margin-top: 12px; }
+.net-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 0; }
+.net-facts dt { font-size: 12px; color: var(--muted); }
+.net-facts dd { margin: 2px 0 0; font-weight: 600; }
+.net-contract { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.net-contract-label { min-width: 110px; font-weight: 600; }
+.bad-text { color: #ff8f86; }
+.net-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.net-table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.net-table th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 4px 8px 4px 0; }
+.net-table td { padding: 6px 8px 6px 0; border-top: 1px solid var(--line); vertical-align: top; }
+.scroll-x { overflow-x: auto; }
+.link-btn { appearance: none; background: none; border: 0; padding: 0; color: var(--gold); font: inherit; text-decoration: underline; cursor: pointer; }
