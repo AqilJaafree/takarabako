@@ -53,7 +53,7 @@ function YieldHubBody({ balance, market, positions: initialPositions }: { balanc
   const [box, setBox] = useState(balance);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState<{ text: string; ens?: string; rationale?: string | null } | null>(null);
-  const open = positions.filter((p) => p.status === "open");
+  const open = positions.filter((p) => p.status !== "closed"); // a closing one stays here until it is finished
   const { stage, say } = useStageDirector(
     box > 0 ? "Quick start picks a range for you — or go Advanced and draw your own." : "Your box is empty. Feed me a note at the kiosk first!",
   );
@@ -386,7 +386,11 @@ function PositionsList({
             <li key={p.id}>
               <div className="spread">
                 <b>{p.label}</b>
-                <span className={`pill ${p.inRange ? "ok" : "warn"}`}>{p.inRange ? "Earning · in range" : "Out of range"}</span>
+                {p.status === "closing" ? (
+                  <span className="pill warn">Closing · not finished</span>
+                ) : (
+                  <span className={`pill ${p.inRange ? "ok" : "warn"}`}>{p.inRange ? "Earning · in range" : "Out of range"}</span>
+                )}
               </div>
               <div className="spread pos-numbers">
                 <span className="amount">{usd(p.valueUsd)}</span>
@@ -400,6 +404,11 @@ function PositionsList({
                   <span className="pos-range-now" style={{ left: `${at(p.spot)}%` }} />
                 </div>
               ) : null}
+              {p.status === "closing" && (
+                <p className="muted small" style={{ margin: "6px 0 0" }}>
+                  This close stopped part-way. {usd(p.valueUsd)} is set aside for your box; press Finish closing to complete it.
+                </p>
+              )}
               <p className="muted small" style={{ margin: "6px 0 8px" }}>
                 {hasRange ? `${usd(p.priceMin, 0)} – ${usd(p.priceMax, 0)}` : "Full range"} · ETH now {usd(p.spot, 0)} · {p.eth.toFixed(5)} ETH + {p.usdc.toFixed(2)} USDC ·{" "}
                 {p.bins.length} strateg{p.bins.length === 1 ? "y" : "ies"}
@@ -414,11 +423,13 @@ function PositionsList({
                     setClosing(null);
                   }}
                 >
-                  {closing === p.id ? "Closing…" : "Close & return to box"}
+                  {closing === p.id ? "Closing…" : p.status === "closing" ? "Finish closing" : "Close & return to box"}
                 </button>
-                <button className="btn btn-ghost small" onClick={() => setGiving(giving === p.id ? null : p.id)}>
-                  {giving === p.id ? "Cancel" : "Give to…"}
-                </button>
+                {p.status !== "closing" && (
+                  <button className="btn btn-ghost small" onClick={() => setGiving(giving === p.id ? null : p.id)}>
+                    {giving === p.id ? "Cancel" : "Give to…"}
+                  </button>
+                )}
               </div>
               {giving === p.id && <GiveForm position={p} onGiven={(to) => { setGiving(null); return onGiven(p, to); }} onError={onError} />}
             </li>

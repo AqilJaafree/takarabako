@@ -129,7 +129,8 @@ export interface PositionView {
   amountUsd: number;
   apyEstBps: number;
   rationale: string | null;
-  status: "open" | "closed";
+  /// "closing" = a close that stopped halfway; closing it again finishes it.
+  status: "open" | "closing" | "closed";
   valueUsd: number | null;
   pnlUsd: number | null;
   inRange: boolean | null;
