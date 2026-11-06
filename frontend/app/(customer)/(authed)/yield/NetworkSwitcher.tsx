@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { Market, Preview } from "@/lib/types";
 import type { ContractCheck, NetworkInfo, NetworkKey, NetworkStatus, NetworksResponse } from "@/lib/networks";
 import { shortHex, usd } from "@/lib/format";
+import { SelfCustodyPanel } from "./SelfCustodyPanel";
 
 const ORIGIN: Record<string, string> = {
   sdk: "address from the official 1inch SDK",
@@ -38,7 +39,7 @@ export function NetworkSwitcher({
         {networks.networks.map((n) => (
           <button key={n.key} role="tab" aria-selected={view === n.key} className={view === n.key ? "is-on" : ""} onClick={() => onView(n.key)}>
             {n.name}
-            <span className="muted small">{n.active ? "your positions" : n.key === "arc" ? "mainnet · view only" : "view only"}</span>
+            <span className="muted small">{n.active ? "your positions" : n.selfCustody ? "sign with your wallet" : n.key === "arc" ? "mainnet · view only" : "view only"}</span>
           </button>
         ))}
       </div>
@@ -52,7 +53,10 @@ export function NetworkSwitcher({
         <div className="card net-panel">
           <div className="notice">
             You are looking at <b>{info.name}</b>
-            {info.key === "arc" ? " (mainnet, real money)" : ""}. This is a read-only view: nothing here sends a transaction. Your box and positions live on {live.name}.{" "}
+            {info.key === "arc" ? " (mainnet, real money)" : ""}.{" "}
+            {info.selfCustody
+              ? `Below you can open positions by signing with your own wallet. Your box and the positions the treasury manages live on ${live.name}.`
+              : `This is a read-only view: nothing here sends a transaction. Your box and positions live on ${live.name}.`}{" "}
             <button type="button" className="link-btn" onClick={() => onView(live.key)}>
               Back to {live.name}
             </button>
@@ -97,6 +101,7 @@ function NetworkPanel({ info, live, market }: { info: NetworkInfo; live: Network
 
   return (
     <div className="net-body">
+      {info.selfCustody && <SelfCustodyPanel network={info} />}
       <dl className="net-facts">
         <div><dt>Chain</dt><dd>{info.name} · id {info.chainId}</dd></div>
         <div><dt>Pays gas in</dt><dd>{info.nativeSymbol}</dd></div>

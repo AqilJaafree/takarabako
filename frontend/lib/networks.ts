@@ -22,6 +22,8 @@ export interface NetworkInfo {
   aqua: AquaDeployment | null;
   /// The one network this backend opens and closes real positions on.
   active: boolean;
+  /// The customer can sign positions with their own wallet here.
+  selfCustody?: boolean;
 }
 
 export interface NetworksResponse {

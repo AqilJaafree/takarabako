@@ -25,10 +25,17 @@ export function ConfirmRealMoney({
   summary,
   network,
   onResult,
+  risks = RISKS,
+  title = "Put real money into a strategy?",
+  confirmLabel = "Confirm and open",
 }: {
   summary: string;
   network: string;
   onResult: (confirmed: boolean) => void;
+  /// The risks to list: the default describes the treasury-managed positions.
+  risks?: string[];
+  title?: string;
+  confirmLabel?: string;
 }) {
   const [understood, setUnderstood] = useState(false);
   const cancel = useRef<HTMLButtonElement>(null);
@@ -44,12 +51,12 @@ export function ConfirmRealMoney({
   return (
     <div className="confirm-overlay" onClick={() => onResult(false)}>
       <div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title" onClick={(e) => e.stopPropagation()}>
-        <h2 id="confirm-title">Put real money into a strategy?</h2>
+        <h2 id="confirm-title">{title}</h2>
         <p className="confirm-summary">
           {summary} on {network}.
         </p>
         <ul className="confirm-risks">
-          {RISKS.map((r) => (
+          {risks.map((r) => (
             <li key={r}>{r}</li>
           ))}
         </ul>
@@ -62,7 +69,7 @@ export function ConfirmRealMoney({
             Cancel
           </button>
           <button type="button" className="btn btn-gold" disabled={!understood} onClick={() => onResult(true)}>
-            Confirm and open
+            {confirmLabel}
           </button>
         </div>
       </div>

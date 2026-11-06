@@ -4665,3 +4665,23 @@ body.chat-lock {
 .confirm-check input { width: 18px; height: 18px; accent-color: var(--gold); }
 .confirm-actions { justify-content: flex-end; }
 .confirm-actions .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+/* Self-custody positions on Arc mainnet: the customer signs with their own wallet */
+.self-panel { margin: 0 0 20px; padding: 16px; border: 1px solid rgba(227, 179, 106, 0.4); border-radius: 12px; background: rgba(227, 179, 106, 0.05); display: flex; flex-direction: column; gap: 12px; }
+.self-panel h3 { margin: 0; }
+.self-modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 8px; }
+.self-modes button { appearance: none; text-align: left; display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: var(--cream); font: inherit; cursor: pointer; }
+.self-modes button.is-on { background: linear-gradient(180deg, rgba(227, 179, 106, 0.2), rgba(227, 179, 106, 0.08)); box-shadow: inset 0 0 0 1px rgba(227, 179, 106, 0.45); }
+.self-modes button:disabled { opacity: 0.6; cursor: not-allowed; }
+.self-amount .input { max-width: 9rem; }
+.self-progress { margin: 0; word-break: break-word; }
+.self-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.self-list li { padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.self-wallets { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 8px; }
+.self-wallets button { appearance: none; text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: var(--cream); font: inherit; cursor: pointer; }
+.self-wallets button.is-on { background: linear-gradient(180deg, rgba(227, 179, 106, 0.2), rgba(227, 179, 106, 0.08)); box-shadow: inset 0 0 0 1px rgba(227, 179, 106, 0.45); }
+.self-wallets .self-connect { border-style: dashed; }
+.self-wallets button:disabled { opacity: 0.6; cursor: not-allowed; }
+.self-network { margin: 0; font-size: 14px; }
+.self-network.ok { color: var(--ok); }
+.self-network.warn { color: var(--warn); }
