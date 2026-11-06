@@ -100,3 +100,49 @@ export function createGold() {
     uniforms: { uTime: { value: 0 }, uGlow: { value: 0 } },
   });
 }
+
+const marbleFragment = /* glsl */ `
+  uniform float uTime;
+  uniform float uGlow;
+  uniform float uLit;
+  varying vec3 vNormal;
+  varying vec3 vViewPos;
+  varying vec3 vWorldPos;
+  float hash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+  float noise(vec3 p) {
+    vec3 i = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x), mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+               mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x), mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+  }
+  void main() {
+    vec3 N = normalize(vNormal);
+    vec3 V = normalize(-vViewPos);
+    vec3 L = normalize(vec3(0.45, 0.85, 0.55));
+    float diff = max(dot(N, L), 0.0);
+    // White marble with faint grey veins.
+    float n = noise(vWorldPos * 6.0) * 0.6 + noise(vWorldPos * 14.0) * 0.4;
+    float vein = smoothstep(0.48, 0.5, abs(sin(vWorldPos.x * 3.0 + vWorldPos.y * 5.0 + n * 6.0)) * 0.5);
+    vec3 marble = mix(vec3(0.93, 0.91, 0.95), vec3(0.78, 0.76, 0.84), vein * 0.35);
+    // Moonlit purple from above, warm diya light from below (stronger as the balance grows).
+    vec3 sky = vec3(0.62, 0.5, 0.95);
+    vec3 warm = vec3(1.0, 0.62, 0.28);
+    float below = pow(clamp(1.0 - vWorldPos.y * 1.6, 0.0, 1.0), 2.0);
+    vec3 col = marble * (0.32 + 0.58 * diff) * mix(vec3(1.0), sky, 0.3)
+      + marble * warm * below * (0.06 + 0.32 * uLit)
+      + pow(1.0 - max(dot(N, V), 0.0), 3.0) * sky * 0.35
+      + pow(max(dot(reflect(-L, N), V), 0.0), 30.0) * 0.25
+      + uGlow * warm * 0.35;
+    gl_FragColor = vec4(col, 1.0);
+  }
+`;
+
+/// The Taj Mahal's white marble: faint veins, lit purple from above and warm
+/// from the diyas below. uLit (0–1) follows the balance; uGlow flashes on a deposit.
+export function createMarble() {
+  return new THREE.ShaderMaterial({
+    vertexShader: vertex,
+    fragmentShader: marbleFragment,
+    uniforms: { uTime: { value: 0 }, uGlow: { value: 0 }, uLit: { value: 0 } },
+  });
+}

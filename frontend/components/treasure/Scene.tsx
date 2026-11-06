@@ -9,6 +9,8 @@ import { FallingNote } from "./FallingNote";
 import { Gems } from "./Gems";
 import { CoinBurst } from "./CoinBurst";
 import { ManekiNeko } from "./ManekiNeko";
+import { Fireworks, TajMahal, useGlowTexture } from "./TajMahal";
+import { FESTIVE } from "@/lib/theme";
 
 /// The box on a slowly swaying plinth. The cat stays put so it always faces
 /// the viewer.
@@ -32,8 +34,38 @@ function Plinth({ children }: { children: React.ReactNode }) {
   );
 }
 
-const TARGET = new THREE.Vector3(0.45, 0.55, 0);
-const CAMERA_DIR = new THREE.Vector3(0.9, 3.85, 5.9).sub(TARGET);
+/// The Deepavali stage: the Taj Mahal, swaying a little less than the box (it
+/// should mostly face the viewer), with notes landing in front of its arch.
+const TAJ_SCALE = 0.74;
+function TajStage({ balance, glow, notes, onNoteDone, etchAnchor, flame }: {
+  balance: number;
+  glow: number;
+  notes: StageProps["notes"];
+  onNoteDone: StageProps["onNoteDone"];
+  etchAnchor: React.RefObject<THREE.Group | null>;
+  flame: THREE.Texture;
+}) {
+  const group = useRef<THREE.Group>(null);
+  useFrame(({ clock }) => {
+    if (group.current) group.current.rotation.y = -0.18 + Math.sin(clock.elapsedTime * 0.2) * 0.16;
+  });
+  return (
+    <group ref={group}>
+      <group scale={TAJ_SCALE}>
+        <TajMahal balance={balance} glow={glow} etchAnchor={etchAnchor} flame={flame} />
+      </group>
+      <group position={[0, 0, 1.05]}>
+        {notes.map((n) => (
+          <FallingNote key={n.id} note={n} onDone={onNoteDone} />
+        ))}
+      </group>
+    </group>
+  );
+}
+
+// The Taj is taller than the box, so its camera looks from lower down and at a higher point.
+const TARGET = FESTIVE ? new THREE.Vector3(0.45, 0.95, 0) : new THREE.Vector3(0.45, 0.55, 0);
+const CAMERA_DIR = (FESTIVE ? new THREE.Vector3(0.9, 2.9, 6.1) : new THREE.Vector3(0.9, 3.85, 5.9)).sub(TARGET);
 
 /// Keeps the whole scene in frame: pulls the camera back on narrow (portrait)
 /// canvases, where the default framing would crop the cat.
@@ -77,6 +109,10 @@ export default function Scene(
   const etchAnchor = useRef<THREE.Group>(null);
   const lidOpen = burst > 0 || notes.some((n) => n.status === "pending") ? 2.1 : 1.8;
   const glow = notes.filter((n) => n.status === "confirmed").length;
+  const flame = useGlowTexture();
+  // A newly confirmed deposit (glow goes up) or a withdrawal (burst goes up) sets off fireworks:
+  // Fireworks launches whenever this goes up.
+  const fireworks = glow + burst;
 
   return (
     <Canvas
@@ -84,25 +120,33 @@ export default function Scene(
       camera={{ position: TARGET.clone().add(CAMERA_DIR).toArray(), fov: 38 }}
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
       style={{ height: props.height ?? 340 }}
-      aria-label="Your treasure box"
+      aria-label={FESTIVE ? "Your Taj Mahal, lit with diyas" : "Your treasure box"}
     >
       <Framing />
       <Anchor target={bubbleAnchor} el={bubbleEl} />
       <Anchor target={etchAnchor} el={etchEl} />
       {chatEl && <Anchor target={chatAnchor} el={chatEl} />}
 
-      <ambientLight intensity={0.55} />
-      <directionalLight position={[3, 6, 4]} intensity={1.6} color="#fff1dd" />
-      <directionalLight position={[-4, 2, -3]} intensity={0.5} color="#ff9a7a" />
+      <ambientLight intensity={FESTIVE ? 0.45 : 0.55} />
+      <directionalLight position={[3, 6, 4]} intensity={1.6} color={FESTIVE ? "#e8dcff" : "#fff1dd"} />
+      <directionalLight position={[-4, 2, -3]} intensity={0.5} color={FESTIVE ? "#c07aff" : "#ff9a7a"} />
 
       <group position={[-0.45, 0, 0]}>
-        <Plinth>
-          <TreasureBox balance={balance} lidOpen={lidOpen} glow={glow} etchAnchor={etchAnchor} />
-          {notes.map((n) => (
-            <FallingNote key={n.id} note={n} onDone={onNoteDone} />
-          ))}
-          <CoinBurst burst={burst} />
-        </Plinth>
+        {FESTIVE ? (
+          <>
+            <TajStage balance={balance} glow={glow} notes={notes} onNoteDone={onNoteDone} etchAnchor={etchAnchor} flame={flame} />
+            <CoinBurst burst={burst} />
+            <Fireworks trigger={fireworks} flame={flame} />
+          </>
+        ) : (
+          <Plinth>
+            <TreasureBox balance={balance} lidOpen={lidOpen} glow={glow} etchAnchor={etchAnchor} />
+            {notes.map((n) => (
+              <FallingNote key={n.id} note={n} onDone={onNoteDone} />
+            ))}
+            <CoinBurst burst={burst} />
+          </Plinth>
+        )}
         <Gems gems={gems} />
       </group>
 
@@ -110,8 +154,8 @@ export default function Scene(
         <ManekiNeko mood={mood} hop={hop} bubbleAnchor={bubbleAnchor} chatAnchor={chatEl ? chatAnchor : undefined} onCatClick={onCatClick} />
       </group>
 
-      {/* soft contact shadow under the plinth */}
-      <mesh position={[-0.45, -0.25, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      {/* soft contact shadow under the plinth (the Taj's platform needs none) */}
+      <mesh position={[-0.45, -0.25, 0]} rotation={[-Math.PI / 2, 0, 0]} visible={!FESTIVE}>
         <circleGeometry args={[BOX.w * 1.1, 48]} />
         <meshBasicMaterial color="#000" transparent opacity={0.35} />
       </mesh>

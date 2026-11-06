@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Nav } from "@/components/Nav";
 import { LogoutButton } from "@/components/LogoutButton";
 import { ChatProvider } from "@/components/chat/ChatProvider";
+import { BRAND_MARK } from "@/lib/theme";
 
 export default function AuthedLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -9,7 +10,7 @@ export default function AuthedLayout({ children }: { children: React.ReactNode }
     <main className="shell">
       <header className="topbar">
         <Link href="/" className="brand">
-          <span className="kanji">宝箱</span> Takarabako
+          <span className="kanji">{BRAND_MARK}</span> Takarabako
         </Link>
         <LogoutButton />
       </header>

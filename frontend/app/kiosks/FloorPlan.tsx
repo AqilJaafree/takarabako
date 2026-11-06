@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { BRAND_GLYPH } from "@/lib/theme";
 
 /// The venue, indoors: a schematic of floors 5F and 4F (after the event's
 /// floor plan). 5F draws the walking route from the elevators and stairs to
@@ -124,7 +125,7 @@ export function FloorPlan({ kioskId }: { kioskId: string }) {
               <circle className="ring" r="14" />
               <circle className="ring r2" r="14" />
               <circle className="head" r="15" />
-              <text y="6" textAnchor="middle" className="glyph">宝</text>
+              <text y="6" textAnchor="middle" className="glyph">{BRAND_GLYPH}</text>
               <text x="-26" y="5" textAnchor="end" className="fp-kiosk-label">{kioskId} kiosk ▸</text>
             </g>
           </>

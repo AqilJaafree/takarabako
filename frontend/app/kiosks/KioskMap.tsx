@@ -4,6 +4,7 @@ import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
 import { LngLatBounds, Map as MapLibre, Marker, setWorkerUrl, type GeoJSONSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { KioskLocation } from "@/lib/kiosks";
+import { BRAND_GLYPH } from "@/lib/theme";
 
 /// The city map: opens on Japan as a globe, flies down to the kiosk with
 /// 3D buildings and a slow orbit, and — once the visitor shares their
@@ -28,7 +29,7 @@ function pinElement(label: string) {
   el.type = "button";
   el.className = "kiosk-pin";
   el.setAttribute("aria-label", `${label}: go inside`);
-  el.innerHTML = `<span class="kiosk-pin-ring"></span><span class="kiosk-pin-ring r2"></span><span class="kiosk-pin-head"><i>宝</i></span><span class="kiosk-pin-label">${label} · Go inside ▸</span>`;
+  el.innerHTML = `<span class="kiosk-pin-ring"></span><span class="kiosk-pin-ring r2"></span><span class="kiosk-pin-head"><i>${BRAND_GLYPH}</i></span><span class="kiosk-pin-label">${label} · Go inside ▸</span>`;
   return el;
 }
 

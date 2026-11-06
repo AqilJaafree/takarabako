@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Receipt } from "@/lib/types";
 import { cash, NETWORK_NAME, usd } from "@/lib/format";
+import { BRAND_MARK } from "@/lib/theme";
 
 /// The deposit terminal after a wallet-QR scan: wait for notes, show each
 /// accepted note with a running total, then Finish → an animated receipt.
@@ -126,7 +127,7 @@ export function DepositFlow({
       <section className="receipt-wrap" aria-live="polite">
         <div className="receipt-slot" aria-hidden="true" />
         <article className="receipt">
-          <p className="receipt-brand">宝箱 Takarabako</p>
+          <p className="receipt-brand">{BRAND_MARK} Takarabako</p>
           <p className="receipt-sub">Deposit receipt · {receipt.id.slice(0, 8)}</p>
           <ul className="receipt-lines">
             {receipt.notes.map((n, i) => (

@@ -9,6 +9,7 @@ import { apy, cash, shortHex, timeAgo, tokenUrl, txUrl, usd, without } from "@/l
 import { RollingNumber } from "@/components/RollingNumber";
 import { TreasureStage } from "@/components/treasure/TreasureStage";
 import { useStageDirector } from "@/components/treasure/useStageDirector";
+import { GREETING } from "@/lib/theme";
 
 interface Pending {
   amount: number;
@@ -34,7 +35,7 @@ export function Dashboard({
   const [fresh, setFresh] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const { stage, deposit } = useStageDirector(
-    me.balance > 0 ? `いらっしゃいませ! Your box holds ${usd(me.balance)}.` : "いらっしゃいませ! Insert a note at the kiosk and watch it land here.",
+    me.balance > 0 ? `${GREETING} Your box holds ${usd(me.balance)}.` : `${GREETING} Insert a note at the kiosk and watch it land here.`,
   );
 
   const upsert = useCallback((d: Partial<Deposit> & { id: string }) => {

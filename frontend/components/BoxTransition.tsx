@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { BRAND_GLYPH, BRAND_MARK } from "@/lib/theme";
 
 /// The page as the lid of a lacquered box. Logging in, the two halves slide
 /// shut over the login page, the clasp turns, light leaks from the seam and
@@ -124,7 +125,7 @@ function BoxLid({ phase }: { phase: Exclude<Phase, "idle"> }) {
       <div className="box-tx-half box-tx-lid">
         <span className="box-tx-fit tl" />
         <span className="box-tx-fit tr" />
-        <span className="box-tx-mon">宝箱</span>
+        <span className="box-tx-mon">{BRAND_MARK}</span>
       </div>
       <div className="box-tx-half box-tx-body">
         <span className="box-tx-fit bl" />
@@ -132,7 +133,7 @@ function BoxLid({ phase }: { phase: Exclude<Phase, "idle"> }) {
       </div>
       <div className="box-tx-seam" />
       <div className="box-tx-clasp">
-        <span>宝</span>
+        <span>{BRAND_GLYPH}</span>
       </div>
     </div>
   );

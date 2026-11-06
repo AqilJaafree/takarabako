@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { cash, shortHex, usd } from "@/lib/format";
 import type { CatMood, StageNote } from "./types";
+import { FAREWELL } from "@/lib/theme";
 
 export type DepositCue =
   | { status: "pending"; amount: number; currency: string; estUsd: number | null }
@@ -65,7 +66,7 @@ export function useStageDirector(greeting: string) {
 
   const withdraw = useCallback(() => {
     setBurst((b) => b + 1);
-    say("Off to your wallet! お疲れさま", "happy");
+    say(`Off to your wallet! ${FAREWELL}`, "happy");
   }, [say]);
 
   return { stage: { notes, mood, line, hop, burst, etch, onNoteDone: noteDone }, deposit, say, withdraw };

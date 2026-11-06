@@ -6,6 +6,7 @@ import { useRef, useState } from "react";
 import { directionsUrl, distanceM, type KioskLocation } from "@/lib/kiosks";
 import type { KioskMapHandle } from "./KioskMap";
 import { FloorPlan } from "./FloorPlan";
+import { BRAND_MARK } from "@/lib/theme";
 
 // WebGL map: browser only.
 const KioskMap = dynamic(() => import("./KioskMap"), { ssr: false, loading: () => <div className="kiosk-map kiosk-map-loading" /> });
@@ -66,7 +67,7 @@ export function KioskFinder({ kiosks }: { kiosks: Kiosk[] }) {
   return (
     <main className="finder">
       <header className="finder-head">
-        <Link href="/" className="brand"><span className="kanji">宝箱</span> Takarabako</Link>
+        <Link href="/" className="brand"><span className="kanji">{BRAND_MARK}</span> Takarabako</Link>
         <Link href="/" className="btn btn-ghost small">Open the app</Link>
       </header>
 

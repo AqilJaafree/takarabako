@@ -12,10 +12,11 @@ import { WorldLogin } from "./WorldLogin";
 import { QrProblem, type QrProblemKind } from "./QrProblem";
 import { ConnectionLost, useBackendDown } from "@/components/ConnectionLost";
 import { MachineBadge } from "@/components/MachineBadge";
+import { BRAND_MARK, GREETING } from "@/lib/theme";
 
 const GREETINGS = {
-  kiosk: "いらっしゃいませ! Tap in with your email or wallet QR.",
-  deposit: "いらっしゃいませ! Pick how to log in, then feed me your notes.",
+  kiosk: `${GREETING} Tap in with your email or wallet QR.`,
+  deposit: `${GREETING} Pick how to log in, then feed me your notes.`,
 } as const;
 const bubble = (text: string) => (text.length > 170 ? `${text.slice(0, 167).trimEnd()}…` : text);
 
@@ -409,7 +410,7 @@ export function KioskApp({
       <div className="kiosk-panel">
         <header className="kiosk-head">
           <div className="brand">
-            <span className="kanji">宝箱</span> Takarabako
+            <span className="kanji">{BRAND_MARK}</span> Takarabako
           </div>
           <MachineBadge />
         </header>

@@ -1,0 +1,86 @@
+/* Hand-written Deepavali rules, on top of the generated theme-deepavali.css.
+   Only apply with data-theme="deepavali" on <html> (lib/theme.ts). */
+
+[data-theme="deepavali"] {
+  --festive-pink: #ff78be;
+}
+
+[data-theme="deepavali"] body {
+  background:
+    radial-gradient(1100px 520px at 50% -160px, rgba(150, 40, 200, 0.35), transparent 70%),
+    radial-gradient(900px 500px at 50% 115%, rgba(255, 150, 60, 0.12), transparent 70%),
+    var(--bg);
+}
+
+/* the sky behind every page (components/FestivalSky.tsx) */
+.festival-sky {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+.festival-sky canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+/* keep the middle calm so cards stay easy to read */
+.festival-sky::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 36% 50% at 50% 48%, rgba(15, 7, 18, 0.78), rgba(15, 7, 18, 0.3) 65%, transparent);
+}
+
+/* the brand mark: दीप in a warm gradient */
+[data-theme="deepavali"] .kanji {
+  font-family: var(--font-devanagari), serif;
+  background: linear-gradient(180deg, #ffe7a8, var(--gold) 55%, var(--festive-pink));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* a string of marigold-and-gold lights under the top bar */
+[data-theme="deepavali"] .topbar {
+  position: relative;
+}
+[data-theme="deepavali"] .topbar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -6px;
+  height: 6px;
+  background: radial-gradient(circle at 6px 3px, #ffcf6a 2px, rgba(255, 180, 70, 0.35) 3px, transparent 4px) 0 0 / 22px 6px repeat-x;
+  animation: festive-twinkle 2.4s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes festive-twinkle {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+/* the login crest's glow is warmer */
+[data-theme="deepavali"] .crest-rays {
+  filter: hue-rotate(-10deg) saturate(1.2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="deepavali"] .topbar::after { animation: none; }
+}
+
+/* the diyas under the login crest flicker */
+.crest-flame {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: crest-flicker 1.6s ease-in-out infinite;
+  filter: drop-shadow(0 0 2px #ffb347);
+}
+@keyframes crest-flicker {
+  0%, 100% { transform: scale(1, 1); opacity: 0.9; }
+  50% { transform: scale(0.85, 1.15); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .crest-flame { animation: none; }
+}

@@ -6,6 +6,7 @@ import { addressUrl, apy, shortHex, timeAgo, txUrl, usd } from "@/lib/format";
 import { FlowsChart, HBars } from "./charts";
 import { AgentPanel } from "./AgentPanel";
 import { AiTreasury } from "./AiTreasury";
+import { BRAND_MARK } from "@/lib/theme";
 
 const REFRESH_MS = 20_000; // matches the backend's panel cache
 
@@ -76,7 +77,7 @@ export function OpsDashboard({ initial }: { initial: OpsData }) {
     <main className="ops">
       <header className="ops-head">
         <div>
-          <div className="brand"><span className="kanji">宝箱</span> Treasury ops</div>
+          <div className="brand"><span className="kanji">{BRAND_MARK}</span> Treasury ops</div>
           <p className="muted small">Proof of reserve, vault health and the treasury agent. On-chain data via Curvegrid MultiBaas.</p>
         </div>
         <div className="row">
