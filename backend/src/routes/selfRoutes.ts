@@ -6,6 +6,7 @@ import { asyncHandler } from "../asyncHandler.js";
 import { config } from "../config.js";
 import { requireSession } from "../sessions.js";
 import { listSelf, prepareClose, prepareOpen, recordClose, recordOpen, walletState } from "../selfPositions.js";
+import { SELF_SHAPES, type SelfShape } from "../selfShapes.js";
 
 /// Self-custody positions on Arc mainnet: the customer's own wallet signs. Real
 /// money, so every route answers 404 unless SELF_CUSTODY_ARC=1 (selfPositions.ts).
@@ -13,7 +14,13 @@ export const selfRouter = Router();
 
 const hashes = z.array(z.string().regex(/^0x[0-9a-fA-F]{64}$/)).min(1).max(8);
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/);
-const Open = z.object({ mode: z.enum(["low", "medium", "high", "hybrid"]), amount: z.number().positive(), wallet: address.optional() });
+const Open = z.object({
+  shape: z.enum(SELF_SHAPES as [SelfShape, ...SelfShape[]]),
+  priceMin: z.number().positive().optional(),
+  priceMax: z.number().positive().optional(),
+  amount: z.number().positive(),
+  wallet: address.optional(),
+});
 const Record = z.object({ positionId: z.string().uuid(), txHashes: hashes });
 const RecordClose = z.object({ txHashes: hashes });
 
@@ -38,7 +45,7 @@ selfRouter.get("/self/arc/wallet", requireSession("full"), asyncHandler(async (r
   });
 }));
 
-/// POST /self/arc/prepare { mode, amount } — the transactions to sign to open a position.
+/// POST /self/arc/prepare { shape, priceMin, priceMax, amount } — the transactions to sign to open a position.
 selfRouter.post("/self/arc/prepare", requireSession("full"), asyncHandler(async (req, res) => {
   const body = Open.safeParse(req.body);
   if (!body.success) return void res.status(400).json({ error: body.error.flatten() });

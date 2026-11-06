@@ -3,7 +3,8 @@ import { arc } from "viem/chains";
 import type { Account } from "./accounts.js";
 import { config } from "./config.js";
 import { pool } from "./db.js";
-import { ethUsd, MONEY_PRICE_MAX_AGE_MS, planPosition } from "./aqua.js";
+import { ethUsd, MONEY_PRICE_MAX_AGE_MS } from "./aqua.js";
+import { selfBins, type SelfShape } from "./selfShapes.js";
 import { valueUsd } from "./aquaMath.js";
 import { GuardError } from "./guards.js";
 import { applyFeeFloor, NETWORKS, resolveAquaDeployment } from "./networks.js";
@@ -15,7 +16,8 @@ import { ARC_CHAIN_ID, ARC_PAIR, matchesPrepared, planSelfClose, planSelfOpen, t
 /// backend never holds a key for this: it builds transactions, the customer's
 /// own wallet signs and sends them, and the backend verifies the result.
 
-export type SelfMode = "low" | "medium" | "high" | "hybrid";
+/// What a position was opened as: its shape (the range it covers is stored beside it).
+export type SelfMode = SelfShape;
 
 const arcClient = () => createPublicClient({ chain: arc, transport: http(config.selfCustody.arcRpcUrl, { timeout: 10_000 }) });
 const erc20 = parseAbi(["function balanceOf(address) view returns (uint256)", "function allowance(address,address) view returns (uint256)"]);
@@ -122,16 +124,18 @@ const fmtUnits = (v: bigint, decimals: bigint) => formatUnits(v, Number(decimals
 
 /// Plans a position and the transactions to sign. Refuses, before anything is
 /// signed, if the wallet cannot cover it or the price cannot be trusted.
-export async function prepareOpen(account: Account, req: { mode: SelfMode; amount: number; wallet?: string }) {
+export async function prepareOpen(account: Account, req: { shape: SelfShape; priceMin?: number; priceMax?: number; amount: number; wallet?: string }) {
   assertEnabled();
   if (!(req.amount > 0) || req.amount < 5) throw Object.assign(new Error("the amount must be at least $5"), { status: 422 });
   if (req.amount > config.selfCustody.maxUsd) throw Object.assign(new Error(`positions are capped at $${config.selfCustody.maxUsd} for now`), { status: 422 });
 
   const spot = await ethUsd({ maxStaleMs: MONEY_PRICE_MAX_AGE_MS, verify: true });
-  const plan =
-    req.mode === "hybrid"
-      ? planPosition({ mode: "advanced", shape: "hybrid", priceMin: spot * 0.5, priceMax: spot * 2 }, spot)
-      : planPosition({ mode: req.mode }, spot);
+  let plan: ReturnType<typeof selfBins>;
+  try {
+    plan = selfBins(req.shape, spot, req.priceMin, req.priceMax);
+  } catch (e) {
+    throw Object.assign(new Error(e instanceof Error ? e.message : "invalid range"), { status: 422 });
+  }
   // The wallet that signs: the customer's own choice (their Takarabako wallet or one they connected, such as
   // MetaMask), or the Takarabako wallet by default. Whoever it is, recording the position needs these exact
   // transactions sent from it (verifySigned), so naming a wallet does not let anyone act for it.
@@ -151,7 +155,7 @@ export async function prepareOpen(account: Account, req: { mode: SelfMode; amoun
   await pool.query(
     `insert into self_positions (id, privy_user_id, wallet, chain_id, mode, amount_usd, spot_open, fee_bps, price_min, price_max, strategies, steps)
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-    [id, account.privyUserId, wallet, ARC_CHAIN_ID, req.mode, req.amount, spot, plan.feeBps, range.length ? Math.min(...range.map((s) => s.min!)) : null, range.length ? Math.max(...range.map((s) => s.max!)) : null, JSON.stringify(built.strategies), JSON.stringify(built.steps)],
+    [id, account.privyUserId, wallet, ARC_CHAIN_ID, req.shape, req.amount, spot, plan.feeBps, range.length ? Math.min(...range.map((s) => s.min!)) : null, range.length ? Math.max(...range.map((s) => s.max!)) : null, JSON.stringify(built.strategies), JSON.stringify(built.steps)],
   );
   return {
     positionId: id,
