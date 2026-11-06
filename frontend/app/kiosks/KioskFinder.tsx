@@ -82,10 +82,10 @@ export function KioskFinder({ kiosks }: { kiosks: Kiosk[] }) {
           <KioskMap ref={map} kiosk={kiosk} onEnter={goInside} />
         </div>
         {view !== "street" && (
-          <div className="finder-indoor" role="region" aria-label={`Inside the venue, floor ${kiosk.floor}`}>
+          <div className="finder-indoor" role="region" aria-label={`Inside the venue, ${kiosk.hall}`}>
             <div className="finder-indoor-head">
               <button className="btn small" onClick={goOutside}>← Back to the map</button>
-              <span className="muted small">{kiosk.venue} · the kiosk is on {kiosk.floor}</span>
+              <span className="muted small">{kiosk.venue} · {kiosk.hall}</span>
             </div>
             <FloorPlan kioskId={kiosk.id} />
           </div>
@@ -113,7 +113,7 @@ export function KioskFinder({ kiosks }: { kiosks: Kiosk[] }) {
         </div>
 
         <div className="finder-facts">
-          <div><span className="label">Where</span><b>{kiosk.venue}</b><span className="muted small">Floor {kiosk.floor} · {kiosk.spot}</span></div>
+          <div><span className="label">Where</span><b>{kiosk.venue}</b><span className="muted small">{kiosk.hall} · {kiosk.spot}</span></div>
           <div><span className="label">Hours</span><b>{kiosk.hours}</b></div>
           <div><span className="label">Accepts</span><b>{kiosk.accepts}</b></div>
           <div>
@@ -121,7 +121,7 @@ export function KioskFinder({ kiosks }: { kiosks: Kiosk[] }) {
             {distance !== null ? (
               <>
                 <b>{fmtDistance(distance)}</b>
-                <span className="muted small">{distance < 60 ? "You're here! Head up to 5F." : fmtWalk(distance)}</span>
+                <span className="muted small">{distance < 60 ? `You're here! Walk in at ${kiosk.hall}.` : fmtWalk(distance)}</span>
               </>
             ) : (
               <span className="muted small">{locError || "Tap “Use my location”."}</span>

@@ -6,12 +6,14 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { KioskLocation } from "@/lib/kiosks";
 import { BRAND_GLYPH } from "@/lib/theme";
 
-/// The city map: opens on Japan as a globe, flies down to the kiosk with
+/// The city map: opens on India as a globe, flies down to the kiosk with
 /// 3D buildings and a slow orbit, and — once the visitor shares their
 /// location — draws an animated walking line from them to the box.
 /// OpenFreeMap's dark style: free, no API key.
 
 const STYLE = "https://tiles.openfreemap.org/styles/dark";
+// Where the fly-in starts: the whole country, before diving to the kiosk.
+const COUNTRY: [number, number] = [78.9, 21.5];
 // Same-origin copy of MapLibre's worker (scripts/copy-maplibre-worker.mjs).
 setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 
@@ -77,10 +79,10 @@ export default function KioskMap({
     const m = map.current;
     if (!m) return;
     stopOrbit();
-    m.jumpTo({ center: [138.4, 36.2], zoom: 3.6, pitch: 0, bearing: 0 });
+    m.jumpTo({ center: COUNTRY, zoom: 3.6, pitch: 0, bearing: 0 });
     // Narrow screens need a little more context around the building.
     const zoom = m.getContainer().clientWidth < 600 ? 16.2 : 17.2;
-    // Hold on Japan for a beat, then fly down to the box.
+    // Hold on India for a beat, then fly down to the box.
     window.setTimeout(() => {
       m.flyTo({ center: [kiosk.lng, kiosk.lat], zoom, pitch: 62, bearing: -28, duration: 6500, curve: 1.7, essential: true });
       m.once("moveend", startOrbit);
@@ -142,7 +144,7 @@ export default function KioskMap({
     const m = new MapLibre({
       container: box.current,
       style: STYLE,
-      center: [138.4, 36.2],
+      center: COUNTRY,
       zoom: 3.6,
       attributionControl: { compact: true },
       maxPitch: 70,
@@ -156,7 +158,7 @@ export default function KioskMap({
     m.on("load", () => {
       m.setProjection({ type: "globe" });
       // Warm the base map into the app's lacquer tones: in this style land is
-      // darker than water, which hides Japan's coastline from far out.
+      // darker than water, which hides the coastline from far out.
       if (m.getLayer("background")) m.setPaintProperty("background", "background-color", "#2a1915");
       if (m.getLayer("water")) m.setPaintProperty("water", "fill-color", "#080404");
       if (m.getLayer("waterway")) m.setPaintProperty("waterway", "line-color", "#080404");
@@ -176,7 +178,7 @@ export default function KioskMap({
           },
         });
       }
-      const pin = pinElement(`${kiosk.id} · ${kiosk.floor}`);
+      const pin = pinElement(`${kiosk.id} · ${kiosk.hall}`);
       pin.addEventListener("click", (ev) => {
         ev.stopPropagation();
         onEnterRef.current?.();

@@ -1,5 +1,5 @@
-/// Where the Takarabako kiosks are. One for now: the box at the ETHTokyo
-/// hackathon venue. `id` matches the backend's KIOSK_ID and the id the kiosk is registered under;
+/// Where the Takarabako kiosks are. One for now: the box at ETHGlobal Mumbai,
+/// Jio World Convention Centre. `id` matches the backend's KIOSK_ID and the id the kiosk is registered under;
 /// `chain` is the chain its notes are credited on.
 
 export interface KioskLocation {
@@ -9,7 +9,8 @@ export interface KioskLocation {
   lat: number;
   lng: number;
   venue: string;
-  floor: "5F";
+  /// The hall it stands in (where to walk in).
+  hall: string;
   spot: string;
   hours: string;
   accepts: string;
@@ -19,12 +20,12 @@ export const KIOSKS: KioskLocation[] = [
   {
     id: "tokyo-01",
     chain: "sepolia",
-    name: "Takarabako · ETHTokyo",
-    lat: 35.66700139908581,
-    lng: 139.7491968121778,
-    venue: "ETHTokyo hackathon venue",
-    floor: "5F",
-    spot: "Hacking Space (south side), by the Partners and Mentor Station",
+    name: "Takarabako · ETHGlobal Mumbai",
+    lat: 19.0641916,
+    lng: 72.8674424,
+    venue: "Jio World Convention Centre (JWCC), BKC",
+    hall: "Pavilion 2",
+    spot: "Main Stage, by the Partners wall",
     hours: "Open during the hackathon",
     accepts: "Malaysian ringgit notes (RM1–RM100)",
   },

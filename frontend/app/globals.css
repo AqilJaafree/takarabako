@@ -3510,38 +3510,6 @@ a.human-badge {
 }
 
 /* floor plan */
-.floor-tabs {
-  display: flex;
-  gap: 8px;
-  margin: 12px 0;
-}
-
-.floor-tabs button {
-  display: grid;
-  gap: 2px;
-  text-align: left;
-  padding: 10px 16px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--bg);
-  color: var(--cream);
-  font: inherit;
-  font-family: var(--font-serif);
-  font-size: 20px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.floor-tabs button span {
-  font-family: var(--font-sans);
-  font-weight: 500;
-}
-
-.floor-tabs button.is-on {
-  border-color: var(--gold);
-  box-shadow: 0 0 0 3px var(--gold-soft);
-}
-
 .floor-svg {
   width: 100%;
   height: auto;
@@ -3584,15 +3552,6 @@ a.human-badge {
   fill: rgba(227, 179, 106, 0.16);
   stroke: var(--gold);
   stroke-width: 2.5;
-}
-
-.fp-room.stairs rect {
-  fill: #1b100e;
-}
-
-.fp-steps line {
-  stroke: #5a4038;
-  stroke-width: 1.5;
 }
 
 .fp-label {
@@ -3674,14 +3633,6 @@ a.human-badge {
   font-family: var(--font-sans);
 }
 
-.fp-up path {
-  fill: none;
-  stroke: var(--gold);
-  stroke-width: 4;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 @media (prefers-reduced-motion: no-preference) {
   .fp-route {
     animation: route-draw 2.4s cubic-bezier(0.45, 0, 0.2, 1) both;
@@ -3703,10 +3654,6 @@ a.human-badge {
 
   .fp-kiosk {
     animation: route-fade 0.6s ease 2s both;
-  }
-
-  .fp-up {
-    animation: fp-bob 1.4s ease-in-out infinite;
   }
 }
 
@@ -3736,12 +3683,6 @@ a.human-badge {
   100% {
     transform: scale(3.2);
     opacity: 0;
-  }
-}
-
-@keyframes fp-bob {
-  50% {
-    transform: translate(285px, 232px);
   }
 }
 
@@ -3868,10 +3809,6 @@ a.human-badge {
   align-items: center;
   gap: 8px 12px;
   margin-bottom: 4px;
-}
-
-.finder-indoor .floor-tabs {
-  margin: 8px 0;
 }
 
 .finder-indoor .floor-steps {
