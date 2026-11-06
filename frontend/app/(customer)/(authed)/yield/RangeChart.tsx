@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Candle, PreviewBin } from "@/lib/types";
 import { usd } from "@/lib/format";
 
-/// The advanced range picker: a week of ETH/USD on a log price axis (so a
+/// The advanced range picker: a week of ETH/USD (hourly closes) on a log price axis (so a
 /// −90% range and the week's wiggle fit together), the chosen range as a
 /// band with two draggable price lines, the current price, and a side
 /// histogram of how the liquidity would be split (USDC below the price,
@@ -47,7 +47,7 @@ function niceTicks(lo: number, hi: number, count = 5, digits = 0): number[] {
       continue;
     }
     const mag = 10 ** Math.floor(Math.log10(v));
-    out.push(Math.round(v / (mag / 2)) * (mag / 2));
+    out.push(Math.round(v / (mag / 4)) * (mag / 4));
   }
   return [...new Set(out)];
 }
@@ -86,8 +86,9 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange, lo
   const priceAt = useCallback((py: number) => Math.exp(lnLo + (1 - (py - PAD.top) / plotH) * (lnHi - lnLo)), [plotH, lnLo, lnHi]);
   const x = (i: number) => PAD.left + (candles.length > 1 ? (i / (candles.length - 1)) * plotW : plotW / 2);
 
-  const slot = candles.length > 1 ? plotW / (candles.length - 1) : plotW;
-  const cw = Math.max(1, Math.min(8, slot * 0.62)); // candle body width
+  // The week's closes as a line: candles a few pixels wide only read as noise at this scale.
+  const linePath = candles.map((c, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(c.c).toFixed(1)}`).join("");
+  const areaPath = candles.length > 1 ? `${linePath}L${x(candles.length - 1).toFixed(1)},${PAD.top + plotH}L${x(0).toFixed(1)},${PAD.top + plotH}Z` : "";
 
   // Keep the range inside the limits and at least 2% wide.
   const clamp = useCallback(
@@ -160,10 +161,10 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange, lo
   return (
     <div className="range-chart" ref={wrapRef}>
       <div className="range-legend">
-        <span>{candles.length > 0 ? <><i className="rl-candle" />{symbols.base}/{symbols.quote} · 1h candles</> : `${symbols.base}/${symbols.quote} · no price history`}</span>
+        <span>{candles.length > 0 ? <><i className="rl-line" />{symbols.base} price, 7d</> : `${symbols.base}/${symbols.quote}`}</span>
         <span><i className="rl-sw usdc" />{symbols.quote}</span>
         <span><i className="rl-sw eth" />{symbols.base}</span>
-        <span className="muted">{locked ? "Full range covers every price" : "Drag the gold lines, or the band"}</span>
+        {!locked && <span className="muted">Drag the gold lines</span>}
       </div>
       <svg
         ref={svgRef}
@@ -175,7 +176,7 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange, lo
         onPointerCancel={() => setDrag(null)}
         onPointerLeave={() => !drag && setHoverIdx(null)}
         role="img"
-        aria-label={`${symbols.base}/${symbols.quote} ${candles.length > 0 ? "hourly candles for the last week" : "price"} with a liquidity range from ${usd(min, priceDigits)} to ${usd(max, priceDigits)}; current price ${usd(spot, priceDigits)}`}
+        aria-label={`${symbols.base}/${symbols.quote} ${candles.length > 0 ? "hourly prices for the last week" : "price"} with a liquidity range from ${usd(min, priceDigits)} to ${usd(max, priceDigits)}; current price ${usd(spot, priceDigits)}`}
         className={drag ? "is-dragging" : undefined}
       >
         {/* grid + y axis */}
@@ -202,14 +203,17 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange, lo
           style={locked ? { cursor: "default" } : undefined}
         />
 
-        {/* price: hourly candles, like a trading chart */}
-        <g className="rc-candles">
-          {candles.map((c, i) => (
-            <g key={c.t} className={c.c >= c.o ? "rc-up" : "rc-down"}>
-              <line x1={x(i)} x2={x(i)} y1={y(c.h)} y2={y(c.l)} />
-              <rect x={x(i) - cw / 2} y={y(Math.max(c.o, c.c))} width={cw} height={Math.max(1, Math.abs(y(c.o) - y(c.c)))} />
-            </g>
-          ))}
+        {/* price: the week's hourly closes */}
+        <g className="rc-price" pointerEvents="none">
+          <defs>
+            <linearGradient id="rc-fill" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" className="rc-fill-top" />
+              <stop offset="100%" className="rc-fill-bottom" />
+            </linearGradient>
+          </defs>
+          {areaPath && <path d={areaPath} fill="url(#rc-fill)" />}
+          <path d={linePath} className="rc-line" />
+          {candles.length > 0 && <circle cx={x(candles.length - 1)} cy={y(spot)} r={4} className="rc-dot" />}
         </g>
 
         {/* liquidity histogram */}
@@ -236,7 +240,7 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange, lo
 
         {/* current price */}
         <line x1={PAD.left} x2={histX + HIST_W} y1={y(spot)} y2={y(spot)} className="rc-spot" />
-        <text x={PAD.left + 6} y={y(spot) - 6} className="rc-spot-label">Now {usd(spot, priceDigits)}</text>
+        <text x={PAD.left + plotW - 8} y={y(spot) + 16} textAnchor="end" className="rc-spot-label">Now {usd(spot, priceDigits)}</text>
 
         {/* draggable range lines */}
         {(locked ? [] : (["max", "min"] as const)).map((k) => {
@@ -272,7 +276,7 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange, lo
         {hc && hoverIdx !== null && (
           <g pointerEvents="none">
             <line x1={x(hoverIdx)} x2={x(hoverIdx)} y1={PAD.top} y2={PAD.top + plotH} className="rc-cross" />
-            <line x1={PAD.left} x2={PAD.left + plotW} y1={y(hc.c)} y2={y(hc.c)} className="rc-cross" />
+            <circle cx={x(hoverIdx)} cy={y(hc.c)} r={4} className="rc-dot" />
           </g>
         )}
       </svg>
@@ -280,8 +284,6 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange, lo
         <div className="rc-tip" style={{ left: Math.min(W - 150, Math.max(8, x(hoverIdx) + 10)) }}>
           <b>{usd(hc.c, Math.max(2, priceDigits))}</b>
           <span>{new Date(hc.t * 1000).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" })}</span>
-          <span>O {hc.o.toFixed(2)} · H {hc.h.toFixed(2)}</span>
-          <span>L {hc.l.toFixed(2)} · C {hc.c.toFixed(2)}</span>
         </div>
       )}
       {hb && hb.min !== null && hb.max !== null && (
