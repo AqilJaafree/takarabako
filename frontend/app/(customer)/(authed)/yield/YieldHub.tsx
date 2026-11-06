@@ -144,7 +144,7 @@ export function YieldHub({ balance, market, positions: initialPositions }: { bal
             say("Shipping your strategies to 1inch Aqua…", "thinking", 0);
             try {
               const body = await postJson<{ ensName: string }>("/api/yield/advanced", req);
-              await onOpened(`Advanced ${req.shape === "bidask" ? "Bid-Ask" : req.shape === "curve" ? "Curve" : "Spot"}`, body);
+              await onOpened(`Advanced ${req.shape === "bidask" ? "Bid-Ask" : req.shape === "curve" ? "Curve" : req.shape === "hybrid" ? "Hybrid" : "Spot"}`, body);
             } catch (e) {
               onFail(e);
             }
@@ -185,6 +185,7 @@ const SHAPES: Array<{ id: AdvShape; name: string; hint: string }> = [
   { id: "spot", name: "Spot", hint: "Even liquidity across the range" },
   { id: "curve", name: "Curve", hint: "Most liquidity near today's price" },
   { id: "bidask", name: "Bid-Ask", hint: "Most at the edges — buy dips, sell rips" },
+  { id: "hybrid", name: "Hybrid", hint: "A tight core near today's price plus the whole range as a safety net" },
 ];
 
 function Advanced({
@@ -332,7 +333,7 @@ function Advanced({
 }
 
 function ShapeIcon({ shape }: { shape: AdvShape }) {
-  const bars = shape === "spot" ? [3, 3, 3, 3, 3] : shape === "curve" ? [1, 2, 4, 2, 1] : [4, 2, 1, 2, 4];
+  const bars = shape === "spot" ? [3, 3, 3, 3, 3] : shape === "curve" ? [1, 2, 4, 2, 1] : shape === "hybrid" ? [1, 1, 4, 1, 1] : [4, 2, 1, 2, 4];
   return (
     <svg width="44" height="22" viewBox="0 0 44 22" aria-hidden="true" className="shape-icon">
       {bars.map((h, i) => (

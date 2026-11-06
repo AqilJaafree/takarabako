@@ -18,7 +18,7 @@ export interface Position {
   priceMax: number | null;
 }
 
-export type Shape = "full" | "spot" | "curve" | "bidask";
+export type Shape = "full" | "spot" | "curve" | "bidask" | "hybrid";
 
 /// GET /me
 export interface Me {
