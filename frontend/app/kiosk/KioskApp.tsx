@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import jsQR from "jsqr";
 import type { KioskLogin, LiveEvent, OpenedPosition, Pool, RiskTier, WithdrawResult } from "@/lib/types";
 import { useLiveEvents } from "@/lib/useLiveEvents";
-import { apy, cash, usd, without } from "@/lib/format";
+import { apy, cash, NETWORK_NAME, usd, without } from "@/lib/format";
 import { TreasureStage } from "@/components/treasure/TreasureStage";
 import { useStageDirector } from "@/components/treasure/useStageDirector";
 import { DepositFlow, type Refusal } from "./DepositFlow";
@@ -612,7 +612,7 @@ export function KioskApp({
             <p className="amount" style={{ fontSize: 26, color: "var(--gold)" }}>{receipt.receipt}</p>
             <p className="muted small">
               {receipt.destination === "wallet"
-                ? "USDC sent to your own wallet on Sepolia."
+                ? `USDC sent to your own wallet on ${NETWORK_NAME}.`
                 : "Please collect your cash."}
             </p>
             <button className="btn btn-gold btn-block" onClick={logout}>Done</button>

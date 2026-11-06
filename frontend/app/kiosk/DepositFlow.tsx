@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Receipt } from "@/lib/types";
-import { cash, usd } from "@/lib/format";
+import { cash, NETWORK_NAME, usd } from "@/lib/format";
 
 /// The deposit terminal after a wallet-QR scan: wait for notes, show each
 /// accepted note with a running total, then Finish → an animated receipt.
@@ -159,8 +159,8 @@ export function DepositFlow({
           )}
           <p className="receipt-foot">
             {receipt.settled
-              ? "All confirmed on Sepolia. A copy is on its way to your email and in your History."
-              : "Confirming on Sepolia… your email copy follows once every note is in."}
+              ? `All confirmed on ${NETWORK_NAME}. A copy is on its way to your email and in your History.`
+              : `Confirming on ${NETWORK_NAME}… your email copy follows once every note is in.`}
           </p>
         </article>
         <EmailReceipt sessionId={receipt.id} />
