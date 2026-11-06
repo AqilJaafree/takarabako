@@ -7,6 +7,9 @@ export interface PreparedTx {
   to: string;
   data: string;
   chainId: number;
+  /// Set where the chain drops low-fee transactions (Arc needs at least 20 gwei).
+  maxFeePerGas?: string;
+  maxPriorityFeePerGas?: string;
 }
 
 /// Has the customer sign a transaction the backend prepared, in their own
@@ -28,7 +31,13 @@ export function useWalletSend() {
       const embedded = wallets.find((w) => w.address.toLowerCase() === from.toLowerCase());
       if (!embedded) throw new Error("your Takarabako wallet isn't available in this browser — log out and in again");
       const { hash } = await sendTransaction(
-        { to: tx.to, data: tx.data, chainId: tx.chainId },
+        {
+          to: tx.to,
+          data: tx.data,
+          chainId: tx.chainId,
+          ...(tx.maxFeePerGas ? { maxFeePerGas: tx.maxFeePerGas } : {}),
+          ...(tx.maxPriorityFeePerGas ? { maxPriorityFeePerGas: tx.maxPriorityFeePerGas } : {}),
+        },
         { address: embedded.address, uiOptions: { description } },
       );
       return hash;
