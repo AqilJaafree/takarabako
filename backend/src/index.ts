@@ -24,7 +24,7 @@ import { startOpsMonitor } from "./opsMonitor.js";
 import { startDailyReports } from "./report.js";
 import { startAquaSimulator } from "./aquaSimulator.js";
 import { publicClient } from "./chain.js";
-import { aquaReady, aquaUnavailableReason, verifyAquaOnChain } from "./aqua.js";
+import { aquaReady, aquaUnavailableReason, startApprovalKeeper, verifyAquaOnChain } from "./aqua.js";
 import { migrate } from "./db.js";
 import { startDepositWorker } from "./depositQueue.js";
 
@@ -87,6 +87,7 @@ startDepositWorker();
 startOpsMonitor();
 startDailyReports();
 startAquaSimulator();
+startApprovalKeeper();
 startDeedWatcher();
 
 console.log(`[chain] ${config.network.name} (id ${config.network.chain.id}), gas in ${config.network.nativeSymbol}`);

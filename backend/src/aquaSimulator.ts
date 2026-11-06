@@ -1,8 +1,8 @@
-import { decodeFunctionResult, encodeFunctionData, maxUint256, parseAbi, type Address } from "viem";
+import { decodeFunctionResult, type Address } from "viem";
 import { config } from "./config.js";
 import { sv } from "./aquaSdk.js";
-import { aquaReady, aquaUnavailableReason, ethUsd, openPositions, PAIR, strategyBalances } from "./aqua.js";
-import { publicClient, sendTreasuryTx, sendTreasuryTxNoWait, treasuryAddress, waitForTx } from "./chain.js";
+import { aquaReady, aquaUnavailableReason, ensureAllowance, ethUsd, openPositions, PAIR, strategyBalances } from "./aqua.js";
+import { publicClient, sendTreasuryTxNoWait, treasuryAddress, waitForTx } from "./chain.js";
 
 /// A tiny market maker for the demo. On mainnet, arbitrage traders keep Aqua
 /// strategies priced at the market and pay them fees; on Sepolia nobody
@@ -16,7 +16,6 @@ const MAX_TRADES = Number(process.env.AQUA_SIM_MAX_TRADES ?? 2);
 const MAX_TRADE_USD = 3;
 const MIN_TRADE_USD = 0.05;
 const MAX_SHARE_OF_BALANCE = 0.2; // never take more than this of what a strategy holds
-const erc20Abi = parseAbi(["function allowance(address,address) view returns (uint256)", "function approve(address,uint256) returns (bool)"]);
 
 const swapVM = () => new sv.SwapVMContract(new sv.Address(config.aqua.router));
 const toAddr = (a: string) => new sv.Address(a);
@@ -44,16 +43,18 @@ function swapTx(orderHex: string, tokenIn: string, tokenOut: string, amount: big
   return { to: tx.to.toString() as Address, data: tx.data.toString() as `0x${string}` };
 }
 
-let approved = false;
-async function ensureRouterApprovals() {
-  if (approved) return;
-  for (const token of [PAIR.eth.address, PAIR.usdc.address] as Address[]) {
-    const allowance = await publicClient.readContract({ address: token, abi: erc20Abi, functionName: "allowance", args: [treasuryAddress!, config.aqua.router as Address] });
-    if (allowance < 10n ** 40n) {
-      await sendTreasuryTx({ to: token, data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [config.aqua.router as Address, maxUint256] }) });
-    }
+/// The treasury is the taker here, so the router pulls what it pays in.
+/// Size that to one round of trading (the biggest swaps plus a round trip's
+/// second leg) instead of approving everything: the allowance has a margin,
+/// is raised when it runs low and is brought down if it is far too large.
+async function ensureRouterAllowances(spot: number) {
+  const roundUsd = MAX_TRADE_USD * (MAX_TRADES + 1);
+  for (const [token, need] of [
+    [PAIR.eth.address, ethFor(roundUsd, spot)],
+    [PAIR.usdc.address, usdcFor(roundUsd)],
+  ] as Array<[string, bigint]>) {
+    await ensureAllowance(token as Address, config.aqua.router as Address, need);
   }
-  approved = true;
 }
 
 const ETH = 10n ** 18n;
@@ -108,7 +109,7 @@ export async function simulateOnce(): Promise<string[]> {
   const picks = off.length ? off : candidates.filter((c) => c.gap === 0).slice(0, 1);
   if (!picks.length) return [];
 
-  await ensureRouterApprovals();
+  await ensureRouterAllowances(spot);
   const done: string[] = [];
   const hashes: `0x${string}`[] = [];
   for (const c of picks) {

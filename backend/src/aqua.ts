@@ -1,6 +1,7 @@
-import { parseAbi, type Address } from "viem";
+import { encodeFunctionData, parseAbi, type Address } from "viem";
 import { config } from "./config.js";
 import { looksLikeRpcLag, retryOnLag } from "./retry.js";
+import { allowanceAction } from "./allowances.js";
 import { floorMicros, PAYOUT_PENDING, payoutStep } from "./closeFlow.js";
 import { pool } from "./db.js";
 import { aq, sv } from "./aquaSdk.js";
@@ -158,20 +159,77 @@ const asTx = (tx: { to: { toString(): string }; data: { toString(): string } }) 
   data: tx.data.toString() as `0x${string}`,
 });
 
-let approvalsChecked = false;
+/// Sets what `spender` may pull of `token` from the treasury to a size that
+/// matches `need` (see allowances.ts): raised when short, lowered when far
+/// too large (an old unlimited approval), otherwise left alone.
+export async function ensureAllowance(token: Address, spender: Address, need: bigint, canLower = true): Promise<{ from: bigint; to: bigint } | null> {
+  const current = await publicClient.readContract({ address: token, abi: erc20Abi, functionName: "allowance", args: [treasuryAddress!, spender] });
+  const action = allowanceAction(current, need, canLower);
+  if (action.kind === "none") return null;
+  await sendTreasuryTx({ to: token, data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [spender, action.amount] }) });
+  return { from: current, to: action.amount };
+}
 
-/// Aqua pulls from the maker's wallet during swaps, so the treasury approves
-/// it once per token.
-export async function ensureApprovals() {
-  if (approvalsChecked) return;
-  for (const token of [PAIR.eth.address, PAIR.usdc.address] as Address[]) {
-    const allowance = await publicClient.readContract({ address: token, abi: erc20Abi, functionName: "allowance", args: [treasuryAddress!, config.aqua.address as Address] });
-    if (allowance < 10n ** 40n) {
-      const { encodeFunctionData, maxUint256 } = await import("viem");
-      await sendTreasuryTx({ to: token, data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [config.aqua.address as Address, maxUint256] }) });
+/// What the open (and closing) strategies hold in Aqua right now: the most
+/// they could pay out. `complete` is false if any balance could not be read,
+/// in which case the total is only a lower bound.
+async function owedBalances(): Promise<{ eth: bigint; usdc: bigint; complete: boolean }> {
+  let rows: Array<{ strategies: StoredStrategy[] }>;
+  try {
+    rows = (await pool.query("select strategies from aqua_positions where status in ('open', 'closing')")).rows;
+  } catch {
+    return { eth: 0n, usdc: 0n, complete: false };
+  }
+  const hashes = rows.flatMap((r) => r.strategies.map((s) => s.hash));
+  let eth = 0n;
+  let usdc = 0n;
+  let complete = true;
+  for (let i = 0; i < hashes.length; i += 8) {
+    const got = await Promise.all(hashes.slice(i, i + 8).map((h) => retryOnLag(() => strategyBalances(h)).catch(() => null)));
+    for (const b of got) {
+      if (!b) complete = false;
+      else {
+        eth += b.eth;
+        usdc += b.usdc;
+      }
     }
   }
-  approvalsChecked = true;
+  return { eth, usdc, complete };
+}
+
+let approvalLock: Promise<unknown> = Promise.resolve();
+
+/// Keeps Aqua's allowance on each pair token sized to what the open strategies
+/// could pay out, plus `extra`: what is about to be shipped. Aqua pulls the
+/// token a swap pays out from the treasury wallet, so this is the most it can
+/// take. Runs one at a time. Returns what it changed.
+export function ensureApprovals(extra: { eth: bigint; usdc: bigint } = { eth: 0n, usdc: 0n }): Promise<Array<{ token: string; from: bigint; to: bigint }>> {
+  const run = approvalLock.then(async () => {
+    const owed = await owedBalances();
+    const changes = [];
+    for (const [token, need] of [
+      [PAIR.eth.address, owed.eth + extra.eth],
+      [PAIR.usdc.address, owed.usdc + extra.usdc],
+    ] as Array<[string, bigint]>) {
+      const change = await ensureAllowance(token as Address, config.aqua.address as Address, need, owed.complete);
+      if (change) changes.push({ token, ...change });
+    }
+    return changes;
+  });
+  approvalLock = run.catch(() => {});
+  return run;
+}
+
+/// Re-checks the allowances on a timer, so growth from swaps (and closed
+/// positions) is followed without waiting for the next position to open.
+export function startApprovalKeeper(intervalMs = 5 * 60_000) {
+  if (!aquaReady) return;
+  const tick = () =>
+    ensureApprovals()
+      .then((c) => c.length && console.log(`[aqua] allowances: ${c.map((x) => `${x.token.slice(0, 8)}… ${x.from > 10n ** 30n ? "unlimited" : x.from} → ${x.to}`).join("; ")}`))
+      .catch((err) => console.error("[aqua] allowance check failed:", err instanceof Error ? err.message.split("\n")[0] : err));
+  setTimeout(tick, 15_000);
+  setInterval(tick, intervalMs);
 }
 
 export async function shipBin(bin: Bin | null, usd: number, spot: number, feeBps: number): Promise<StoredStrategy> {
@@ -279,7 +337,17 @@ export async function openPosition(req: OpenRequest): Promise<PositionRow> {
   if (!aquaReady || !treasuryAddress) throw new Error(aquaUnavailableReason() ?? "cannot open an Aqua position");
   const spot = await ethUsd({ maxStaleMs: MONEY_PRICE_MAX_AGE_MS });
   const plan = planPosition(req, spot);
-  await ensureApprovals();
+  // Aqua may pull what these strategies can pay out: make sure it is allowed to,
+  // and no more than that, before any of them is shipped.
+  const extra = { eth: 0n, usdc: 0n };
+  for (const bin of plan.bins) {
+    const usd = req.amount * (bin?.weight ?? 1);
+    if (usd < 0.01) continue;
+    const a = allocate(usd, bin, spot, PAIR);
+    extra.eth += a.eth;
+    extra.usdc += a.usdc;
+  }
+  await ensureApprovals(extra);
 
   // Take the amount out of the customer's vault first; it funds the strategies.
   const { txHash: vaultTx } = await withdrawUsdOnChain(req.boundAddress as Address, treasuryAddress, req.amount);
