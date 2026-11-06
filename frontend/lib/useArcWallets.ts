@@ -10,7 +10,7 @@ export interface ArcWallet {
   /// Takarabako's own (Privy embedded) wallet, or one the customer connected (MetaMask and others).
   kind: "embedded" | "external";
   name: string;
-  /// Whether the wallet is on Arc mainnet right now.
+  /// Whether the wallet is on the chain being used right now (Arc mainnet unless another was asked for).
   onArc: boolean;
 }
 
@@ -24,10 +24,11 @@ export interface ArcWalletsApi {
   sign: (tx: PreparedTx, from: string, description: string) => Promise<string>;
 }
 
-/// The customer's wallets for signing on Arc mainnet: their Takarabako wallet and any
-/// external wallet they connect. Switching networks is Privy's `switchChain`: it asks
-/// the wallet to switch and, if the wallet does not have the chain, adds it first.
-export function useArcWallets(): ArcWalletsApi {
+/// The customer's wallets for signing on Arc mainnet (or another chain by id, such as Sepolia for
+/// testing): their Takarabako wallet and any external wallet they connect. Switching networks is
+/// Privy's `switchChain`: it asks the wallet to switch and, if the wallet does not have the chain,
+/// adds it first.
+export function useArcWallets(chainId: number = ARC_CHAIN_ID): ArcWalletsApi {
   const { ready, authenticated, login } = usePrivy();
   const { wallets } = useWallets();
   const { connectWallet } = useConnectWallet();
@@ -37,7 +38,7 @@ export function useArcWallets(): ArcWalletsApi {
     address: w.address,
     kind: w.walletClientType === "privy" ? "embedded" : "external",
     name: w.walletClientType === "privy" ? "Takarabako wallet" : (w.meta?.name ?? w.walletClientType),
-    onArc: parseChainId(w.chainId) === ARC_CHAIN_ID,
+    onArc: parseChainId(w.chainId) === chainId,
   }));
 
   const find = useCallback(
@@ -50,8 +51,8 @@ export function useArcWallets(): ArcWalletsApi {
   );
 
   const switchToArc = useCallback(async (address: string) => {
-    await find(address).switchChain(ARC_CHAIN_ID);
-  }, [find]);
+    await find(address).switchChain(chainId);
+  }, [find, chainId]);
 
   const sign = useCallback(
     async (tx: PreparedTx, from: string, description: string) => {
@@ -61,7 +62,7 @@ export function useArcWallets(): ArcWalletsApi {
         throw new Error("sign in to your wallet, then try again");
       }
       const w = find(from);
-      if (parseChainId(w.chainId) !== ARC_CHAIN_ID) await w.switchChain(ARC_CHAIN_ID);
+      if (parseChainId(w.chainId) !== chainId) await w.switchChain(chainId);
       const { hash } = await sendTransaction(
         {
           to: tx.to,
@@ -74,7 +75,7 @@ export function useArcWallets(): ArcWalletsApi {
       );
       return hash;
     },
-    [ready, authenticated, login, find, sendTransaction],
+    [ready, authenticated, login, find, sendTransaction, chainId],
   );
 
   return { wallets: list, connectExternal: () => connectWallet(), switchToArc, sign };

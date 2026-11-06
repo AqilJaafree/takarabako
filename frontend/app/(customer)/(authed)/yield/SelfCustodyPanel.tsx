@@ -9,10 +9,12 @@ import { useArcWallets, type ArcWalletsApi } from "@/lib/useArcWallets";
 import { ConfirmRealMoney } from "./RealMoney";
 import { RangeChart } from "./RangeChart";
 
-/// Open and close Aqua positions on Arc mainnet with the customer's own wallet:
-/// the wallet is the Aqua maker, so the tokens never leave it and the customer
-/// signs every transaction. It can be their Takarabako wallet or one they connect,
-/// such as MetaMask; opening this view asks that wallet to switch to Arc. The chart
+/// Open and close Aqua positions with the customer's own wallet, on Arc mainnet or (for testing)
+/// Sepolia. Where a position manager contract is deployed (Sepolia), one transaction opens a
+/// position and one closes it, and the tokens sit in the contract while it is open; elsewhere the
+/// wallet is the Aqua maker, the tokens never leave it and each strategy is signed separately. The
+/// wallet can be the Takarabako wallet or one they connect, such as MetaMask; opening this view
+/// asks that wallet to switch to the chain. The chart
 /// draws the chosen strategy's liquidity over the live candles (USDC below the
 /// price, ETH above), and the range and shape can be changed. The backend only
 /// prepares the transactions and checks the result.
@@ -34,6 +36,12 @@ const SHAPES: Array<{ id: SelfShape; name: string; hint: string }> = [
 ];
 const SHAPE_NAME = Object.fromEntries(SHAPES.map((s) => [s.id, s.name])) as Record<SelfShape, string>;
 
+const RISKS_CONTRACT = [
+  "While the position is open your tokens are held by the Takarabako position contract, together with other people's positions, not by your wallet. The contract has no owner, admin or upgrade and only you can close your position, but it is new software that has not been professionally audited, and a flaw in it or in 1inch Aqua could lose funds.",
+  "The position's value follows ETH's price and can fall below what you put in. Earnings are trading fees, which depend on how much people trade. None is promised, and this is not insured or guaranteed.",
+  "You sign every transaction yourself and pay network fees. Closing sends everything the position holds back to your wallet in one transaction.",
+];
+
 const RISKS = [
   "Your tokens stay in your own wallet. 1inch Aqua pays traders out of them, up to the amounts you approve, so the position's value follows ETH's price and can fall below what you put in.",
   "Earnings are trading fees, which depend on how much people trade. None is promised, and this is not insured or guaranteed.",
@@ -53,13 +61,17 @@ const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 /// The version that signs with the customer's Privy wallets (embedded and connected).
 export function SelfCustodyPanel({ network, market }: { network: NetworkInfo; market: Market }) {
-  const wallets = useArcWallets();
+  const wallets = useArcWallets(network.chainId);
   return <SelfCustodyView network={network} market={market} wallets={wallets} />;
 }
 
 /// The panel with its wallets passed in, so it can be exercised without Privy.
 export function SelfCustodyView({ network, market, wallets }: { network: NetworkInfo; market: Market; wallets: ArcWalletsApi }) {
   const [chosen, setChosen] = useState<string | null>(null);
+  // /api/self/arc or /api/self/sepolia: the backend serves the same flow per chain.
+  const base = `/api/self/${network.key}`;
+  // Where a position manager is deployed, the tokens sit in that contract while a position is open.
+  const viaContract = Boolean(network.selfManager);
   // The chart's coordinates come from floating-point maths that can differ in the last digits between the server and
   // the browser, so it is drawn only in the browser: the server HTML always matches.
   const inBrowser = useSyncExternalStore(
@@ -94,8 +106,11 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
   const [switchError, setSwitchError] = useState("");
   const [confirming, setConfirming] = useState<null | ((ok: boolean) => void)>(null);
   const [copied, setCopied] = useState(false);
+  // An open that was signed and sent but not yet confirmed by the backend: the tokens may already be in the position.
+  const [unrecorded, setUnrecorded] = useState<null | { positionId: string; hashes: string[] }>(null);
   const busy = progress !== "";
   const walletData = wallet && wallet.forAddress === address ? wallet.data : null;
+  const sym = walletData?.symbols ?? (network.key === "sepolia" ? { base: "mETH", quote: "mUSDC" } : { base: "WETH", quote: "USDC" });
 
   function choosePreset(id: string) {
     const p = PRESETS.find((x) => x.id === id)!;
@@ -166,26 +181,26 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
 
   const loadPositions = useCallback(async () => {
     try {
-      setPositions((await api<{ positions: SelfPosition[] }>("/api/self/arc/positions")).positions);
+      setPositions((await api<{ positions: SelfPosition[] }>(`${base}/positions`)).positions);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "could not load your positions");
     }
-  }, []);
+  }, [base]);
 
   const loadWallet = useCallback(async (a: string) => {
     try {
-      setWallet({ forAddress: a, data: await api<SelfWallet>(`/api/self/arc/wallet?address=${encodeURIComponent(a)}`) });
+      setWallet({ forAddress: a, data: await api<SelfWallet>(`${base}/wallet?address=${encodeURIComponent(a)}`) });
       setLoadError("");
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "could not load your wallet");
     }
-  }, []);
+  }, [base]);
 
   // First loads (and again when another wallet is picked); loadWallet / loadPositions refresh after opening or closing.
   useEffect(() => {
     if (!address) return;
     let cancelled = false;
-    api<SelfWallet>(`/api/self/arc/wallet?address=${encodeURIComponent(address)}`)
+    api<SelfWallet>(`${base}/wallet?address=${encodeURIComponent(address)}`)
       .then((data) => {
         if (cancelled) return;
         setWallet({ forAddress: address, data });
@@ -195,16 +210,16 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
     return () => {
       cancelled = true;
     };
-  }, [address]);
+  }, [address, base]);
   useEffect(() => {
     let cancelled = false;
-    api<{ positions: SelfPosition[] }>("/api/self/arc/positions")
+    api<{ positions: SelfPosition[] }>(`${base}/positions`)
       .then((r) => !cancelled && setPositions(r.positions))
       .catch((e) => !cancelled && setLoadError(e instanceof Error ? e.message : "could not load your positions"));
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [base]);
 
   /// Has the wallet sign each step in turn and returns the hashes, in order.
   async function signAll(steps: SelfStep[], from: string, label: string): Promise<string[]> {
@@ -218,28 +233,49 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
 
   const label = full ? "Full range" : `${SHAPE_NAME[shape]} ${usd(range.min, 0)} – ${usd(range.max, 0)}`;
 
-  async function open() {
-    if (!address) return;
-    setError("");
-    setDone("");
-    const ok = await new Promise<boolean>((resolve) => setConfirming(() => resolve));
-    setConfirming(null);
-    if (!ok) return;
+  /// Asks the backend to check the signed transactions on chain and open the position. Safe to repeat.
+  async function finishOpen(positionId: string, hashes: string[]) {
+    setProgress(`Waiting for ${network.name} to confirm, and checking Aqua…`);
     try {
-      setProgress("Checking your wallet and preparing the transactions…");
-      const prepared = await api<SelfPrepared>("/api/self/arc/prepare", { shape, ...(full ? {} : { priceMin: range.min, priceMax: range.max }), amount, wallet: address });
-      const hashes = await signAll(prepared.steps, address, "Opening");
-      setProgress("Waiting for Arc to confirm, and checking Aqua…");
-      await api("/api/self/arc/record", { positionId: prepared.positionId, txHashes: hashes });
-      setDone(`Your ${label} position is open. Your tokens are still in your wallet.`);
-      await Promise.all([loadWallet(address), loadPositions()]);
+      await api(`${base}/record`, { positionId, txHashes: hashes });
+      setUnrecorded(null);
+      setDone(viaContract ? `Your ${label} position is open. Your tokens are held by the position contract until you close it.` : `Your ${label} position is open. Your tokens are still in your wallet.`);
+      if (address) await Promise.all([loadWallet(address), loadPositions()]);
     } catch (e) {
+      // The transactions were signed and sent, so the tokens may already be in the position: keep what is needed to check again.
+      setUnrecorded({ positionId, hashes });
       setError(
-        `${e instanceof Error ? e.message : "something went wrong"}. Nothing is taken from your wallet except network fees; any approval you signed only lets Aqua pay out up to its limit, and you can try again.`,
+        `${e instanceof Error ? e.message : "something went wrong"}. Your transactions were sent to ${network.name}, so the position may be open: ${hashes.map((h) => shortHex(h)).join(", ")}. Check again below; nothing is lost.`,
       );
     } finally {
       setProgress("");
     }
+  }
+
+  async function open() {
+    if (!address) return;
+    setError("");
+    setDone("");
+    setUnrecorded(null);
+    const ok = await new Promise<boolean>((resolve) => setConfirming(() => resolve));
+    setConfirming(null);
+    if (!ok) return;
+    let prepared: SelfPrepared;
+    let hashes: string[];
+    try {
+      setProgress("Checking your wallet and preparing the transactions…");
+      prepared = await api<SelfPrepared>(`${base}/prepare`, { shape, ...(full ? {} : { priceMin: range.min, priceMax: range.max }), amount, wallet: address });
+      hashes = await signAll(prepared.steps, address, "Opening");
+    } catch (e) {
+      setProgress("");
+      setError(
+        viaContract
+          ? `${e instanceof Error ? e.message : "something went wrong"}. Nothing was opened. If you signed an approval it only lets the position contract take the amount shown, and you can try again.`
+          : `${e instanceof Error ? e.message : "something went wrong"}. Nothing is taken from your wallet except network fees; any approval you signed only lets Aqua pay out up to its limit, and you can try again.`,
+      );
+      return;
+    }
+    await finishOpen(prepared.positionId, hashes);
   }
 
   async function close(p: SelfPosition) {
@@ -247,11 +283,11 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
     setDone("");
     try {
       setProgress("Preparing the transactions to close it…");
-      const prepared = await api<SelfPrepared>(`/api/self/arc/positions/${p.id}/close/prepare`, {});
+      const prepared = await api<SelfPrepared>(`${base}/positions/${p.id}/close/prepare`, {});
       const hashes = await signAll(prepared.steps, p.wallet, "Closing");
-      setProgress("Waiting for Arc to confirm, and checking Aqua…");
-      await api(`/api/self/arc/positions/${p.id}/close/record`, { txHashes: hashes });
-      setDone("Closed. The position no longer holds anything in Aqua.");
+      setProgress(`Waiting for ${network.name} to confirm, and checking Aqua…`);
+      await api(`${base}/positions/${p.id}/close/record`, { txHashes: hashes });
+      setDone(viaContract ? "Closed. Everything the position held is back in your wallet." : "Closed. The position no longer holds anything in Aqua.");
       await Promise.all([address ? loadWallet(address) : Promise.resolve(), loadPositions()]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "something went wrong");
@@ -283,7 +319,9 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
     <div className="self-panel">
       <h3>Sign with your own wallet</h3>
       <p className="muted small" style={{ margin: "0 0 10px" }}>
-        Your wallet is the liquidity provider. Your tokens stay in it, you sign every transaction, and nothing goes through the Takarabako box or treasury.
+        {viaContract
+          ? "You sign everything from your own wallet: one transaction opens the position and one closes it. While it is open your tokens sit in the position contract, not in your wallet, and nothing goes through the Takarabako box or treasury."
+          : "Your wallet is the liquidity provider. Your tokens stay in it, you sign every transaction, and nothing goes through the Takarabako box or treasury."}
       </p>
 
       <div className="self-wallets" role="radiogroup" aria-label="Wallet to sign with">
@@ -316,16 +354,16 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
       {walletData ? (
         <dl className="net-facts">
           <div><dt>Your wallet on {network.name}</dt><dd className="mono small" style={{ wordBreak: "break-all" }}>{walletData.address}</dd></div>
-          <div><dt>USDC</dt><dd>{num(walletData.usdc, 2)}</dd></div>
-          <div><dt>WETH</dt><dd>{num(walletData.weth, 6)}</dd></div>
-          <div><dt>For network fees</dt><dd>{num(walletData.gasUsdc, 2)} USDC</dd></div>
+          <div><dt>{sym.quote}</dt><dd>{num(walletData.usdc, 2)}</dd></div>
+          <div><dt>{sym.base}</dt><dd>{num(walletData.weth, 6)}</dd></div>
+          <div><dt>For network fees</dt><dd>{num(walletData.gas ?? walletData.gasUsdc, walletData.gasSymbol === "ETH" ? 5 : 2)} {walletData.gasSymbol ?? "USDC"}</dd></div>
         </dl>
       ) : (
         <p className="muted small">Loading this wallet on {network.name}…</p>
       )}
       <p className="row" style={{ margin: "8px 0 0", gap: 8 }}>
         <button type="button" className="btn btn-ghost small" onClick={copy}>{copied ? "Copied" : "Copy address"}</button>
-        {empty && <span className="muted small">Send USDC and WETH on {network.name} to this address first. Arc pays network fees in USDC.</span>}
+        {empty && <span className="muted small">Send {sym.quote} and {sym.base} on {network.name} to this address first, plus {walletData?.gasSymbol ?? "USDC"} for network fees.</span>}
       </p>
 
       <h3>Pick a strategy, then shape it</h3>
@@ -357,10 +395,10 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
           {previewError
             ? previewError
             : full
-              ? "Full range spreads your liquidity over every price, half in WETH and half in USDC."
-              : `Your liquidity sits between ${usd(range.min, 0)} and ${usd(range.max, 0)}. Below today's price it holds USDC, above it WETH.`}
+              ? `Full range spreads your liquidity over every price, half in ${sym.base} and half in ${sym.quote}.`
+              : `Your liquidity sits between ${usd(range.min, 0)} and ${usd(range.max, 0)}. Below today's price it holds ${sym.quote}, above it ${sym.base}.`}
           {" "}
-          {bins.length > 0 && `At today's price that is ${num(100 - ethShare, 0)}% USDC and ${num(ethShare, 0)}% WETH.`}
+          {bins.length > 0 && `At today's price that is ${num(100 - ethShare, 0)}% ${sym.quote} and ${num(ethShare, 0)}% ${sym.base}.`}
         </p>
       </div>
 
@@ -381,7 +419,7 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
       </div>
 
       <div className="self-amount">
-        <label className="label" htmlFor="self-amount">Amount (USD, from your wallet&apos;s USDC and WETH)</label>
+        <label className="label" htmlFor="self-amount">Amount (USD, from your wallet&apos;s {sym.quote} and {sym.base})</label>
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
           <input id="self-amount" className="input" type="number" min={5} max={cap} step="1" value={Number.isFinite(amount) ? amount : ""} onChange={(e) => setAmount(Number(e.target.value))} disabled={busy} />
           <span className="muted small">at least $5, at most {usd(cap, 0)} for now</span>
@@ -393,6 +431,13 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
       </button>
       {busy && <p className="notice pending self-progress" role="status">{progress}</p>}
       {error && <div className="notice error" role="alert">{error}</div>}
+      {unrecorded && !busy && (
+        <p className="row" style={{ gap: 8, margin: "8px 0" }}>
+          <button type="button" className="btn btn-gold small" onClick={() => { setError(""); void finishOpen(unrecorded.positionId, unrecorded.hashes); }}>
+            Check my position again
+          </button>
+        </p>
+      )}
       {done && !busy && <div className="notice success" role="status">{done}</div>}
 
       {mine.length > 0 && (
@@ -408,7 +453,7 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
                     <span className="pill ok">Open</span>
                   </div>
                   <p className="muted small" style={{ margin: "4px 0" }}>
-                    {p.valueUsd === null ? "Value unavailable right now" : `${usd(p.valueUsd)} now`} · put in {usd(p.amountUsd, 0)} · {num(p.weth, 6)} WETH + {num(p.usdc, 2)} USDC held in Aqua
+                    {p.valueUsd === null ? "Value unavailable right now" : `${usd(p.valueUsd)} now`} · put in {usd(p.amountUsd, 0)} · {num(p.weth, 6)} {sym.base} + {num(p.usdc, 2)} {sym.quote} {p.manager ? "held by the position contract in Aqua" : "held in Aqua"}
                     {p.priceMin !== null && p.priceMax !== null ? ` · ${usd(p.priceMin, 0)} – ${usd(p.priceMax, 0)}` : " · full range"} · wallet {short(p.wallet)}
                   </p>
                   <p className="small" style={{ margin: "0 0 8px" }}>
@@ -431,7 +476,7 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
           confirmLabel="Confirm and sign"
           summary={`${usd(amount, 0)} as ${label} from ${current.name} (${short(current.address)})`}
           network={network.name}
-          risks={RISKS}
+          risks={viaContract ? RISKS_CONTRACT : RISKS}
           onResult={confirming}
         />
       )}

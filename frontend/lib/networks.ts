@@ -24,6 +24,8 @@ export interface NetworkInfo {
   active: boolean;
   /// The customer can sign positions with their own wallet here.
   selfCustody?: boolean;
+  /// A position manager contract is deployed here: one transaction opens a position and one closes it.
+  selfManager?: boolean;
 }
 
 export interface NetworksResponse {

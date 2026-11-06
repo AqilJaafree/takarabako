@@ -31,7 +31,7 @@ export function NetworkSwitcher({
   const info = networks.networks.find((n) => n.key === view)!;
   const live = networks.networks.find((n) => n.active)!;
   const isLive = info.active;
-  const panel = <NetworkPanel info={info} live={live} market={market} />;
+  const panel = <NetworkPanel info={info} live={live} market={market} withSelf={!isLive} />;
 
   return (
     <section className="net-switch" aria-label="Network">
@@ -39,16 +39,23 @@ export function NetworkSwitcher({
         {networks.networks.map((n) => (
           <button key={n.key} role="tab" aria-selected={view === n.key} className={view === n.key ? "is-on" : ""} onClick={() => onView(n.key)}>
             {n.name}
-            <span className="muted small">{n.active ? "your positions" : n.selfCustody ? "sign with your wallet" : n.key === "arc" ? "mainnet · view only" : "view only"}</span>
+            <span className="muted small">{n.active ? (n.selfCustody ? "your positions · or sign with your wallet" : "your positions") : n.selfCustody ? "sign with your wallet" : n.key === "arc" ? "mainnet · view only" : "view only"}</span>
           </button>
         ))}
       </div>
 
       {isLive ? (
-        <details className="card net-panel">
-          <summary>How it works on {info.name}</summary>
-          {panel}
-        </details>
+        <>
+          {info.selfCustody && (
+            <div className="card net-panel">
+              <SelfCustodyPanel network={info} market={market} />
+            </div>
+          )}
+          <details className="card net-panel">
+            <summary>How it works on {info.name}</summary>
+            {panel}
+          </details>
+        </>
       ) : (
         <div className="card net-panel">
           <div className="notice">
@@ -68,7 +75,7 @@ export function NetworkSwitcher({
   );
 }
 
-function NetworkPanel({ info, live, market }: { info: NetworkInfo; live: NetworkInfo; market: Market }) {
+function NetworkPanel({ info, live, market, withSelf }: { info: NetworkInfo; live: NetworkInfo; market: Market; withSelf: boolean }) {
   const [result, setResult] = useState<{ key: NetworkKey; status: NetworkStatus | null } | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const status = result?.key === info.key ? result.status : undefined; // undefined = still checking
@@ -101,7 +108,7 @@ function NetworkPanel({ info, live, market }: { info: NetworkInfo; live: Network
 
   return (
     <div className="net-body">
-      {info.selfCustody && <SelfCustodyPanel network={info} market={market} />}
+      {withSelf && info.selfCustody && <SelfCustodyPanel network={info} market={market} />}
       <dl className="net-facts">
         <div><dt>Chain</dt><dd>{info.name} · id {info.chainId}</dd></div>
         <div><dt>Pays gas in</dt><dd>{info.nativeSymbol}</dd></div>

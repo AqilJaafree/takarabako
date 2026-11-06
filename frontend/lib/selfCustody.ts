@@ -9,8 +9,15 @@ export interface SelfWallet {
   address: string;
   usdc: number;
   weth: number;
-  /// USDC available for network fees (Arc's gas token).
+  /// USDC available for network fees (Arc's gas token). Same as `gas` on Arc.
   gasUsdc: number;
+  /// The chain's native coin available for network fees, and its name (USDC on Arc, ETH on Sepolia).
+  gas?: number;
+  gasSymbol?: string;
+  /// What the two tokens are called on this chain (WETH/USDC on Arc, mETH/mUSDC on Sepolia).
+  symbols?: { base: string; quote: string };
+  /// Who holds the tokens while a position is open: "contract" (a position manager) or "wallet".
+  custody?: "contract" | "wallet";
   maxUsd: number;
 }
 
@@ -31,8 +38,10 @@ export interface SelfPrepared {
 
 export interface SelfPosition {
   id: string;
-  /// The wallet that is the Aqua maker: the one that has to sign to close it.
+  /// The wallet that owns the position: the one that has to sign to close it.
   wallet: string;
+  /// The position manager contract holding the tokens, or null when the wallet itself does.
+  manager?: string | null;
   status: "open" | "closed";
   mode: SelfMode;
   amountUsd: number;
