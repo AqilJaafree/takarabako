@@ -92,7 +92,7 @@ export function DashOut({
       setReload((r) => r + 1);
       onDone();
     } catch (e) {
-      setError(`${e instanceof Error ? e.message : "something went wrong"}. Nothing was sold unless a swap was confirmed in your wallet; any approval only lets the router take the amount shown, and you can try again.`);
+      setError(`${e instanceof Error ? e.message : "something went wrong"}. Nothing sold unless your wallet confirmed a swap. Try again.`);
     } finally {
       setProgress("");
     }
@@ -103,8 +103,8 @@ export function DashOut({
       <h3>Dash out</h3>
       <p className="muted small" style={{ margin: "0 0 8px" }}>
         {held > 0
-          ? `Your wallet is holding ${num(held, 6)} ${sym.base}. Dash out sells it for ${sym.quote} to other people's open strategies on 1inch Aqua, so the price can differ from the market.`
-          : `Done. ${sym.base} you were holding has been sold.`}
+          ? `Sell your ${num(held, 6)} ${sym.base} for ${sym.quote} on 1inch Aqua.`
+          : `Done. Your ${sym.base} is sold.`}
       </p>
       {held > 0 && !quote && !result?.error && <p className="muted small">Finding the best price…</p>}
       {result?.key === key && result.error && <div className="notice warn small">{result.error}</div>}
@@ -132,9 +132,9 @@ export function DashOut({
           summary={`${num(quote.amountIn, 6)} ${sym.base} for about ${num(quote.amountOut, 2)} ${sym.quote}${quote.discountPct !== null ? ` (${num(quote.discountPct, 1)}% ${quote.discountPct >= 0 ? "below" : "above"} the market)` : ""}`}
           network={network.name}
           risks={[
-            "You sell to other people's open Aqua strategies, not to a market. Their prices can sit away from the market price, so you may get less than the market is paying; the price is shown above and shown again by your wallet.",
-            "The price can move before your transaction is mined. Each swap carries a minimum payout (the quote less 0.5%), and fails instead of paying less.",
-            "Selling is final. You pay network fees for the approval and each swap, and Aqua is smart-contract software with smart-contract risk.",
+            "You sell to other Aqua strategies, not a market, so you may get less than the market price.",
+            "Each swap has a minimum payout (quote − 0.5%) and fails rather than paying less.",
+            "Selling is final. You pay network fees; Aqua carries smart-contract risk.",
           ]}
           onResult={confirming}
         />

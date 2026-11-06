@@ -136,10 +136,10 @@ function YieldHubBody({ balance, market, positions: initialPositions }: { balanc
 
       <div className="yield-tabs" role="tablist" aria-label="Yield mode">
         <button role="tab" aria-selected={tab === "quick"} className={tab === "quick" ? "is-on" : ""} onClick={() => setTab("quick")}>
-          Quick start <span className="muted small">for beginners</span>
+          Quick start
         </button>
         <button role="tab" aria-selected={tab === "advanced"} className={tab === "advanced" ? "is-on" : ""} onClick={() => setTab("advanced")}>
-          Advanced <span className="muted small">draw your range</span>
+          Advanced
         </button>
       </div>
 
@@ -214,16 +214,16 @@ function AmountPicker({ balance, amount, setAmount }: { balance: number; amount:
           </button>
         ))}
       </div>
-      <p className="muted small" style={{ margin: "4px 0 0" }}>{usd(balance)} available in your box</p>
+      <p className="muted small" style={{ margin: "4px 0 0" }}>{usd(balance)} available</p>
     </div>
   );
 }
 
 const SHAPES: Array<{ id: AdvShape; name: string; hint: string }> = [
-  { id: "spot", name: "Spot", hint: "Even liquidity across the range" },
-  { id: "curve", name: "Curve", hint: "Most liquidity near today's price" },
-  { id: "bidask", name: "Bid-Ask", hint: "Most at the edges — buy dips, sell rips" },
-  { id: "hybrid", name: "Hybrid", hint: "A tight core near today's price plus the whole range as a safety net" },
+  { id: "spot", name: "Spot", hint: "Even" },
+  { id: "curve", name: "Curve", hint: "Most near price" },
+  { id: "bidask", name: "Bid-Ask", hint: "Most at the edges" },
+  { id: "hybrid", name: "Hybrid", hint: "Core + safety net" },
 ];
 
 function Advanced({
@@ -249,10 +249,10 @@ function Advanced({
   const [busy, setBusy] = useState(false);
 
   const presets: Array<{ name: string; min: number; max: number }> = [
-    { name: "Around price ±15%", min: spot * 0.85, max: spot * 1.15 },
-    { name: "Wide ±50%", min: spot * 0.5, max: spot * 1.5 },
-    { name: "Buy the dip · USDC only (to −90%)", min: limits.lo, max: spot * 0.97 },
-    { name: "Sell the rally · ETH only", min: spot * 1.03, max: spot * 2 },
+    { name: "±15%", min: spot * 0.85, max: spot * 1.15 },
+    { name: "±50%", min: spot * 0.5, max: spot * 1.5 },
+    { name: "Buy the dip", min: limits.lo, max: spot * 0.97 },
+    { name: "Sell the rally", min: spot * 1.03, max: spot * 2 },
   ];
 
   // Preview the split (debounced while dragging).
@@ -279,10 +279,7 @@ function Advanced({
   return (
     <section className="card">
       <h2>Draw your range</h2>
-      <p className="muted small">
-        Liquidity only earns while ETH trades inside your range. A range entirely below today&apos;s price holds only
-        USDC and buys ETH as it falls; entirely above, it holds ETH and sells as it rises.
-      </p>
+      <p className="muted small">Earns only while ETH trades inside your range.</p>
 
       <div className="shape-picker" role="radiogroup" aria-label="Liquidity shape">
         {SHAPES.map((s) => (
@@ -322,7 +319,7 @@ function Advanced({
             min={Math.ceil(limits.lo)}
             onChange={(e) => setRange((r) => ({ ...r, min: Math.max(limits.lo, Number(e.target.value) || r.min) }))}
           />
-          <span className="muted small">{signedPct(range.min, spot)} from now</span>
+          <span className="muted small">{signedPct(range.min, spot)}</span>
         </label>
         <label>
           <span className="label">Upper price</span>
@@ -333,7 +330,7 @@ function Advanced({
             max={Math.floor(limits.hi)}
             onChange={(e) => setRange((r) => ({ ...r, max: Math.min(limits.hi, Number(e.target.value) || r.max) }))}
           />
-          <span className="muted small">{signedPct(range.max, spot)} from now</span>
+          <span className="muted small">{signedPct(range.max, spot)}</span>
         </label>
       </div>
 
@@ -436,12 +433,11 @@ function PositionsList({
               ) : null}
               {p.status === "closing" && (
                 <p className="muted small" style={{ margin: "6px 0 0" }}>
-                  This close stopped part-way. {usd(p.valueUsd)} is set aside for your box; press Finish closing to complete it.
+                  Stopped part-way. Press Finish closing.
                 </p>
               )}
               <p className="muted small" style={{ margin: "6px 0 8px" }}>
-                {hasRange ? `${usd(p.priceMin, 0)} – ${usd(p.priceMax, 0)}` : "Full range"} · ETH now {usd(p.spot, 0)} · {p.eth.toFixed(5)} ETH + {p.usdc.toFixed(2)} USDC ·{" "}
-                {p.bins.length} strateg{p.bins.length === 1 ? "y" : "ies"}
+                {hasRange ? `${usd(p.priceMin, 0)} – ${usd(p.priceMax, 0)}` : "Full range"} · ETH {usd(p.spot, 0)}
               </p>
               <div className="row">
                 <button
@@ -467,8 +463,7 @@ function PositionsList({
         })}
       </ul>
       <p className="muted small" style={{ marginBottom: 0 }}>
-        Strategies run on <a href={addressUrl("0x1111113ccf1426a8e30e2bff5e005d929bf6a90a")} target="_blank" rel="noreferrer">1inch Aqua</a> —
-        the tokens stay in the Takarabako treasury; Aqua tracks each strategy&apos;s share.
+        Runs on <a href={addressUrl("0x1111113ccf1426a8e30e2bff5e005d929bf6a90a")} target="_blank" rel="noreferrer">1inch Aqua ↗</a>
       </p>
     </section>
   );
@@ -488,11 +483,10 @@ function GiveForm({ position, onGiven, onError }: { position: PositionView; onGi
   return (
     <div className="give-form">
       <p className="muted small" style={{ margin: "10px 0 6px" }}>
-        This position&apos;s deed is the ENS name <span className="mono">{deed}.takarabako.eth</span>, held in your wallet. Send it and the
-        position — its value and future fees — belongs to them.
+        Sends the deed <span className="mono">{deed}.takarabako.eth</span>, and with it the position, to them.
       </p>
       <NameField value={to} onChange={setTo} resolved={resolved} />
-      {r && !r.customer && <div className="notice pending" style={{ marginTop: 10 }}>That&apos;s not a Takarabako customer — they&apos;d hold the deed but couldn&apos;t manage the position here.</div>}
+      {r && !r.customer && <div className="notice pending" style={{ marginTop: 10 }}>Not a Takarabako customer: they couldn&apos;t manage it here.</div>}
       <button
         className="btn btn-gold btn-block"
         style={{ marginTop: 10 }}

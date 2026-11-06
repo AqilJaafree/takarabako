@@ -120,10 +120,7 @@ export function QuickStart({
     <section className="qs">
       <div className="qs-head">
         <h2>Pick how bold to be</h2>
-        <p className="muted small">
-          Each strategy provides ETH/USDC liquidity on 1inch Aqua and earns a fee on every trade. Narrower ranges earn
-          more while ETH stays inside them — and pause when it leaves.
-        </p>
+        <p className="muted small">Narrower range: more fees, but only while ETH stays inside.</p>
       </div>
 
       <div className="qs-tiers" role="radiogroup" aria-label="Risk level">
@@ -154,7 +151,6 @@ export function QuickStart({
                 <RiskMeter tier={t.riskTier} />
                 <span className="muted small">{(t.feeBps / 100).toFixed(2)}% fee</span>
               </span>
-              <span className="qs-desc small muted">{t.description}</span>
             </button>
           );
         })}
@@ -199,7 +195,7 @@ export function QuickStart({
             style={{ ["--fill" as string]: `${cap ? (amount / cap) * 100 : 0}%` }}
           />
           <p className="muted small" style={{ margin: "8px 0 0" }}>
-            {preview ? "Your box is empty, so this is a preview." : `${usd(balance)} in your box`}
+            {preview ? "Preview: your box is empty." : `${usd(balance)} in your box`}
           </p>
         </div>
 
@@ -253,9 +249,7 @@ export function QuickStart({
         </button>
       )}
       <p className="muted small" style={{ margin: "10px 0 0", textAlign: "center" }}>
-        {showEstimates
-          ? "APY is an estimate from the range width, not a promise. Earnings pause while ETH is outside the range."
-          : "Earnings are trading fees, which depend on how much people trade: none is promised. Earnings pause while ETH is outside the range, and the value can fall if ETH moves."}
+        {showEstimates ? "Estimates, not promises." : "Fees aren't guaranteed, and value moves with ETH."}
       </p>
     </section>
   );

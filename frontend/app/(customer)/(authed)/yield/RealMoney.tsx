@@ -9,16 +9,16 @@ import { useEffect, useRef, useState } from "react";
 export function RealMoneyNotice({ network }: { network: string }) {
   return (
     <div className="real-notice" role="note">
-      <b>Real money on {network}.</b> Strategies can lose value and nothing here is guaranteed. Earnings are trading fees from other people&apos;s trades.
+      <b>Real money on {network}.</b> Value can fall, and fees aren&apos;t guaranteed.
     </div>
   );
 }
 
 const RISKS = [
-  "The value can go down as well as up. When ETH leaves your range the position turns into one token and stops earning, and it can be worth less than you put in.",
-  "Earnings are trading fees, which depend on how much people trade. None is promised, and this is not insured or guaranteed.",
-  "Strategies run on 1inch Aqua smart contracts, which carry smart-contract risk. The tokens stay in the Takarabako treasury wallet while Aqua tracks each strategy's share.",
-  "Closing returns the position's value at that moment's ETH price, which may differ from when you opened it.",
+  "Value can fall below what you put in. Outside your range it stops earning and holds one token.",
+  "Earnings are trading fees. None is promised or insured.",
+  "Runs on 1inch Aqua smart contracts (smart-contract risk). Tokens stay in the Takarabako treasury.",
+  "Closing pays out at that moment's ETH price.",
 ];
 
 export function ConfirmRealMoney({

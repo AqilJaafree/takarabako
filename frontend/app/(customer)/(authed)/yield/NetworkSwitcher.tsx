@@ -31,7 +31,7 @@ export function NetworkSwitcher({
   const info = networks.networks.find((n) => n.key === view)!;
   const live = networks.networks.find((n) => n.active)!;
   const isLive = info.active;
-  const panel = <NetworkPanel info={info} live={live} market={market} />;
+  const panel = <NetworkPanel info={info} market={market} />;
 
   return (
     <section className="net-switch" aria-label="Network">
@@ -39,7 +39,7 @@ export function NetworkSwitcher({
         {networks.networks.map((n) => (
           <button key={n.key} role="tab" aria-selected={view === n.key} className={view === n.key ? "is-on" : ""} onClick={() => onView(n.key)}>
             {n.name}
-            <span className="muted small">{n.active ? (n.selfCustody ? "your positions · or sign with your wallet" : "your positions") : n.selfCustody ? "sign with your wallet" : n.key === "arc" ? "mainnet · view only" : "view only"}</span>
+            <span className="muted small">{n.active ? "your box" : n.selfCustody ? "your wallet" : "view only"}</span>
           </button>
         ))}
       </div>
@@ -49,11 +49,8 @@ export function NetworkSwitcher({
           does not run on adds a notice saying where the customer's box and positions live. */}
       {!isLive && (
         <div className="notice net-notice">
-          You are looking at <b>{info.name}</b>
-          {info.key === "arc" ? " (mainnet, real money)" : ""}.{" "}
-          {info.selfCustody
-            ? `Below you can open positions by signing with your own wallet. Your box and the positions the treasury manages live on ${live.name}.`
-            : `This is a read-only view: nothing here sends a transaction. Your box and positions live on ${live.name}.`}{" "}
+          <b>{info.name}</b>
+          {info.key === "arc" ? " · real money" : ""}. {info.selfCustody ? "Sign with your own wallet." : "View only."} Your box is on {live.name}.{" "}
           <button type="button" className="link-btn" onClick={() => onView(live.key)}>
             Back to {live.name}
           </button>
@@ -73,7 +70,7 @@ export function NetworkSwitcher({
   );
 }
 
-function NetworkPanel({ info, live, market }: { info: NetworkInfo; live: NetworkInfo; market: Market }) {
+function NetworkPanel({ info, market }: { info: NetworkInfo; market: Market }) {
   const [result, setResult] = useState<{ key: NetworkKey; status: NetworkStatus | null } | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const status = result?.key === info.key ? result.status : undefined; // undefined = still checking
@@ -132,20 +129,20 @@ function NetworkPanel({ info, live, market }: { info: NetworkInfo; live: Network
           <p className="muted small">{ORIGIN[info.aqua.origin]}.</p>
         </div>
       ) : (
-        <div className="notice warn">1inch Aqua is not deployed on {info.name}, so no strategies can run there yet. The steps below describe how it works where it is.</div>
+        <div className="notice warn">1inch Aqua isn&apos;t on {info.name} yet.</div>
       )}
       {info.usdc ? (
         <ContractRow label="USDC" address={info.usdc} check={status?.usdc} checking={checking} explorer={info.explorerUrl} extra={status?.usdc?.symbol ? `${status.usdc.symbol}, ${status.usdc.decimals} decimals` : undefined} />
       ) : (
-        <p className="muted small">The USDC address for {info.name} is not set up yet, so the app does not guess one.</p>
+        <p className="muted small">No USDC address set for {info.name}.</p>
       )}
 
       <h3>How a position works</h3>
       <ol className="net-steps">
-        <li><b>Plan.</b> Your amount is split into price ranges. A Hybrid position puts 70% in a tight range around today&apos;s price and 30% across a wide one.</li>
-        <li><b>Ship.</b> Each range is registered as its own strategy in the Aqua registry{info.aqua ? ` (${shortHex(info.aqua.aqua)})` : ""}. The tokens stay in the treasury wallet; Aqua only tracks each strategy&apos;s balances.</li>
-        <li><b>Trade.</b> Anyone can swap against a strategy through the SwapVM router{info.aqua ? ` (${shortHex(info.aqua.router)})` : ""}. Each swap pays the 30 bps fee into the strategy and moves its price.</li>
-        <li><b>Close.</b> Docking a strategy takes its balances back. The value, at today&apos;s price, goes back to your box.</li>
+        <li><b>Plan.</b> Your amount splits into price ranges.</li>
+        <li><b>Ship.</b> Each range becomes an Aqua strategy{info.aqua ? ` (${shortHex(info.aqua.aqua)})` : ""}.</li>
+        <li><b>Trade.</b> Every swap pays a 0.30% fee into it.</li>
+        <li><b>Close.</b> Its value goes back to your box.</li>
       </ol>
 
       <h3>Example: $1,000 Hybrid at ETH ${price(market.spot)}</h3>
@@ -167,9 +164,6 @@ function NetworkPanel({ info, live, market }: { info: NetworkInfo; live: Network
       ) : (
         <p className="muted small">Loading the example…</p>
       )}
-      <p className="muted small">
-        The example uses today&apos;s ETH price from Coinbase and is the same on every network. Positions open on {live.name} only.
-      </p>
     </div>
   );
 }

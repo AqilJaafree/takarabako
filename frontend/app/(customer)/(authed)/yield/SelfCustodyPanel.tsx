@@ -22,39 +22,39 @@ import { RangeChart } from "./RangeChart";
 
 /// Ready-made strategies: choosing one sets the shape and range the chart draws.
 const PRESETS: Array<{ id: string; name: string; hint: string; shape: SelfShape; lo?: number; hi?: number }> = [
-  { id: "full", name: "Full range", hint: "Earns on every trade and swings the least", shape: "full" },
-  { id: "balanced", name: "Balanced ±25%", hint: "More fees while ETH stays within 25% of today's price", shape: "spot", lo: 0.75, hi: 1.25 },
-  { id: "bold", name: "Bold ±8%", hint: "Most fees while the price holds, and nothing once it leaves", shape: "spot", lo: 0.92, hi: 1.08 },
-  { id: "hybrid", name: "Hybrid", hint: "A tight core near today's price plus the whole range as a safety net", shape: "hybrid", lo: 0.5, hi: 2 },
+  { id: "full", name: "Full range", hint: "Always earning, smallest swings", shape: "full" },
+  { id: "balanced", name: "Balanced ±25%", hint: "More fees within ±25%", shape: "spot", lo: 0.75, hi: 1.25 },
+  { id: "bold", name: "Bold ±8%", hint: "Most fees, stops if price leaves", shape: "spot", lo: 0.92, hi: 1.08 },
+  { id: "hybrid", name: "Hybrid", hint: "Tight core + safety net", shape: "hybrid", lo: 0.5, hi: 2 },
 ];
 
 /// A stable pair (EURC/USDC) trades within a few percent of its price, so its strategies are narrow.
 const STABLE_PRESETS: Array<{ id: string; name: string; hint: string; shape: SelfShape; lo?: number; hi?: number }> = [
-  { id: "tight", name: "Tight ±0.5%", hint: "The most fees while the price stays put, and nothing once it leaves", shape: "spot", lo: 0.995, hi: 1.005 },
-  { id: "balanced", name: "Balanced ±1.5%", hint: "A tight core around the price with room to drift", shape: "curve", lo: 0.985, hi: 1.015 },
-  { id: "wide", name: "Wide ±5%", hint: "Stays in range through bigger moves, earning less per dollar", shape: "spot", lo: 0.95, hi: 1.05 },
+  { id: "tight", name: "Tight ±0.5%", hint: "Most fees if price holds", shape: "spot", lo: 0.995, hi: 1.005 },
+  { id: "balanced", name: "Balanced ±1.5%", hint: "Core with room to drift", shape: "curve", lo: 0.985, hi: 1.015 },
+  { id: "wide", name: "Wide ±5%", hint: "Survives bigger moves", shape: "spot", lo: 0.95, hi: 1.05 },
 ];
 
 const SHAPES: Array<{ id: SelfShape; name: string; hint: string }> = [
   { id: "spot", name: "Spot", hint: "Even across the range" },
   { id: "curve", name: "Curve", hint: "Most near today's price" },
   { id: "bidask", name: "Bid-Ask", hint: "Most at the edges" },
-  { id: "hybrid", name: "Hybrid", hint: "A tight core plus the whole range" },
+  { id: "hybrid", name: "Hybrid", hint: "Core + safety net" },
   { id: "full", name: "Full range", hint: "Every price" },
 ];
 const SHAPE_NAME = Object.fromEntries(SHAPES.map((s) => [s.id, s.name])) as Record<SelfShape, string>;
 
 const RISKS_CONTRACT = [
-  "While the position is open your tokens are held by the Takarabako position contract, together with other people's positions, not by your wallet. The contract has no owner, admin or upgrade and only you can close your position, but it is new software that has not been professionally audited, and a flaw in it or in 1inch Aqua could lose funds.",
-  "The position's value follows the pair's price and can fall below what you put in. Earnings are trading fees, which depend on how much people trade. None is promised, and this is not insured or guaranteed.",
-  "You sign every transaction yourself and pay network fees. Closing sends everything the position holds back to your wallet in one transaction.",
+  "While open, your tokens sit in the Takarabako position contract (with other people's), not your wallet. Only you can close it, but the contract is new and unaudited: a flaw in it or in 1inch Aqua could lose funds.",
+  "Value follows the price and can fall below what you put in. Fees aren't promised or insured.",
+  "You sign everything and pay network fees. Closing returns everything to your wallet in one transaction.",
 ];
 
 const RISKS = [
-  "Your tokens stay in your own wallet. 1inch Aqua pays traders out of them, up to the amounts you approve, so the position's value follows the pair's price and can fall below what you put in.",
-  "Earnings are trading fees, which depend on how much people trade. None is promised, and this is not insured or guaranteed.",
-  "Aqua is smart-contract software, which carries smart-contract risk. You sign every transaction yourself and pay network fees in USDC.",
-  "Closing stops the position earning and releases the approval it used; what remains is already in your wallet.",
+  "Tokens stay in your wallet; 1inch Aqua pays traders from them up to what you approve. Value can fall below what you put in.",
+  "Fees aren't promised or insured.",
+  "Aqua is smart-contract software (smart-contract risk). You sign everything and pay network fees in USDC.",
+  "Closing stops earning and releases the approval.",
 ];
 
 async function api<T>(path: string, body?: unknown): Promise<T> {
@@ -429,8 +429,8 @@ function PairView({ network, market, wallets, pair }: { network: NetworkInfo; ma
       <h3>Sign with your own wallet</h3>
       <p className="muted small" style={{ margin: "0 0 10px" }}>
         {viaContract
-          ? "You sign everything from your own wallet: one transaction opens the position and one closes it. While it is open your tokens sit in the position contract, not in your wallet, and nothing goes through the Takarabako box or treasury."
-          : "Your wallet is the liquidity provider. Your tokens stay in it, you sign every transaction, and nothing goes through the Takarabako box or treasury."}
+          ? "One transaction opens, one closes. Meanwhile your tokens sit in the position contract."
+          : "Your tokens stay in your wallet. You sign everything."}
       </p>
 
       <div className="self-wallets" role="radiogroup" aria-label="Wallet to sign with">
@@ -441,8 +441,8 @@ function PairView({ network, market, wallets, pair }: { network: NetworkInfo; ma
           </button>
         ))}
         <button type="button" className="self-connect" onClick={wallets.connectExternal} disabled={busy}>
-          <b>Use MetaMask or another wallet</b>
-          <span className="muted small">Connect it, then pick it here</span>
+          <b>+ Connect a wallet</b>
+          <span className="muted small">MetaMask and others</span>
         </button>
       </div>
 
@@ -472,14 +472,14 @@ function PairView({ network, market, wallets, pair }: { network: NetworkInfo; ma
       )}
       <p className="row" style={{ margin: "8px 0 0", gap: 8 }}>
         <button type="button" className="btn btn-ghost small" onClick={copy}>{copied ? "Copied" : "Copy address"}</button>
-        {empty && <span className="muted small">Send {sym.quote} and {sym.base} on {network.name} to this address first, plus {walletData?.gasSymbol ?? "USDC"} for network fees.</span>}
+        {empty && <span className="muted small">Fund it with {sym.quote}, {sym.base} and {walletData?.gasSymbol ?? "USDC"} for fees.</span>}
       </p>
 
       {address && walletData && (walletData.pairs ?? [{ pair: pair.key ?? "", symbols: pair.symbols, base: walletData.weth, stable: pair.stable }]).filter((x) => x.base > 0).map((x) => (
         <DashOut key={x.pair} network={network} base={base} pairKey={x.pair || undefined} symbols={x.symbols} address={address} held={x.base} wallets={wallets} onDone={() => loadWallet(address)} disabled={busy} />
       ))}
 
-      <h3>Pick a strategy, then shape it</h3>
+      <h3>Pick a strategy</h3>
       <div className="self-modes" role="radiogroup" aria-label="Strategy">
         {presets.map((p) => (
           <button key={p.id} type="button" role="radio" aria-checked={presetId === p.id} className={presetId === p.id ? "is-on" : ""} onClick={() => choosePreset(p.id)} disabled={busy}>
@@ -510,10 +510,10 @@ function PairView({ network, market, wallets, pair }: { network: NetworkInfo; ma
           {previewError
             ? previewError
             : full
-              ? `Full range spreads your liquidity over every price, half in ${sym.base} and half in ${sym.quote}.`
-              : `Your liquidity sits between ${usd(range.min, pd)} and ${usd(range.max, pd)}. Below today's price it holds ${sym.quote}, above it ${sym.base}.`}
+              ? "Every price."
+              : `${usd(range.min, pd)} – ${usd(range.max, pd)}.`}
           {" "}
-          {bins.length > 0 && `At today's price that is ${num(100 - ethShare, 0)}% ${sym.quote} and ${num(ethShare, 0)}% ${sym.base}.`}
+          {bins.length > 0 && `Now ${num(100 - ethShare, 0)}% ${sym.quote}, ${num(ethShare, 0)}% ${sym.base}.`}
         </p>
       </div>
 
@@ -534,10 +534,10 @@ function PairView({ network, market, wallets, pair }: { network: NetworkInfo; ma
       </div>
 
       <div className="self-amount">
-        <label className="label" htmlFor="self-amount">Amount (USD, from your wallet&apos;s {sym.quote} and {sym.base})</label>
+        <label className="label" htmlFor="self-amount">Amount (USD)</label>
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
           <input id="self-amount" className="input" type="number" min={5} max={cap} step="1" value={Number.isFinite(amount) ? amount : ""} onChange={(e) => setAmount(Number(e.target.value))} disabled={busy} />
-          <span className="muted small">at least $5, at most {usd(cap, 0)} for now</span>
+          <span className="muted small">$5 – {usd(cap, 0)}</span>
         </div>
       </div>
 
@@ -569,7 +569,7 @@ function PairView({ network, market, wallets, pair }: { network: NetworkInfo; ma
                   </div>
                   {p.partial && (
                     <p className="notice warn small" style={{ margin: "6px 0" }}>
-                      Signing stopped partway, so only some of this position&apos;s strategies are live in Aqua. Closing it docks those, and nothing else is taken from your wallet.
+                      Signing stopped partway. Closing removes the live part.
                     </p>
                   )}
                   <p className="muted small" style={{ margin: "4px 0" }}>
@@ -602,9 +602,9 @@ function PairView({ network, market, wallets, pair }: { network: NetworkInfo; ma
           summary={`Close your ${SHAPE_NAME[exitFor.p.mode] ?? exitFor.p.mode} position (${usd(exitFor.p.valueUsd ?? exitFor.p.amountUsd)}) and sell the ${(exitFor.p.symbols ?? pair.symbols).base} it holds (${num(exitFor.p.weth, 6)}) for ${(exitFor.p.symbols ?? pair.symbols).quote}, from ${short(exitFor.p.wallet)}`}
           network={network.name}
           risks={[
-            "This is two steps, signed one after the other: first the position closes and everything it holds comes back to your wallet, then the base token is sold. Closing cannot be undone.",
-            `The ${(exitFor.p.symbols ?? pair.symbols).base} is sold to other people's open Aqua strategies, not to a market, so the price can sit below the market. It is only sold if the price is within what this app allows; if it is not, the position is still closed and you keep the ${(exitFor.p.symbols ?? pair.symbols).base}.`,
-            "Each swap carries a minimum payout and fails rather than paying less. You pay network fees for every transaction, and Aqua is smart-contract software with smart-contract risk.",
+            "Two signatures: the position closes (final), then the base token is sold.",
+            `The ${(exitFor.p.symbols ?? pair.symbols).base} sells to other Aqua strategies, possibly below market. If the price is too low, it stays closed and you keep the ${(exitFor.p.symbols ?? pair.symbols).base}.`,
+            "Each swap has a minimum payout. You pay network fees; Aqua carries smart-contract risk.",
           ]}
           onResult={exitFor.resolve}
         />

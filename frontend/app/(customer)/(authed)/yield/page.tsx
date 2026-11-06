@@ -17,7 +17,7 @@ export default async function YieldPage() {
     <>
       <h1 style={{ fontSize: 26 }}>Grow your box</h1>
       <p className="muted">
-        Put your balance to work as ETH/USDC liquidity on 1inch Aqua. Start simple, or draw your own price range.
+        Earn trading fees on your balance with 1inch Aqua.
       </p>
       <YieldHub networks={networks} balance={me.balance} market={market} positions={positions} />
     </>
