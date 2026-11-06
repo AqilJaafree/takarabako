@@ -75,8 +75,8 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange }: 
   const priceAt = useCallback((py: number) => Math.exp(lnLo + (1 - (py - PAD.top) / plotH) * (lnHi - lnLo)), [plotH, lnLo, lnHi]);
   const x = (i: number) => PAD.left + (candles.length > 1 ? (i / (candles.length - 1)) * plotW : plotW / 2);
 
-  const line = candles.map((c, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(c.c).toFixed(1)}`).join(" ");
-  const area = candles.length ? `${line} L${x(candles.length - 1)},${PAD.top + plotH} L${x(0)},${PAD.top + plotH} Z` : "";
+  const slot = candles.length > 1 ? plotW / (candles.length - 1) : plotW;
+  const cw = Math.max(1, Math.min(8, slot * 0.62)); // candle body width
 
   // Keep the range inside the limits and at least 2% wide.
   const clamp = useCallback(
@@ -149,7 +149,7 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange }: 
   return (
     <div className="range-chart" ref={wrapRef}>
       <div className="range-legend">
-        <span><i className="rl-line" />ETH price (1 week)</span>
+        <span><i className="rl-candle" />ETH/USDC · 1h candles</span>
         <span><i className="rl-sw usdc" />USDC</span>
         <span><i className="rl-sw eth" />ETH</span>
         <span className="muted">Drag the gold lines, or the band</span>
@@ -164,7 +164,7 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange }: 
         onPointerCancel={() => setDrag(null)}
         onPointerLeave={() => !drag && setHoverIdx(null)}
         role="img"
-        aria-label={`ETH price over the last week with a liquidity range from ${usd(min, 0)} to ${usd(max, 0)}; current price ${usd(spot, 0)}`}
+        aria-label={`ETH/USDC hourly candles for the last week with a liquidity range from ${usd(min, 0)} to ${usd(max, 0)}; current price ${usd(spot, 0)}`}
         className={drag ? "is-dragging" : undefined}
       >
         {/* grid + y axis */}
@@ -190,9 +190,15 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange }: 
           onPointerDown={(e) => startDrag("band", e)}
         />
 
-        {/* price */}
-        <path d={area} className="rc-area" />
-        <path d={line} className="rc-line" />
+        {/* price: hourly candles, like a trading chart */}
+        <g className="rc-candles">
+          {candles.map((c, i) => (
+            <g key={c.t} className={c.c >= c.o ? "rc-up" : "rc-down"}>
+              <line x1={x(i)} x2={x(i)} y1={y(c.h)} y2={y(c.l)} />
+              <rect x={x(i) - cw / 2} y={y(Math.max(c.o, c.c))} width={cw} height={Math.max(1, Math.abs(y(c.o) - y(c.c)))} />
+            </g>
+          ))}
+        </g>
 
         {/* liquidity histogram */}
         {bins.map((b, i) => {
@@ -254,7 +260,7 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange }: 
         {hc && hoverIdx !== null && (
           <g pointerEvents="none">
             <line x1={x(hoverIdx)} x2={x(hoverIdx)} y1={PAD.top} y2={PAD.top + plotH} className="rc-cross" />
-            <circle cx={x(hoverIdx)} cy={y(hc.c)} r={4} className="rc-dot" />
+            <line x1={PAD.left} x2={PAD.left + plotW} y1={y(hc.c)} y2={y(hc.c)} className="rc-cross" />
           </g>
         )}
       </svg>
@@ -262,6 +268,8 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange }: 
         <div className="rc-tip" style={{ left: Math.min(W - 150, Math.max(8, x(hoverIdx) + 10)) }}>
           <b>{usd(hc.c)}</b>
           <span>{new Date(hc.t * 1000).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" })}</span>
+          <span>O {hc.o.toFixed(2)} · H {hc.h.toFixed(2)}</span>
+          <span>L {hc.l.toFixed(2)} · C {hc.c.toFixed(2)}</span>
         </div>
       )}
       {hb && hb.min !== null && hb.max !== null && (
