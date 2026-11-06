@@ -81,14 +81,15 @@ const goldFragment = /* glsl */ `
   }
 `;
 
-export function createLacquer() {
+/// Red urushi by default; the Deepavali plinth passes royal blue.
+export function createLacquer(deep = "#3a0906", lit = "#b3261e") {
   return new THREE.ShaderMaterial({
     vertexShader: vertex,
     fragmentShader: lacquerFragment,
     uniforms: {
       uTime: { value: 0 },
-      uDeep: { value: new THREE.Color("#3a0906") },
-      uRed: { value: new THREE.Color("#b3261e") },
+      uDeep: { value: new THREE.Color(deep) },
+      uRed: { value: new THREE.Color(lit) },
     },
   });
 }
@@ -101,7 +102,7 @@ export function createGold() {
   });
 }
 
-const marbleFragment = /* glsl */ `
+const giltFragment = /* glsl */ `
   uniform float uTime;
   uniform float uGlow;
   uniform float uLit;
@@ -120,29 +121,37 @@ const marbleFragment = /* glsl */ `
     vec3 V = normalize(-vViewPos);
     vec3 L = normalize(vec3(0.45, 0.85, 0.55));
     float diff = max(dot(N, L), 0.0);
-    // White marble with faint grey veins.
-    float n = noise(vWorldPos * 6.0) * 0.6 + noise(vWorldPos * 14.0) * 0.4;
-    float vein = smoothstep(0.48, 0.5, abs(sin(vWorldPos.x * 3.0 + vWorldPos.y * 5.0 + n * 6.0)) * 0.5);
-    vec3 marble = mix(vec3(0.93, 0.91, 0.95), vec3(0.78, 0.76, 0.84), vein * 0.35);
-    // Moonlit purple from above, warm diya light from below (stronger as the balance grows).
-    vec3 sky = vec3(0.62, 0.5, 0.95);
-    vec3 warm = vec3(1.0, 0.62, 0.28);
+    // Fake environment: dark bronze below the horizon, warm gold above, a little
+    // royal-blue night sky straight up.
+    vec3 Rv = reflect(-V, N);
+    float horizon = smoothstep(-0.3, 0.6, Rv.y);
+    vec3 env = mix(vec3(0.24, 0.12, 0.04), vec3(1.0, 0.8, 0.45), horizon);
+    env = mix(env, vec3(0.45, 0.5, 1.0), smoothstep(0.75, 1.0, Rv.y) * 0.35);
+    // Fine chased lines in the gold, like engraved leaf.
+    float n = noise(vWorldPos * 7.0) * 0.6 + noise(vWorldPos * 16.0) * 0.4;
+    float chase = smoothstep(0.492, 0.5, abs(sin(vWorldPos.x * 4.0 + vWorldPos.y * 6.0 + n * 7.0)) * 0.5);
+    vec3 gilt = env * (0.5 + 0.5 * diff) * (1.0 - chase * 0.12);
+    // Warm diya light from below, stronger as the balance grows.
     float below = pow(clamp(1.0 - vWorldPos.y * 1.6, 0.0, 1.0), 2.0);
-    vec3 col = marble * (0.32 + 0.58 * diff) * mix(vec3(1.0), sky, 0.3)
-      + marble * warm * below * (0.06 + 0.32 * uLit)
-      + pow(1.0 - max(dot(N, V), 0.0), 3.0) * sky * 0.35
-      + pow(max(dot(reflect(-L, N), V), 0.0), 30.0) * 0.25
-      + uGlow * warm * 0.35;
+    vec3 warm = vec3(1.0, 0.62, 0.28);
+    float sweep = smoothstep(0.0, 0.2, 0.2 - abs(fract((vWorldPos.x + vWorldPos.y) * 0.22 - uTime * 0.08) - 0.5));
+    vec3 col = gilt
+      + gilt * warm * below * (0.1 + 0.4 * uLit)
+      + pow(max(dot(reflect(-L, N), V), 0.0), 36.0) * vec3(1.0, 0.95, 0.8) * 0.8
+      + pow(1.0 - max(dot(N, V), 0.0), 2.5) * vec3(1.0, 0.78, 0.4) * 0.35
+      + sweep * vec3(1.0, 0.9, 0.65) * 0.12
+      + uGlow * warm * 0.4;
     gl_FragColor = vec4(col, 1.0);
   }
 `;
 
-/// The Taj Mahal's white marble: faint veins, lit purple from above and warm
-/// from the diyas below. uLit (0–1) follows the balance; uGlow flashes on a deposit.
-export function createMarble() {
+/// The Deepavali palace's gilding: chased gold with a slow sheen moving across
+/// it, warmed from the diyas below. uLit (0–1) follows the balance; uGlow
+/// flashes on a deposit.
+export function createGilt() {
   return new THREE.ShaderMaterial({
     vertexShader: vertex,
-    fragmentShader: marbleFragment,
+    fragmentShader: giltFragment,
     uniforms: { uTime: { value: 0 }, uGlow: { value: 0 }, uLit: { value: 0 } },
   });
 }

@@ -5,16 +5,75 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import gsap from "gsap";
 import type { CatMood } from "./types";
+import { FESTIVE } from "@/lib/theme";
 
 const WHITE = "#fbf5ec";
 const PINK = "#f3a6a0";
 const RED = "#b3261e";
 const GOLD = "#e3b36a";
 const INK = "#241512";
+const SAFFRON = "#e98a24";
+const SAFFRON_DEEP = "#c4651a";
+const RUBY = "#c0123a";
+const PEARL = "#fff6e6";
 
-/// The Takarabako agent's face: a procedural maneki-neko. Waves its raised
-/// paw (faster when happy), blinks, hops on deposits and droops when
-/// worried. Its speech bubble is a DOM overlay pinned to `bubbleAnchor`.
+/// Under a turban (Deepavali) the ears poke out through its top.
+const EAR = FESTIVE ? { x: 0.25, y: 0.43, tilt: 0.4 } : { x: 0.2, y: 0.27, tilt: 0.25 };
+
+/// A maharaja's pagri: saffron wraps banded in gold, a ruby brooch on the
+/// front and a plume of pearls. Sits on the head group.
+function Turban() {
+  return (
+    <group position={[0, 0.08, -0.02]}>
+      <mesh position={[0, 0.27, 0]} scale={[1, 0.85, 1]}>
+        <sphereGeometry args={[0.24, 24, 16]} />
+        <meshStandardMaterial color={SAFFRON} roughness={0.6} />
+      </mesh>
+      {/* the wraps, each a little smaller and tilted the other way */}
+      {[
+        { y: 0.17, r: 0.26, tube: 0.08, tilt: 0.1, color: SAFFRON },
+        { y: 0.26, r: 0.22, tube: 0.072, tilt: -0.14, color: SAFFRON_DEEP },
+        { y: 0.34, r: 0.16, tube: 0.062, tilt: 0.12, color: SAFFRON },
+      ].map((w) => (
+        <mesh key={w.y} position={[0, w.y, 0]} rotation={[Math.PI / 2 + w.tilt, 0, 0]}>
+          <torusGeometry args={[w.r, w.tube, 12, 32]} />
+          <meshStandardMaterial color={w.color} roughness={0.6} />
+        </mesh>
+      ))}
+      {/* gold band along the brim */}
+      <mesh position={[0, 0.13, 0]} rotation={[Math.PI / 2 + 0.1, 0, 0]}>
+        <torusGeometry args={[0.3, 0.018, 8, 40]} />
+        <meshStandardMaterial color={GOLD} metalness={0.9} roughness={0.25} />
+      </mesh>
+      {/* the brooch, and the plume rising from it */}
+      <group position={[0, 0.24, 0.29]} rotation={[-0.2, 0, 0]}>
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.08, 0.08, 0.03, 20]} />
+          <meshStandardMaterial color={GOLD} metalness={0.9} roughness={0.2} />
+        </mesh>
+        <mesh position={[0, 0, 0.03]}>
+          <sphereGeometry args={[0.05, 16, 12]} />
+          <meshStandardMaterial color={RUBY} metalness={0.3} roughness={0.15} />
+        </mesh>
+        <mesh position={[0, 0.24, -0.06]} rotation={[-0.3, 0, 0]}>
+          <coneGeometry args={[0.05, 0.4, 10]} />
+          <meshStandardMaterial color={GOLD} metalness={0.8} roughness={0.3} />
+        </mesh>
+        {[0.09, 0.17, 0.25, 0.33].map((y, k) => (
+          <mesh key={y} position={[(k % 2 ? 1 : -1) * 0.05, y, -0.02 - y * 0.28]}>
+            <sphereGeometry args={[0.024, 10, 8]} />
+            <meshStandardMaterial color={PEARL} roughness={0.25} />
+          </mesh>
+        ))}
+        <mesh position={[0, 0.46, -0.13]}>
+          <sphereGeometry args={[0.04, 12, 10]} />
+          <meshStandardMaterial color={PEARL} roughness={0.25} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
 export function ManekiNeko({
   mood,
   hop,
@@ -50,8 +109,8 @@ export function ManekiNeko({
 
   useEffect(() => {
     const droop = mood === "worried" ? 0.55 : 0;
-    if (earL.current) gsap.to(earL.current.rotation, { z: 0.25 + droop, duration: 0.4 });
-    if (earR.current) gsap.to(earR.current.rotation, { z: -0.25 - droop, duration: 0.4 });
+    if (earL.current) gsap.to(earL.current.rotation, { z: EAR.tilt + droop, duration: 0.4 });
+    if (earR.current) gsap.to(earR.current.rotation, { z: -EAR.tilt - droop, duration: 0.4 });
     if (head.current) gsap.to(head.current.rotation, { z: mood === "thinking" ? 0.22 : mood === "worried" ? -0.12 : 0, duration: 0.5 });
   }, [mood]);
 
@@ -135,19 +194,19 @@ export function ManekiNeko({
           <sphereGeometry args={[0.36, 32, 24]} />
           <meshStandardMaterial color={WHITE} roughness={0.55} />
         </mesh>
-        <mesh ref={earL} position={[-0.2, 0.27, 0]} rotation={[0, 0, 0.25]}>
+        <mesh ref={earL} position={[-EAR.x, EAR.y, 0]} rotation={[0, 0, EAR.tilt]}>
           <coneGeometry args={[0.11, 0.2, 16]} />
           <meshStandardMaterial color={WHITE} roughness={0.55} />
         </mesh>
-        <mesh ref={earR} position={[0.2, 0.27, 0]} rotation={[0, 0, -0.25]}>
+        <mesh ref={earR} position={[EAR.x, EAR.y, 0]} rotation={[0, 0, -EAR.tilt]}>
           <coneGeometry args={[0.11, 0.2, 16]} />
           <meshStandardMaterial color={WHITE} roughness={0.55} />
         </mesh>
-        <mesh position={[-0.2, 0.26, 0.04]} rotation={[0, 0, 0.25]} scale={0.6}>
+        <mesh position={[-EAR.x, EAR.y - 0.01, 0.04]} rotation={[0, 0, EAR.tilt]} scale={0.6}>
           <coneGeometry args={[0.11, 0.2, 16]} />
           <meshStandardMaterial color={PINK} />
         </mesh>
-        <mesh position={[0.2, 0.26, 0.04]} rotation={[0, 0, -0.25]} scale={0.6}>
+        <mesh position={[EAR.x, EAR.y - 0.01, 0.04]} rotation={[0, 0, -EAR.tilt]} scale={0.6}>
           <coneGeometry args={[0.11, 0.2, 16]} />
           <meshStandardMaterial color={PINK} />
         </mesh>
@@ -165,6 +224,7 @@ export function ManekiNeko({
           <sphereGeometry args={[1, 12, 10]} />
           <meshStandardMaterial color={PINK} />
         </mesh>
+        {FESTIVE && <Turban />}
         {/* cheeks */}
         <mesh position={[-0.2, -0.08, 0.24]} scale={[0.06, 0.035, 0.02]}>
           <sphereGeometry args={[1, 12, 10]} />
