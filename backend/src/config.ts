@@ -1,4 +1,4 @@
-import { resolveAquaDeployment, resolveNetwork, showApyEstimates } from "./networks.js";
+import { NETWORKS, resolveAquaDeployment, resolveNetwork, showApyEstimates } from "./networks.js";
 
 // CHAIN picks the network: sepolia (default), arc-testnet or arc (mainnet).
 const network = resolveNetwork(process.env.CHAIN);
@@ -10,6 +10,13 @@ const aquaDeployment = resolveAquaDeployment(network.chain.id, {
 export const config = {
   port: Number(process.env.PORT ?? 4000),
   network,
+  // Self-custody positions on Arc mainnet (selfPositions.ts): the customer signs with
+  // their own wallet. Real money, so off unless SELF_CUSTODY_ARC=1, and capped per position.
+  selfCustody: {
+    arcEnabled: process.env.SELF_CUSTODY_ARC === "1",
+    maxUsd: Number(process.env.SELF_CUSTODY_MAX_USD ?? 100),
+    arcRpcUrl: process.env.ARC_RPC_URL || NETWORKS.arc.defaultRpcUrl,
+  },
   // Whether the yield page shows APY estimates (hidden on a real-money network).
   showApyEstimates: showApyEstimates(network.real, process.env.SHOW_APY_ESTIMATES),
   rpcUrl: process.env.RPC_URL || network.defaultRpcUrl,

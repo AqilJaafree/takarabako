@@ -18,7 +18,11 @@ networkRouter.get("/networks", (_req, res) => {
       router: process.env.AQUA_ROUTER_ADDRESS,
       usdc: config.usdcAddress,
       baseToken: config.aqua.methAddress,
-    }),
+    }).map((n) => ({
+      ...n,
+      // The customer can sign positions with their own wallet here (selfPositions.ts).
+      selfCustody: n.key === "arc" && config.selfCustody.arcEnabled && Boolean(n.aqua),
+    })),
   });
 });
 
