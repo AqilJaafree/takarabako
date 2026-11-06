@@ -103,7 +103,7 @@ yieldRouter.post("/yield/positions/:id/close", requireSession("full"), asyncHand
     res.status(404).json({ error: "no such position" });
     return;
   }
-  if (row.status !== "open") {
+  if (row.status === "closed") {
     res.status(409).json({ error: "position is already closed" });
     return;
   }

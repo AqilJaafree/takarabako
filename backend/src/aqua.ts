@@ -1,6 +1,7 @@
 import { parseAbi, type Address } from "viem";
 import { config } from "./config.js";
-import { retryOnLag } from "./retry.js";
+import { looksLikeRpcLag, retryOnLag } from "./retry.js";
+import { floorMicros, PAYOUT_PENDING, payoutStep } from "./closeFlow.js";
 import { pool } from "./db.js";
 import { aq, sv } from "./aquaSdk.js";
 import {
@@ -19,9 +20,11 @@ import {
   chainReady,
   depositOnChain,
   publicClient,
+  sendDepositTx,
   sendTreasuryTx,
   sendTreasuryTxNoWait,
   treasuryAddress,
+  waitForDepositTx,
   waitForTx,
   withdrawUsdOnChain,
 } from "./chain.js";
@@ -84,8 +87,11 @@ export interface Candle {
   c: number;
 }
 
-/// Live ETH/USD, cached 30s. mETH is priced off real ETH.
-export async function ethUsd(): Promise<number> {
+/// Live ETH/USD, cached 30s. mETH is priced off real ETH. If the feed fails,
+/// the last price is used (stale beats nothing for a display), unless the
+/// caller sets `maxStaleMs`: opening and closing a position move money at this
+/// price, so they refuse one older than that instead of paying out at it.
+export async function ethUsd(opts: { maxStaleMs?: number } = {}): Promise<number> {
   if (spotCache && Date.now() - spotCache.at < 30_000) return spotCache.price;
   try {
     const res = await fetch("https://api.coinbase.com/v2/prices/ETH-USD/spot", { signal: AbortSignal.timeout(5000) });
@@ -94,10 +100,14 @@ export async function ethUsd(): Promise<number> {
     spotCache = { at: Date.now(), price };
     return price;
   } catch (err) {
-    if (spotCache) return spotCache.price; // stale beats nothing
-    throw new Error(`ETH price unavailable: ${err instanceof Error ? err.message : err}`);
+    if (spotCache && (opts.maxStaleMs === undefined || Date.now() - spotCache.at <= opts.maxStaleMs)) return spotCache.price;
+    const why = err instanceof Error ? err.message : err;
+    throw new Error(spotCache ? `ETH price is too old to move money at (feed down: ${why})` : `ETH price unavailable: ${why}`);
   }
 }
+
+/// How old a price may be when a position is opened or closed.
+export const MONEY_PRICE_MAX_AGE_MS = 5 * 60_000;
 
 /// Hourly ETH/USD candles for the last week (the advanced chart), cached 5 min.
 export async function ethCandles(): Promise<Candle[]> {
@@ -218,7 +228,7 @@ export interface PositionRow {
   apyEstBps: number;
   strategies: StoredStrategy[];
   rationale: string | null;
-  status: "open" | "closed";
+  status: "open" | "closing" | "closed";
   vaultTx: string | null;
   closeValue: number | null;
   closeTx: string | null;
@@ -267,7 +277,7 @@ export function planPosition(req: Pick<OpenRequest, "mode" | "shape" | "priceMin
 
 export async function openPosition(req: OpenRequest): Promise<PositionRow> {
   if (!aquaReady || !treasuryAddress) throw new Error(aquaUnavailableReason() ?? "cannot open an Aqua position");
-  const spot = await ethUsd();
+  const spot = await ethUsd({ maxStaleMs: MONEY_PRICE_MAX_AGE_MS });
   const plan = planPosition(req, spot);
   await ensureApprovals();
 
@@ -365,7 +375,7 @@ export async function viewPosition(p: PositionRow, spot: number): Promise<Positi
 
 export async function listPositions(privyUserId: string, status: "open" | "all" = "open"): Promise<PositionRow[]> {
   const { rows } = await pool.query(
-    `select ${COLUMNS} from aqua_positions where privy_user_id = $1 ${status === "open" ? "and status = 'open'" : ""} order by created_at desc limit 50`,
+    `select ${COLUMNS} from aqua_positions where privy_user_id = $1 ${status === "open" ? "and status in ('open', 'closing')" : ""} order by created_at desc limit 50`,
     [privyUserId],
   );
   return rows;
@@ -376,17 +386,82 @@ export async function openPositions(): Promise<PositionRow[]> {
   return rows;
 }
 
-/// Docks a position's strategies and returns their value to the vault.
+/// A position's value from Aqua's live balances, read strictly: unlike the
+/// display (viewPosition), a failed read must not count as "worth nothing",
+/// because the result is what the customer is paid.
+export async function liveValueStrict(p: PositionRow): Promise<number> {
+  const spot = await ethUsd({ maxStaleMs: MONEY_PRICE_MAX_AGE_MS });
+  const bals = await Promise.all(p.strategies.map((s) => retryOnLag(() => strategyBalances(s.hash))));
+  // Aqua keeps a shipped strategy's balances until it is docked, so all-zero
+  // means the read was wrong (or it was already docked): never pay out on it.
+  if (bals.every((b) => b.eth === 0n && b.usdc === 0n)) throw new Error("could not read this position's balances from Aqua — try again in a moment");
+  const eth = bals.reduce((s, b) => s + b.eth, 0n);
+  const usdc = bals.reduce((s, b) => s + b.usdc, 0n);
+  return floorMicros(valueUsd(eth, usdc, spot, PAIR));
+}
+
+/// Docks the strategies that still hold balances, so a retry after a partial
+/// close does not try to dock one twice.
+export async function dockRemaining(strategies: StoredStrategy[]) {
+  const todo: StoredStrategy[] = [];
+  for (const s of strategies) {
+    const b = await retryOnLag(() => strategyBalances(s.hash));
+    if (b.eth !== 0n || b.usdc !== 0n) todo.push(s);
+  }
+  if (todo.length) await dockAll(todo);
+}
+
+/// Sends the recorded payout to the customer's vault exactly once. close_tx
+/// says where a previous try got to (see closeFlow.ts).
+async function payOut(id: string, to: Address, value: number): Promise<string> {
+  const { rows } = await pool.query("select close_tx from aqua_positions where id = $1", [id]);
+  const step = payoutStep(rows[0]?.close_tx ?? null);
+  if (step.kind === "blocked") throw new Error(step.reason);
+  if (step.kind === "verify") {
+    const receipt = await publicClient.getTransactionReceipt({ hash: step.hash }).catch(() => null);
+    if (!receipt) {
+      await waitForTx(step.hash); // sent, not mined yet
+      return step.hash;
+    }
+    if (receipt.status === "success") return step.hash;
+    // It reverted, so nothing was paid: clear it and send again.
+    await pool.query("update aqua_positions set close_tx = null where id = $1 and close_tx = $2", [id, step.hash]);
+  }
+  // Only one request gets to send.
+  const claim = await pool.query("update aqua_positions set close_tx = $2 where id = $1 and close_tx is null", [id, PAYOUT_PENDING]);
+  if (claim.rowCount !== 1) throw new Error("this position's payout is already being sent");
+  let hash: `0x${string}`;
+  try {
+    hash = await retryOnLag(() => sendDepositTx(to, value));
+  } catch (err) {
+    // A reverted estimate means nothing was broadcast, so release the claim.
+    // Any other failure may have left a transaction in flight: keep it blocked.
+    if (looksLikeRpcLag(err)) await pool.query("update aqua_positions set close_tx = null where id = $1 and close_tx = $2", [id, PAYOUT_PENDING]);
+    throw err;
+  }
+  await pool.query("update aqua_positions set close_tx = $2 where id = $1", [id, hash]);
+  await waitForDepositTx(hash, to);
+  return hash;
+}
+
+/// Closes a position and returns its value to the customer's vault, in steps
+/// that survive stopping halfway: the payout is fixed and recorded before any
+/// strategy is docked, and closing again resumes a "closing" position.
 export async function closePosition(p: PositionRow, boundAddress: string): Promise<{ value: number; closeTx: string | null }> {
-  if (p.status !== "open") throw new Error("position is already closed");
-  const spot = await ethUsd();
-  const view = await viewPosition(p, spot);
-  await dockAll(p.strategies);
-  const value = Math.max(0, Math.floor((view.valueUsd ?? 0) * 1e6) / 1e6);
-  const closeTx = value > 0 ? (await depositOnChain(boundAddress as Address, value)).txHash : null;
-  await pool.query(
-    "update aqua_positions set status = 'closed', close_value = $2, close_tx = $3, closed_at = now() where id = $1",
-    [p.id, value, closeTx],
-  );
+  if (p.status === "closed") throw new Error("position is already closed");
+
+  let value: number;
+  if (p.status === "open") {
+    value = await liveValueStrict(p);
+    const claim = await pool.query("update aqua_positions set status = 'closing', close_value = $2, closing_at = now() where id = $1 and status = 'open'", [p.id, value]);
+    if (claim.rowCount !== 1) throw new Error("position is already being closed");
+  } else {
+    if (p.closeValue === null) throw new Error("this position is closing but has no recorded payout: check it by hand");
+    value = p.closeValue;
+  }
+
+  await dockRemaining(p.strategies);
+  const closeTx = value > 0 ? await payOut(p.id, boundAddress as Address, value) : null;
+  await pool.query("update aqua_positions set status = 'closed', close_tx = $2, closed_at = now() where id = $1", [p.id, closeTx]);
   return { value, closeTx };
 }
