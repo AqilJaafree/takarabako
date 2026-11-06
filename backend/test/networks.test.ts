@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyFeeFloor, resolveAquaDeployment, resolveNetwork } from "../src/networks.js";
+import { applyFeeFloor, describeNetworks, resolveAquaDeployment, resolveNetwork } from "../src/networks.js";
 
 const GWEI = 1_000_000_000n;
 
@@ -80,4 +80,36 @@ test("fee floor: keeps a higher maxFeePerGas and fills in missing fees", () => {
 test("fee floor: a tip above the fee cap is clamped to it", () => {
   const out = applyFeeFloor({ maxFeePerGas: 1n * GWEI, maxPriorityFeePerGas: 30n * GWEI }, 20n * GWEI);
   assert.equal(out.maxPriorityFeePerGas, 20n * GWEI);
+});
+
+test("describeNetworks lists all three networks with exactly one active", () => {
+  const list = describeNetworks("sepolia");
+  assert.deepEqual(list.map((n) => n.key), ["sepolia", "arc-testnet", "arc"]);
+  assert.deepEqual(list.map((n) => n.active), [true, false, false]);
+  assert.deepEqual(list.map((n) => n.chainId), [11155111, 5042002, 5042]);
+});
+
+test("describeNetworks: Aqua is on Sepolia and Arc mainnet but not on Arc Testnet", () => {
+  const byKey = Object.fromEntries(describeNetworks("sepolia").map((n) => [n.key, n]));
+  assert.equal(byKey.sepolia!.aqua?.origin, "sepolia");
+  assert.equal(byKey.arc!.aqua?.origin, "sdk");
+  assert.equal(byKey["arc-testnet"]!.aqua, null);
+  assert.equal(byKey["arc-testnet"]!.feeFloorGwei, 20);
+  assert.equal(byKey.sepolia!.feeFloorGwei, 0);
+});
+
+test("describeNetworks: env overrides apply to the active network only", () => {
+  const ours = { aqua: "0x1111111111111111111111111111111111111111", router: "0x2222222222222222222222222222222222222222" };
+  const byKey = Object.fromEntries(describeNetworks("arc-testnet", ours).map((n) => [n.key, n]));
+  assert.equal(byKey["arc-testnet"]!.aqua?.origin, "env");
+  assert.equal(byKey["arc-testnet"]!.aqua?.router, ours.router);
+  assert.equal(byKey.arc!.aqua?.origin, "sdk"); // mainnet still shows the SDK's addresses
+  assert.equal(byKey.sepolia!.aqua?.origin, "sepolia");
+});
+
+test("describeNetworks: a configured USDC replaces the default for the active network only", () => {
+  const usdc = "0x6cc5f175810e61A56508049f0527BC75EB7e77e4";
+  const byKey = Object.fromEntries(describeNetworks("sepolia", { usdc }).map((n) => [n.key, n]));
+  assert.equal(byKey.sepolia!.usdc, usdc);
+  assert.equal(byKey["arc-testnet"]!.usdc, "0x3600000000000000000000000000000000000000");
 });

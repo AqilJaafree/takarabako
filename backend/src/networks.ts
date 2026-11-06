@@ -123,3 +123,45 @@ export function applyFeeFloor(fees: Fees, floor: bigint): Fees {
   const tip = fees.maxPriorityFeePerGas ?? 0n;
   return { maxFeePerGas: max, maxPriorityFeePerGas: tip > max ? max : tip };
 }
+
+/// ---- what the web app is told about each network ----------------------------
+
+export interface NetworkInfo {
+  key: NetworkKey;
+  name: string;
+  chainId: number;
+  nativeSymbol: string;
+  explorerUrl: string;
+  feeFloorGwei: number;
+  /// Token addresses known from the chain's docs ("" = not set up yet).
+  usdc: string;
+  baseToken: string;
+  /// Where Aqua + the SwapVM router are, or null when not deployed.
+  aqua: AquaDeployment | null;
+  /// The one network this backend can open and close real positions on.
+  active: boolean;
+}
+
+/// Every network, with its Aqua deployment. Env overrides (AQUA_ADDRESS,
+/// AQUA_ROUTER_ADDRESS, USDC_ADDRESS, METH_ADDRESS) belong to the active
+/// network only, so the other networks show what the SDK and docs say.
+export function describeNetworks(
+  activeKey: NetworkKey,
+  env: { aqua?: string; router?: string; usdc?: string; baseToken?: string } = {},
+): NetworkInfo[] {
+  return (Object.values(NETWORKS) as Network[]).map((n) => {
+    const active = n.key === activeKey;
+    return {
+      key: n.key,
+      name: n.name,
+      chainId: n.chain.id,
+      nativeSymbol: n.nativeSymbol,
+      explorerUrl: n.explorerUrl,
+      feeFloorGwei: Number(n.minMaxFeePerGas) / 1e9,
+      usdc: (active && env.usdc) || n.defaults.usdc,
+      baseToken: (active && env.baseToken) || n.defaults.baseToken,
+      aqua: resolveAquaDeployment(n.chain.id, active ? { aqua: env.aqua, router: env.router } : {}),
+      active,
+    };
+  });
+}
