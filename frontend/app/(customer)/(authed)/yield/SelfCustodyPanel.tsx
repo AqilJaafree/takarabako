@@ -313,7 +313,7 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
   const empty = walletData ? walletData.usdc === 0 && walletData.weth === 0 : false;
   const cap = walletData?.maxUsd ?? 100;
   const valid = Boolean(walletData) && amount >= 5 && amount <= cap && !busy && (full || bins.length > 0);
-  const mine = positions.filter((p) => p.status === "open");
+  const mine = positions.filter((p) => p.status === "open" || p.partial);
 
   return (
     <div className="self-panel">
@@ -450,8 +450,13 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
                 <li key={p.id}>
                   <div className="spread">
                     <b>{SHAPE_NAME[p.mode] ?? p.mode}</b>
-                    <span className="pill ok">Open</span>
+                    {p.partial ? <span className="pill bad">Partly opened</span> : <span className="pill ok">Open</span>}
                   </div>
+                  {p.partial && (
+                    <p className="notice warn small" style={{ margin: "6px 0" }}>
+                      Signing stopped partway, so only some of this position&apos;s strategies are live in Aqua. Closing it docks those, and nothing else is taken from your wallet.
+                    </p>
+                  )}
                   <p className="muted small" style={{ margin: "4px 0" }}>
                     {p.valueUsd === null ? "Value unavailable right now" : `${usd(p.valueUsd)} now`} · put in {usd(p.amountUsd, 0)} · {num(p.weth, 6)} {sym.base} + {num(p.usdc, 2)} {sym.quote} {p.manager ? "held by the position contract in Aqua" : "held in Aqua"}
                     {p.priceMin !== null && p.priceMax !== null ? ` · ${usd(p.priceMin, 0)} – ${usd(p.priceMax, 0)}` : " · full range"} · wallet {short(p.wallet)}
@@ -461,7 +466,7 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
                       <a key={h} className="mono" href={`${network.explorerUrl}/tx/${h}`} target="_blank" rel="noreferrer" style={{ marginRight: 10 }}>{shortHex(h)}</a>
                     ))}
                   </p>
-                  <button type="button" className="btn btn-ghost small" disabled={busy || !signer} onClick={() => close(p)}>Close position</button>
+                  <button type="button" className="btn btn-ghost small" disabled={busy || !signer} onClick={() => close(p)}>{p.partial ? "Close the live part" : "Close position"}</button>
                   {!signer && <span className="muted small"> Connect wallet {short(p.wallet)} to close it.</span>}
                 </li>
               );

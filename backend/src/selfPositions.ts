@@ -246,30 +246,66 @@ function closeSteps(net: SelfNet, row: SelfRow): Step[] {
   return planSelfClose(row.strategies, net.pair, aqua, router);
 }
 
+/// The strategies of a position that Aqua still holds balances for. A position whose signing stopped
+/// partway (some ships went through, the rest did not) is still "pending" in the database but live on
+/// chain: only those strategies can and need to be docked.
+async function liveStrategies(net: SelfNet, row: SelfRow): Promise<SelfStrategy[]> {
+  const balances = await Promise.all(row.strategies.map((s) => retryOnLag(() => strategyBalances(net, makerOf(row), s.hash))));
+  return row.strategies.filter((_, i) => balances[i]!.eth > 0n || balances[i]!.usdc > 0n);
+}
+
+/// A wallet-as-maker position left "pending" (signing stopped partway) can be closed too, if any of its
+/// strategies are live. A manager position cannot be pending-and-live: its open is one transaction.
+const isPartial = (row: SelfRow) => row.status === "pending" && row.manager === null;
+
 export async function prepareClose(net: SelfNet, account: Account, id: string) {
   const row = await ownRow(net, account.privyUserId, id);
+  if (isPartial(row)) {
+    const live = await liveStrategies(net, row);
+    if (live.length === 0) throw Object.assign(new Error("nothing from this position is open on chain, so there is nothing to close"), { status: 409 });
+    const { aqua, router } = deployment(net);
+    return { positionId: id, steps: await withFees(net, planSelfClose(live, net.pair, aqua, router)) };
+  }
   if (row.status !== "open") throw Object.assign(new Error("this position is not open"), { status: 409 });
   return { positionId: id, steps: await withFees(net, closeSteps(net, row)) };
+}
+
+/// The docks a customer signed for a partly opened position: each transaction must be exactly the dock
+/// of one of the position's strategies, sent from the wallet, with none repeated. Rebuilt from the
+/// stored strategies, never taken from the client.
+async function signedDocks(net: SelfNet, row: SelfRow, hashes: string[]): Promise<Step[]> {
+  const { aqua, router } = deployment(net);
+  const all = planSelfClose(row.strategies, net.pair, aqua, router);
+  const c = selfClient(net);
+  const txs = await Promise.all(hashes.map((h) => retryOnLag(() => c.getTransaction({ hash: h as Hex }), { tries: 6, delayMs: 2_000 })));
+  const chosen = all.filter((step) => txs.some((t) => t.to?.toLowerCase() === step.to.toLowerCase() && t.input.toLowerCase() === step.data.toLowerCase() && t.from.toLowerCase() === row.wallet.toLowerCase()));
+  if (chosen.length !== hashes.length) throw new GuardError("these transactions are not closes of this position's strategies from your wallet");
+  return chosen;
 }
 
 export async function recordClose(net: SelfNet, account: Account, id: string, hashes: string[]) {
   const row = await ownRow(net, account.privyUserId, id);
   if (row.status === "closed") return viewSelf(net, row);
-  if (row.status !== "open") throw Object.assign(new Error("this position is not open"), { status: 409 });
-  await verifySigned(net, row.wallet, closeSteps(net, row), hashes); // the closing transactions are rebuilt, not trusted
+  const partial = isPartial(row);
+  if (row.status !== "open" && !partial) throw Object.assign(new Error("this position is not open"), { status: 409 });
+  // the closing transactions are rebuilt, not trusted
+  await verifySigned(net, row.wallet, partial ? await signedDocks(net, row, hashes) : closeSteps(net, row), hashes);
   if (!(await settled(net, makerOf(row), row.strategies, (b) => b.eth === 0n && b.usdc === 0n)))
     throw new GuardError("the transactions went through, but Aqua still shows balances: try again in a moment");
-  await pool.query("update self_positions set status = 'closed', close_txs = $2, closed_at = now() where id = $1 and status = 'open'", [id, JSON.stringify(hashes)]);
+  await pool.query("update self_positions set status = 'closed', close_txs = $2, closed_at = now() where id = $1 and status in ('open', 'pending')", [id, JSON.stringify(hashes)]);
   return viewSelf(net, await ownRow(net, account.privyUserId, id));
 }
 
 export async function listSelf(net: SelfNet, privyUserId: string) {
   const { rows } = await pool.query(
-    `select ${COLUMNS} from self_positions where privy_user_id = $1 and chain_id = $2 and status in ('open', 'closed') order by created_at desc limit 20`,
+    `select ${COLUMNS} from self_positions where privy_user_id = $1 and chain_id = $2 and status in ('open', 'closed', 'pending') order by created_at desc limit 20`,
     [privyUserId, net.chainId],
   );
   const spot = await ethUsd().catch(() => null);
-  return Promise.all((rows as SelfRow[]).map((r) => viewSelf(net, r, spot)));
+  const views = await Promise.all((rows as SelfRow[]).map((r) => viewSelf(net, r, spot)));
+  // A pending row is a prepared position that was never confirmed: only show it if signing got partway,
+  // that is, if some of it is live in Aqua, so it can be closed.
+  return views.filter((v) => v.status !== "pending" || v.weth > 0 || v.usdc > 0);
 }
 
 /// A position with its live balances, valued at today's price (display only).
@@ -277,8 +313,8 @@ export async function viewSelf(net: SelfNet, row: SelfRow, spotIn?: number | nul
   const spot = spotIn === undefined ? await ethUsd().catch(() => null) : spotIn;
   let eth = 0n;
   let usdc = 0n;
-  let readable = row.status === "open";
-  if (row.status === "open") {
+  let readable = row.status === "open" || isPartial(row);
+  if (row.status === "open" || isPartial(row)) {
     for (const s of row.strategies) {
       try {
         const b = await strategyBalances(net, makerOf(row), s.hash);
@@ -295,6 +331,8 @@ export async function viewSelf(net: SelfNet, row: SelfRow, spotIn?: number | nul
     /// The contract holding the tokens while the position is open, or null when the wallet itself does.
     manager: row.manager,
     status: row.status,
+    /// Signing stopped partway: some strategies are live in Aqua, the rest never opened.
+    partial: isPartial(row),
     mode: row.mode,
     amountUsd: row.amountUsd,
     spotOpen: row.spotOpen,

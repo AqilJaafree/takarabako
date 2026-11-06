@@ -42,7 +42,9 @@ export interface SelfPosition {
   wallet: string;
   /// The position manager contract holding the tokens, or null when the wallet itself does.
   manager?: string | null;
-  status: "open" | "closed";
+  status: "open" | "closed" | "pending";
+  /// Signing stopped partway: some strategies are live in Aqua and can be closed, the rest never opened.
+  partial?: boolean;
   mode: SelfMode;
   amountUsd: number;
   spotOpen: number;
