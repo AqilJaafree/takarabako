@@ -58,3 +58,31 @@ export interface SelfPosition {
   closeTxs: string[] | null;
   createdAt: string;
 }
+
+/// GET /self/:net/dashout — what selling the wallet's leftover base token for USDC through Aqua would get now.
+export interface DashOutQuote {
+  symbols: { base: string; quote: string };
+  /// The wallet's base-token balance, and how much of it would be sold.
+  balance: number;
+  amountIn: number;
+  amountOut: number;
+  /// Base token no open strategy could take.
+  unfilled: number;
+  /// USDC per base token the strategies pay, the market's, and how far below it (%).
+  rate: number | null;
+  marketRate: number | null;
+  discountPct: number | null;
+  /// False when the price is too far below the market (or cannot be checked): then it cannot be prepared.
+  allowed: boolean;
+  reason: string | null;
+  strategies: number;
+  maxDiscountPct: number;
+}
+
+/// POST /self/:net/dashout/prepare
+export interface DashOutPrepared {
+  steps: SelfStep[];
+  quote: DashOutQuote;
+  /// The least USDC the swaps will accept: the quote less the slippage allowance.
+  minOut: number;
+}

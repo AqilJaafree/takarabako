@@ -7,6 +7,7 @@ import type { SelfPosition, SelfPrepared, SelfShape, SelfStep, SelfWallet } from
 import { shortHex, usd } from "@/lib/format";
 import { useArcWallets, type ArcWalletsApi } from "@/lib/useArcWallets";
 import { ConfirmRealMoney } from "./RealMoney";
+import { DashOut } from "./DashOut";
 import { RangeChart } from "./RangeChart";
 
 /// Open and close Aqua positions with the customer's own wallet, on Arc mainnet or (for testing)
@@ -365,6 +366,8 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
         <button type="button" className="btn btn-ghost small" onClick={copy}>{copied ? "Copied" : "Copy address"}</button>
         {empty && <span className="muted small">Send {sym.quote} and {sym.base} on {network.name} to this address first, plus {walletData?.gasSymbol ?? "USDC"} for network fees.</span>}
       </p>
+
+      {address && walletData && <DashOut network={network} base={base} address={address} held={walletData.weth} wallets={wallets} onDone={() => loadWallet(address)} disabled={busy} />}
 
       <h3>Pick a strategy, then shape it</h3>
       <div className="self-modes" role="radiogroup" aria-label="Strategy">
