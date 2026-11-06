@@ -190,7 +190,7 @@ interface StoredStrategy {
   shipTx: string;
 }
 
-function buildOrder(bin: { min: number; max: number } | null, feeBps: number) {
+export function buildOrder(bin: { min: number; max: number } | null, feeBps: number) {
   const maker = new sv.Address(treasuryAddress!);
   const strategy = bin
     ? (() => {
