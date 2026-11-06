@@ -21,6 +21,8 @@ import { startDeedWatcher } from "./ensTransfers.js";
 import { startOpsMonitor } from "./opsMonitor.js";
 import { startDailyReports } from "./report.js";
 import { startAquaSimulator } from "./aquaSimulator.js";
+import { publicClient } from "./chain.js";
+import { aquaReady, aquaUnavailableReason, verifyAquaOnChain } from "./aqua.js";
 import { migrate } from "./db.js";
 import { startDepositWorker } from "./depositQueue.js";
 
@@ -81,6 +83,19 @@ startOpsMonitor();
 startDailyReports();
 startAquaSimulator();
 startDeedWatcher();
+
+console.log(`[chain] ${config.network.name} (id ${config.network.chain.id}), gas in ${config.network.nativeSymbol}`);
+publicClient
+  .getChainId()
+  .then((id) => id !== config.network.chain.id && console.error(`[chain] RPC_URL is chain ${id} but CHAIN=${config.network.key} expects ${config.network.chain.id} — check RPC_URL, USDC_ADDRESS and VAULT_ADDRESS`))
+  .catch((err) => console.error("[chain] RPC unreachable:", err instanceof Error ? err.message : err));
+if (aquaReady) {
+  verifyAquaOnChain()
+    .then((r) => console.log(r.ok ? `[aqua] ready (${config.aqua.origin} addresses)` : `[aqua] not found on chain: ${r.missing.join(", ")}`))
+    .catch((err) => console.error("[aqua] check failed:", err instanceof Error ? err.message : err));
+} else {
+  console.log(`[aqua] yield off: ${aquaUnavailableReason()}`);
+}
 
 app.listen(config.port, () => {
   console.log(`takarabako backend listening on :${config.port}`);

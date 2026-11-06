@@ -36,7 +36,33 @@ export const PAIR: PairTokens = {
   usdc: { address: config.usdcAddress, decimals: 6n },
 };
 
-export const aquaReady = chainReady && Boolean(config.aqua.methAddress && config.usdcAddress);
+export const aquaReady = chainReady && config.aqua.deployed && Boolean(config.aqua.methAddress && config.usdcAddress);
+
+/// Why yield positions can't open on this network (null = they can).
+export function aquaUnavailableReason(): string | null {
+  if (!chainReady) return "chain not configured — cannot open an Aqua position";
+  if (!config.aqua.deployed)
+    return `1inch Aqua is not available on ${config.network.name} — set AQUA_ADDRESS and AQUA_ROUTER_ADDRESS if you deployed it there`;
+  if (!config.aqua.methAddress || !config.usdcAddress) return "set METH_ADDRESS and USDC_ADDRESS for the Aqua pair";
+  return null;
+}
+
+/// Reads the chain to confirm the Aqua registry, the SwapVM router and both
+/// pair tokens have code at the configured addresses.
+export async function verifyAquaOnChain(): Promise<{ ok: boolean; missing: string[] }> {
+  const checks: Array<[string, string]> = [
+    ["Aqua registry", config.aqua.address],
+    ["SwapVM router", config.aqua.router],
+    ["base token", config.aqua.methAddress],
+    ["USDC", config.usdcAddress],
+  ];
+  const missing: string[] = [];
+  for (const [name, address] of checks) {
+    const code = address ? await publicClient.getCode({ address: address as Address }).catch(() => undefined) : undefined;
+    if (!code || code === "0x") missing.push(`${name} (${address || "unset"})`);
+  }
+  return { ok: missing.length === 0, missing };
+}
 
 const aquaAbi = parseAbi(["function rawBalances(address maker, address app, bytes32 strategyHash, address token) view returns (uint248, uint8)"]);
 const erc20Abi = parseAbi([
@@ -125,7 +151,7 @@ let approvalsChecked = false;
 
 /// Aqua pulls from the maker's wallet during swaps, so the treasury approves
 /// it once per token.
-async function ensureApprovals() {
+export async function ensureApprovals() {
   if (approvalsChecked) return;
   for (const token of [PAIR.eth.address, PAIR.usdc.address] as Address[]) {
     const allowance = await publicClient.readContract({ address: token, abi: erc20Abi, functionName: "allowance", args: [treasuryAddress!, config.aqua.address as Address] });
@@ -137,7 +163,7 @@ async function ensureApprovals() {
   approvalsChecked = true;
 }
 
-async function shipBin(bin: Bin | null, usd: number, spot: number, feeBps: number): Promise<StoredStrategy> {
+export async function shipBin(bin: Bin | null, usd: number, spot: number, feeBps: number): Promise<StoredStrategy> {
   const { eth, usdc } = allocate(usd, bin, spot, PAIR);
   const order = buildOrder(bin, feeBps);
   const encoded = order.encode().toString();
@@ -239,7 +265,7 @@ export function planPosition(req: Pick<OpenRequest, "mode" | "shape" | "priceMin
 }
 
 export async function openPosition(req: OpenRequest): Promise<PositionRow> {
-  if (!aquaReady || !treasuryAddress) throw new Error("chain not configured — cannot open an Aqua position");
+  if (!aquaReady || !treasuryAddress) throw new Error(aquaUnavailableReason() ?? "cannot open an Aqua position");
   const spot = await ethUsd();
   const plan = planPosition(req, spot);
   await ensureApprovals();
@@ -284,7 +310,7 @@ export async function openPosition(req: OpenRequest): Promise<PositionRow> {
   return rows[0];
 }
 
-async function dockAll(strategies: StoredStrategy[]) {
+export async function dockAll(strategies: StoredStrategy[]) {
   const hashes: `0x${string}`[] = [];
   for (const s of strategies) {
     const tx = aquaContract().dock({

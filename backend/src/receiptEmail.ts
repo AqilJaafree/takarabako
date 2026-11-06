@@ -1,3 +1,4 @@
+import { config } from "./config.js";
 import { findByPrivyUserId } from "./accounts.js";
 import { getReceipt, markReceiptEmailed, type Receipt } from "./history.js";
 import { sendEmail } from "./mailer.js";
@@ -10,7 +11,7 @@ function receiptHtml(r: Receipt, ensName: string | null) {
     .map((n) => {
       const credited =
         n.status === "confirmed"
-          ? `${money(n.usdAmount ?? 0)} · <a href="https://sepolia.etherscan.io/tx/${n.txHash}">${n.txHash?.slice(0, 10)}…</a>`
+          ? `${money(n.usdAmount ?? 0)} · <a href="${config.network.explorerUrl}/tx/${n.txHash}">${n.txHash?.slice(0, 10)}…</a>`
           : "not credited — please contact us";
       return `<tr><td style="padding:6px 12px 6px 0">${face(n.amount, n.currency)}</td><td style="padding:6px 0">${credited}</td></tr>`;
     })

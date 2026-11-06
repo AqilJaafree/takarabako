@@ -1,7 +1,7 @@
 import { decodeFunctionResult, encodeFunctionData, maxUint256, parseAbi, type Address } from "viem";
 import { config } from "./config.js";
 import { sv } from "./aquaSdk.js";
-import { ethUsd, openPositions, PAIR, strategyBalances } from "./aqua.js";
+import { aquaReady, aquaUnavailableReason, ethUsd, openPositions, PAIR, strategyBalances } from "./aqua.js";
 import { publicClient, sendTreasuryTx, sendTreasuryTxNoWait, treasuryAddress, waitForTx } from "./chain.js";
 
 /// A tiny market maker for the demo. On mainnet, arbitrage traders keep Aqua
@@ -134,6 +134,10 @@ let timer: NodeJS.Timeout | null = null;
 
 export function startAquaSimulator() {
   if (!config.aqua.simEnabled || timer) return;
+  if (!aquaReady) {
+    console.log(`[aqua-sim] off: ${aquaUnavailableReason()}`);
+    return;
+  }
   const tick = () =>
     simulateOnce()
       .then((trades) => trades.length && console.log(`[aqua-sim] ${trades.join("; ")}`))

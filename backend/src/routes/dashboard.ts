@@ -62,8 +62,8 @@ dashboardRouter.get("/dashboard/summary", asyncHandler(async (_req, res) => {
     if (treasury.data && treasury.data.eth < THRESHOLDS.treasuryEth)
       items.push({
         severity: "critical",
-        title: "Treasury is low on Sepolia ETH",
-        detail: `${treasury.data.eth.toFixed(4)} ETH left; every deposit costs gas. Top up ${treasury.data.address} from a faucet.`,
+        title: `Treasury is low on ${config.network.name} gas (${config.network.nativeSymbol})`,
+        detail: `${treasury.data.eth.toFixed(4)} ${config.network.nativeSymbol} left; every deposit costs gas. Top up ${treasury.data.address} from a faucet.`,
       });
     const coverage = vault.data?.reserveCoverage;
     if (coverage != null && coverage < THRESHOLDS.reserveCoverage)
