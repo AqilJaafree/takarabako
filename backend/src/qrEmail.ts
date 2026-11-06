@@ -5,7 +5,7 @@ import { sendEmail } from "./mailer.js";
 /// the deposit terminal's camera to deposit without typing their email.
 /// Never throws: a failed email must not fail registration. On failure the
 /// caller gets a data URL to show the QR on the kiosk screen instead.
-export async function sendQrEmail(to: string, wallet: string, ensName: string | null) {
+export async function sendQrEmail(to: string, wallet: string, label: string | null) {
   const png = await QRCode.toBuffer(wallet, { width: 480, margin: 2 });
   const dataUrl = `data:image/png;base64,${png.toString("base64")}`;
 
@@ -13,7 +13,7 @@ export async function sendQrEmail(to: string, wallet: string, ensName: string | 
     to,
     subject: "Your Takarabako quick-deposit QR",
     html: `
-      <p>Welcome to Takarabako${ensName ? ` — your account is <b>${ensName}</b>` : ""}.</p>
+      <p>Welcome to Takarabako${label ? ` — your account is <b>${label}</b>` : ""}.</p>
       <p>Next time, show this QR to the kiosk camera to deposit cash without typing your email.
       It only allows deposits; log in with your email to withdraw or earn yield.</p>
       <p><img src="cid:wallet-qr" alt="Your wallet QR" width="240" height="240" /></p>

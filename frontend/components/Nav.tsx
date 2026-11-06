@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/qr", label: "Deposit" },
   { href: "/yield", label: "Yield" },
   { href: "/send", label: "Send" },
+  { href: "/bridge", label: "Bridge" },
   { href: "/withdraw", label: "Withdraw" },
   { href: "/history", label: "History" },
   { href: "/kiosks", label: "Find a kiosk" },

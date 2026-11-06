@@ -10,7 +10,7 @@ after(() => pool.end());
 await accounts.insertAccount({
   privyUserId: "did:privy:q1", email: "q@example.com",
   privyWallet: "0x0000000000000000000000000000000000000011",
-  boundAddress: "0x0000000000000000000000000000000000000022", ensName: null,
+  boundAddress: "0x0000000000000000000000000000000000000022", label: null,
 });
 
 function fakeChain() {

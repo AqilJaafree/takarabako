@@ -4,16 +4,21 @@ import { findByPrivyUserId } from "../accounts.js";
 import { requireSession } from "../sessions.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { ALIASES, LABELS, mbCall, multibaasReady } from "../multibaas.js";
-import { chainReady, previewValueOnChain } from "../chain.js";
+import { config } from "../config.js";
+import { balancesByChain, totalOf } from "../balances.js";
 
 /// The customer's live vault value (principal + accrued yield): through
 /// MultiBaas when it's configured, straight from the chain otherwise.
 async function liveVaultValue(boundAddress: string): Promise<number | null> {
+  const balances = await balancesByChain(boundAddress);
+  if (!balances.length) return null;
+  let total = totalOf(balances);
   if (multibaasReady) {
+    // The primary chain's figure comes through MultiBaas.
     const raw = await mbCall<string>(ALIASES.vault, LABELS.vault, "previewValue", [boundAddress]).catch(() => null);
-    if (raw !== null) return Number(raw) / 1e6; // USDC, 6 decimals
+    if (raw !== null) total += Number(raw) / 1e6 - (balances.find((b) => b.chain === config.defaultChain)?.balance ?? 0); // USDC, 6 decimals
   }
-  return chainReady ? previewValueOnChain(boundAddress as `0x${string}`) : null;
+  return total;
 }
 
 /// GET /position — PRD §7.3, for the kiosk screen (PRD §7.2). The user
@@ -30,7 +35,7 @@ positionRouter.get("/position", requireSession("full"), asyncHandler(async (_req
 
   const positions = (await positionSummaries(userId)).map((p) => ({
     positionId: p.positionId,
-    ensName: p.ensName,
+    name: p.name,
     pair: p.pair,
     riskTier: p.riskTier,
     label: p.label,
@@ -39,5 +44,5 @@ positionRouter.get("/position", requireSession("full"), asyncHandler(async (_req
     inRange: p.inRange,
   }));
 
-  res.json({ ensName: account.ensName, vaultValue: await liveVaultValue(account.boundAddress), positions });
+  res.json({ label: account.label, vaultValue: await liveVaultValue(account.boundAddress), positions });
 }));

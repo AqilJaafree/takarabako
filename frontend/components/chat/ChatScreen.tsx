@@ -329,11 +329,11 @@ function ConfirmCard({ card }: { card: Extract<Card, { type: "confirm_yield" | "
     setState({ kind: "busy" });
     try {
       if (card.type === "confirm_yield") {
-        const r = await api<{ ensName?: string; pair?: string }>("/api/yield", {
+        const r = await api<{ name?: string; pair?: string }>("/api/yield", {
           method: "POST",
           body: JSON.stringify({ riskLevel: card.riskTier, amount: card.amountUsd }),
         });
-        setState({ kind: "done", text: `Opened ${card.label}${r.ensName ? ` · ${r.ensName}` : ""}` });
+        setState({ kind: "done", text: `Opened ${card.label}${r.name ? ` · ${r.name}` : ""}` });
       } else {
         const r = await api<{ receipt?: string }>("/api/withdraw", { method: "POST" });
         setState({ kind: "done", text: r.receipt ?? "Sent to your wallet" });

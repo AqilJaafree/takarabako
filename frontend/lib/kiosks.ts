@@ -1,9 +1,10 @@
 /// Where the Takarabako kiosks are. One for now: the box at the ETHTokyo
-/// hackathon venue. `id` matches the backend's KIOSK_ID (and its ENS name).
+/// hackathon venue. `id` matches the backend's KIOSK_ID and the id the kiosk is registered under;
+/// `chain` is the chain its notes are credited on.
 
 export interface KioskLocation {
   id: string;
-  ens: string;
+  chain: "sepolia" | "arc-testnet";
   name: string;
   lat: number;
   lng: number;
@@ -17,7 +18,7 @@ export interface KioskLocation {
 export const KIOSKS: KioskLocation[] = [
   {
     id: "tokyo-01",
-    ens: "tokyo-01.takarabako.eth",
+    chain: "sepolia",
     name: "Takarabako · ETHTokyo",
     lat: 35.66700139908581,
     lng: 139.7491968121778,

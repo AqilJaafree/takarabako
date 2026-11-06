@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 
-/// The kiosk's identity: its ENS name and whether that name really resolves,
-/// through the official ENS v2 resolver, to the device key that signs every
-/// note this machine takes.
+/// The kiosk's identity: its id, and whether the device key this machine signs
+/// with is the one an operator registered for that id.
 export function MachineBadge() {
   const [state, setState] = useState<{ name: string | null; verified: boolean | null }>({ name: null, verified: null });
 
@@ -13,8 +12,9 @@ export function MachineBadge() {
     (async () => {
       const device = await fetch("/api/kiosk/device").then((r) => (r.ok ? r.json() : null)).catch(() => null);
       if (!device?.kiosk || !device.address) return;
-      const ens = await fetch(`/api/ens/resolve?name=${encodeURIComponent(device.kiosk)}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-      const verified = Boolean(ens && ens.kind === "kiosk" && ens.address?.toLowerCase() === device.address.toLowerCase());
+      const registered = await fetch("/api/kiosk/registered").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      const kiosk = (registered?.kiosks as Array<{ id: string; signer: string; active: boolean }> | undefined)?.find((k) => k.id === device.kiosk);
+      const verified = Boolean(kiosk && kiosk.active && kiosk.signer.toLowerCase() === String(device.address).toLowerCase());
       if (!cancelled) setState({ name: device.kiosk, verified });
     })();
     return () => {
@@ -26,7 +26,7 @@ export function MachineBadge() {
   return (
     <span
       className={`machine-id ${state.verified ? "is-ok" : "is-bad"}`}
-      title={state.verified ? "This machine signs every note; its key is published on ENS" : "This machine's key doesn't match its ENS name"}
+      title={state.verified ? "This machine signs every note with the key an operator registered for it" : "This machine's key isn't registered for its id"}
     >
       {state.verified ? "✓" : "!"} <span className="mono">{state.name}</span>
       <span className="machine-id-note">{state.verified ? "verified machine" : "unverified"}</span>

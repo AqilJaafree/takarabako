@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { ActionItem, ChainEvent, KioskState, OpsData, Severity, Summary, Holders, Flows, Positions } from "@/lib/opsTypes";
-import { addressUrl, apy, shortHex, timeAgo, txUrl, usd } from "@/lib/format";
+import type { ActionItem, ChainEvent, ChainFilter, ChainKey, ChainSummary, KioskState, OpsData, Severity, Summary, Holders, Flows, Positions } from "@/lib/opsTypes";
+import { addressUrl, apy, chainName, shortHex, timeAgo, txUrl, usd } from "@/lib/format";
 import { FlowsChart, HBars } from "./charts";
 import { AgentPanel } from "./AgentPanel";
 import { AiTreasury } from "./AiTreasury";
+import { ChainsPanel } from "./ChainsPanel";
+import { BridgePanel } from "./BridgePanel";
 import { BRAND_MARK } from "@/lib/theme";
 
 const REFRESH_MS = 20_000; // matches the backend's panel cache
@@ -54,22 +56,29 @@ async function operatorPost(path: string, token: string, body?: unknown) {
 export function OpsDashboard({ initial }: { initial: OpsData }) {
   const [data, setData] = useState(initial);
   const [refreshing, setRefreshing] = useState(false);
+  const [filter, setFilter] = useState<ChainFilter>(initial.chain ?? "all");
   const [token, setToken] = useOpsToken();
 
-  const refresh = useCallback(async () => {
+  const load = useCallback(async (chain: ChainFilter) => {
     setRefreshing(true);
     try {
-      const res = await fetch("/api/ops/data", { cache: "no-store" });
+      const res = await fetch(`/api/ops/data?chain=${chain}`, { cache: "no-store" });
       if (res.ok) setData(await res.json());
     } finally {
       setRefreshing(false);
     }
   }, []);
+  const refresh = useCallback(() => load(filter), [load, filter]);
 
   useEffect(() => {
     const id = setInterval(refresh, REFRESH_MS);
     return () => clearInterval(id);
   }, [refresh]);
+
+  const pick = (next: ChainFilter) => {
+    setFilter(next);
+    void load(next);
+  };
 
   const summary = ok(data.summary) ? data.summary : null;
 
@@ -78,9 +87,14 @@ export function OpsDashboard({ initial }: { initial: OpsData }) {
       <header className="ops-head">
         <div>
           <div className="brand"><span className="kanji">{BRAND_MARK}</span> Treasury ops</div>
-          <p className="muted small">Proof of reserve, vault health and the treasury agent. On-chain data via Curvegrid MultiBaas.</p>
+          <p className="muted small">Proof of reserve, vault health, bridging and the treasury agent across Ethereum Sepolia and Arc Testnet. Sepolia data via Curvegrid MultiBaas; Arc from the chain&apos;s own event log.</p>
         </div>
         <div className="row">
+          <div className="ops-filter" role="group" aria-label="Chain">
+            {(["all", "sepolia", "arc-testnet"] as const).map((c) => (
+              <button key={c} aria-pressed={filter === c} onClick={() => pick(c)}>{c === "all" ? "All chains" : chainName(c)}</button>
+            ))}
+          </div>
           {summary && (
             <>
               <span className={`pill ${summary.multibaas ? "ok" : "bad"}`}>{summary.multibaas ? "MultiBaas connected" : "MultiBaas not configured"}</span>
@@ -105,13 +119,15 @@ export function OpsDashboard({ initial }: { initial: OpsData }) {
       />
 
       {summary && <ActionItems items={summary.actionItems} />}
-      {summary && <StatTiles summary={summary} flows={ok(data.flows) ? data.flows : null} />}
+      {summary && <StatTiles summary={summary} flows={ok(data.flows) ? data.flows : null} filter={filter} />}
+      {summary && <ChainsPanel chains={summary.chains} indexers={summary.indexers} />}
+      <BridgePanel bridge={ok(data.bridge) ? data.bridge : null} token={token} onChanged={refresh} />
 
       <div className="ops-grid">
         {summary && <ReservePanel summary={summary} token={token} onChanged={refresh} />}
         <section className="card">
           <h2>Banknote mix</h2>
-          <p className="muted small">USD minted as tkCASH per note face value (MultiBaas query <code>cash_in_by_denomination</code>).</p>
+          <p className="muted small">USD minted as tkCASH per note face value, from the CashIn events of the chains selected.</p>
           {ok(data.flows) && data.flows.denominations.data ? (
             <HBars
               rows={data.flows.denominations.data.map((d) => ({ key: String(d.denomination), label: `${d.denomination} note`, value: d.total }))}
@@ -133,7 +149,7 @@ export function OpsDashboard({ initial }: { initial: OpsData }) {
             </span>
           )}
         </div>
-        <p className="muted small">Cash in and out of the kiosk per day, from tkCASH CashIn/CashOut events streamed by the MultiBaas webhook.</p>
+        <p className="muted small">Cash in and out of the kiosks per day, from tkCASH CashIn/CashOut events. Totals cover the chains selected.</p>
         {ok(data.flows) ? <FlowsChart daily={data.flows.daily} /> : <PanelError error={data.flows.error} />}
       </section>
 
@@ -159,9 +175,8 @@ function PanelError({ error }: { error: string | null | undefined }) {
 function SetupNotice() {
   return (
     <div className="notice pending">
-      <b>Connect MultiBaas to fill this dashboard.</b> In <code>backend/.env</code> set <code>MULTIBAAS_URL</code> and{" "}
-      <code>MULTIBAAS_API_KEY</code>, deploy tkCASH and set <code>CASH_RECEIPT_ADDRESS</code>, then run <code>npm run mb:setup</code> in{" "}
-      <code>backend/</code>. The README has the full steps.
+      <b>MultiBaas isn&apos;t connected.</b> The dashboard falls back to each chain&apos;s own event log, which only fills from the moment the backend starts. For Sepolia&apos;s full history, set <code>MULTIBAAS_URL</code> and{" "}
+      <code>MULTIBAAS_API_KEY</code> in <code>backend/.env</code> and run <code>npm run mb:setup</code> in <code>backend/</code>.
     </div>
   );
 }
@@ -199,51 +214,64 @@ function Tile({ label, value, sub, tone }: { label: string; value: string; sub?:
   );
 }
 
-// Tiles are small: say what's missing, not the full error.
-const brief = (error: string | null | undefined) =>
-  !error ? undefined : /MultiBaas/i.test(error) ? "needs MultiBaas" : "unavailable";
-
-function StatTiles({ summary, flows }: { summary: Summary; flows: Flows | null }) {
-  const r = summary.reserve.data;
-  const v = summary.vault.data;
-  const t = summary.treasury.data;
-  const coverage = v?.reserveCoverage;
+function StatTiles({ summary, flows, filter }: { summary: Summary; flows: Flows | null; filter: ChainFilter }) {
+  const t = summary.totals;
+  const anyTk = summary.chains.some((c) => c.reserve.data?.configured);
+  const backed = summary.chains.every((c) => !c.reserve.data?.configured || c.reserve.data.backed);
+  const covs = summary.chains.map((c) => c.vault.data?.reserveCoverage).filter((v): v is number => v != null);
+  const worst = covs.length ? Math.min(...covs) : null;
+  const lowGas = summary.chains.filter((c) => {
+    const tr = c.treasury.data;
+    return c.ready && tr && (tr.gasIsUsdc ? (tr.native ?? 0) < 1 : (tr.native ?? tr.eth) < 0.05);
+  });
+  const scope = filter === "all" ? "both chains" : chainName(filter);
   return (
     <section className="ops-tiles">
       <Tile
         label="tkCASH supply"
-        value={r?.configured ? usd(r.supply) : "—"}
-        sub={r?.configured ? (r.backed ? "✓ Fully backed by kiosk cash" : "✗ Supply ≠ reserve") : "not deployed"}
-        tone={r?.configured ? (r.backed ? "ok" : "bad") : undefined}
+        value={anyTk ? usd(t.tkcashSupply) : "—"}
+        sub={anyTk ? (backed ? `✓ Fully backed · ${scope}` : "✗ Supply ≠ reserve on a chain") : "not deployed"}
+        tone={anyTk ? (backed ? "ok" : "bad") : undefined}
       />
-      <Tile label="Cash in kiosks" value={r?.configured ? usd(r.reserve) : "—"} sub={r?.configured ? `${r.kiosks.length} kiosk` : undefined} />
-      <Tile label="Vault liability" value={usd(v?.liabilityUsd)} sub={v ? `APY ${apy(v.apyBps)}` : brief(summary.vault.error)} />
+      <Tile label="Cash in kiosks" value={anyTk ? usd(t.tkcashReserve) : "—"} sub={anyTk ? `across ${scope}` : undefined} />
+      <Tile label="Vaults owe" value={usd(t.liabilityUsd)} sub={`${usd(t.vaultUsdcBalance)} USDC held · ${scope}`} />
       <Tile
-        label="Reserve coverage"
-        value={coverage == null ? "—" : `${coverage.toFixed(2)}×`}
-        sub={v ? `${usd(v.vaultUsdcBalance)} USDC held` : undefined}
-        tone={coverage == null ? undefined : coverage < 1 ? "bad" : coverage < 1.2 ? "warn" : "ok"}
+        label="Weakest coverage"
+        value={worst == null ? "—" : `${worst.toFixed(2)}×`}
+        sub={worst == null ? undefined : "lowest vault balance ÷ liability"}
+        tone={worst == null ? undefined : worst < 1 ? "bad" : worst < 1.2 ? "warn" : "ok"}
       />
       <Tile
-        label="Treasury gas"
-        value={t ? `${t.eth.toFixed(4)} ETH` : "—"}
-        sub={t ? (t.eth < 0.05 ? "✗ Top up now" : "✓ Enough for deposits") : brief(summary.treasury.error)}
-        tone={t ? (t.eth < 0.05 ? "bad" : "ok") : undefined}
+        label="Treasury USDC"
+        value={usd(t.treasuryUsdc)}
+        sub={lowGas.length ? `✗ Top up gas on ${lowGas.map((c) => c.name).join(", ")}` : "✓ Enough gas for deposits"}
+        tone={lowGas.length ? "bad" : "ok"}
       />
-      <Tile label="Treasury float" value={t?.musdc == null ? "—" : usd(t.musdc)} sub={t?.musdc == null ? "needs MultiBaas" : "mUSDC for fronting deposits"} />
+      <Tile label="In flight" value={String(summary.bridge.inFlight)} sub="bridge transfers between chains" tone={summary.bridge.inFlight ? "warn" : undefined} />
       <Tile label="Fee revenue" value={flows ? usd(flows.withdrawals.fees) : "—"} sub={`${summary.feeBps / 100}% on cash withdrawals · ${flows?.days ?? 14}d`} />
     </section>
   );
 }
 
 function ReservePanel({ summary, token, onChanged }: { summary: Summary; token: string; onChanged: () => void }) {
-  const r = summary.reserve.data;
   return (
     <section className="card">
       <h2>Proof of reserve</h2>
       <p className="muted small">Each tkCASH is a claim on one dollar of banknotes in a kiosk. Operators count the box; a mismatch freezes that kiosk.</p>
+      {summary.chains.map((c) => (
+        <ChainReserve key={c.chain} c={c} retired={summary.retiredKiosks} token={token} onChanged={onChanged} />
+      ))}
+    </section>
+  );
+}
+
+function ChainReserve({ c, retired, token, onChanged }: { c: ChainSummary; retired?: string[]; token: string; onChanged: () => void }) {
+  const r = c.reserve.data;
+  return (
+    <div style={{ marginTop: 14 }}>
+      <p className="label">{c.name}</p>
       {!r?.configured ? (
-        <PanelError error={summary.reserve.error ?? "Deploy tkCASH and set CASH_RECEIPT_ADDRESS to see reserves."} />
+        <PanelError error={c.reserve.error ?? "Deploy tkCASH on this chain and set its CASH_RECEIPT_ADDRESS to see reserves."} />
       ) : (
         <>
           <div className="ops-table-wrap">
@@ -255,8 +283,8 @@ function ReservePanel({ summary, token, onChanged }: { summary: Summary; token: 
                     <td className="mono">{k.kioskId}</td>
                     <td>{usd(k.reserve)}</td>
                     <td>
-                      <span className={`pill ${k.frozen ? "bad" : k.active ? "ok" : summary.retiredKiosks?.includes(k.kioskId) ? "" : "warn"}`}>
-                        {k.frozen ? "Frozen" : k.active ? "In service" : summary.retiredKiosks?.includes(k.kioskId) ? "Retired" : "Out of service"}
+                      <span className={`pill ${k.frozen ? "bad" : k.active ? "ok" : retired?.includes(k.kioskId) ? "" : "warn"}`}>
+                        {k.frozen ? "Frozen" : k.active ? "In service" : retired?.includes(k.kioskId) ? "Retired" : "Out of service"}
                       </span>
                     </td>
                     <td>{k.lastAuditAt ? timeAgo(new Date(k.lastAuditAt * 1000).toISOString()) : "never"}</td>
@@ -265,16 +293,13 @@ function ReservePanel({ summary, token, onChanged }: { summary: Summary; token: 
               </tbody>
             </table>
           </div>
-          {r.kiosks.filter((k) => !summary.retiredKiosks?.includes(k.kioskId)).map((k) => (
-            <CountForm key={k.kioskId} kiosk={k} token={token} onChanged={onChanged} />
+          {r.kiosks.filter((k) => !retired?.includes(k.kioskId) && (k.active || k.reserve > 0 || k.frozen)).map((k) => (
+            <CountForm key={k.kioskId} kiosk={k} chain={c.chain} token={token} onChanged={onChanged} />
           ))}
-          <p className="label" style={{ marginTop: 16 }}>Recent counts</p>
-          {r.attestations.length === 0 ? (
-            <p className="ops-empty">No operator counts yet.</p>
-          ) : (
-            <div className="ops-table-wrap">
+          {r.attestations.length > 0 && (
+            <div className="ops-table-wrap" style={{ marginTop: 10 }}>
               <table className="ops-table">
-                <thead><tr><th>Kiosk</th><th>Counted</th><th>Chain</th><th>Difference</th></tr></thead>
+                <thead><tr><th>Recent counts</th><th>Counted</th><th>Chain</th><th>Difference</th></tr></thead>
                 <tbody>
                   {r.attestations.map((a, i) => (
                     <tr key={i}>
@@ -290,18 +315,20 @@ function ReservePanel({ summary, token, onChanged }: { summary: Summary; token: 
           )}
         </>
       )}
-    </section>
+    </div>
   );
 }
 
 const who = (name: string | null, address: string) => name ?? shortHex(address);
+const chainSplit = (chains?: Record<string, number>) =>
+  chains && Object.keys(chains).length > 1 ? ` · ${Object.entries(chains).map(([k, v]) => `${chainName(k)} ${usd(v)}`).join(", ")}` : "";
 
 function HoldersPanel({ holders, error }: { holders: Holders | null; error: string | null }) {
   const tk = holders?.tkcash.data;
   return (
     <section className="card">
       <h2>tkCASH holders</h2>
-      <p className="muted small">Balances rebuilt from Transfer events by the MultiBaas query <code>tkcash_holders</code>.</p>
+      <p className="muted small">Balances rebuilt from Transfer events, summed across the chains selected.</p>
       {!tk ? (
         <PanelError error={holders?.tkcash.error ?? error} />
       ) : (
@@ -312,7 +339,7 @@ function HoldersPanel({ holders, error }: { holders: Holders | null; error: stri
             <span className="pill">Top 3 {(tk.top3Share * 100).toFixed(0)}%</span>
           </div>
           <HBars
-            rows={tk.holders.map((h) => ({ key: h.address, label: who(h.name, h.address), value: h.balance, hint: h.name ? `${h.name} (${h.address})` : h.address }))}
+            rows={tk.holders.map((h) => ({ key: h.address, label: who(h.name, h.address), value: h.balance, hint: `${h.name ? `${h.name} (${h.address})` : h.address}${chainSplit(h.chains)}` }))}
             emptyText="No tkCASH minted yet."
             valueLabel="Balance"
           />
@@ -327,12 +354,12 @@ function DepositorsPanel({ holders }: { holders: Holders | null }) {
   return (
     <section className="card">
       <h2>Vault depositors</h2>
-      <p className="muted small">Principal deposited per customer (MultiBaas query <code>deposits_by_user</code>).</p>
+      <p className="muted small">Principal deposited per customer, summed across the chains selected.</p>
       {!v ? (
         <PanelError error={holders?.vault.error} />
       ) : (
         <HBars
-          rows={v.depositors.map((d) => ({ key: d.address, label: who(d.name, d.address), value: d.deposited, hint: d.name ? `${d.name} (${d.address})` : d.address }))}
+          rows={v.depositors.map((d) => ({ key: d.address, label: who(d.name, d.address), value: d.deposited, hint: `${d.name ? `${d.name} (${d.address})` : d.address}${chainSplit(d.chains)}` }))}
           emptyText="No vault deposits indexed yet."
           valueLabel="Deposited"
         />
@@ -344,7 +371,7 @@ function DepositorsPanel({ holders }: { holders: Holders | null }) {
 function PositionsPanel({ positions, error }: { positions: Positions | null; error: string | null }) {
   return (
     <section className="card">
-      <h2>1inch Aqua strategies</h2>
+      <h2>1inch Aqua strategies{positions?.chainName ? ` · ${positions.chainName}` : ""}</h2>
       <p className="muted small">
         ETH/USDC SwapVM strategies the treasury has shipped through{" "}
         {positions ? <a href={addressUrl(positions.aqua)} target="_blank" rel="noreferrer">Aqua</a> : "Aqua"}, valued live
@@ -385,7 +412,6 @@ function describe(e: ChainEvent): string {
     case "Deposited": return `Vault deposit ${usd6(e.inputs.usdcAmount)}`;
     case "Withdrawn": return `Vault withdrawal ${usd6(e.inputs.usdcAmount)}`;
     case "ReserveAttested": return `Count: ${usd6(e.inputs.counted)} vs chain ${usd6(e.inputs.onChain)}`;
-    case "LabelRegistered": return `ENS name ${e.inputs.label}`;
     case "Shipped": return "Aqua strategy shipped";
     case "Docked": return "Aqua strategy docked";
     case "Pulled": return `Aqua swap: out ${e.inputs.token?.toLowerCase().startsWith("0x6cc5") ? usd6(e.inputs.amount) + " USDC" : "mETH"}`;
@@ -399,19 +425,19 @@ function EventsPanel({ events, source }: { events: ChainEvent[] | null; source: 
     <section className="card">
       <div className="spread">
         <h2>Live events</h2>
-        {source && <span className="muted small">{source === "webhook" ? "via MultiBaas webhook" : "via MultiBaas index"}</span>}
+        {source && <span className="muted small">{source === "multibaas" ? "via MultiBaas index" : "from the event log"}</span>}
       </div>
       {!events || events.length === 0 ? (
-        <p className="ops-empty">No events yet. They appear here as MultiBaas delivers them.</p>
+        <p className="ops-empty">No events yet. They appear here as each chain&apos;s contracts emit them.</p>
       ) : (
         <ul className="ops-feed">
           {events.slice(0, 15).map((e, i) => (
             <li key={e.id ?? `${e.txHash}-${i}`}>
               <span className="ops-feed-what">{describe(e)}</span>
               <span className="muted small">
-                {e.contractLabel} · {timeAgo(e.triggeredAt)}
+                {e.contractLabel} · {timeAgo(e.triggeredAt)}{e.chain && <span className="chain-chip">{chainName(e.chain)}</span>}
                 {e.txHash && (
-                  <> · <a href={txUrl(e.txHash)} target="_blank" rel="noreferrer">{shortHex(e.txHash)}</a></>
+                  <> · <a href={txUrl(e.txHash, e.chain)} target="_blank" rel="noreferrer">{shortHex(e.txHash)}</a></>
                 )}
               </span>
             </li>
@@ -425,7 +451,7 @@ function EventsPanel({ events, source }: { events: ChainEvent[] | null; source: 
 
 /// An operator's physical cash count, recorded on-chain. A count that differs
 /// from the chain freezes the kiosk; a human unfreezes it after resolving.
-function CountForm({ kiosk, token, onChanged }: { kiosk: KioskState; token: string; onChanged: () => void }) {
+function CountForm({ kiosk, chain, token, onChanged }: { kiosk: KioskState; chain: ChainKey; token: string; onChanged: () => void }) {
   const [counted, setCounted] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string; tx?: string } | null>(null);
@@ -448,13 +474,13 @@ function CountForm({ kiosk, token, onChanged }: { kiosk: KioskState; token: stri
   const value = Number(counted);
   return (
     <div className="ops-count">
-      <p className="label">Record a count · {kiosk.kioskId}</p>
+      <p className="label">Record a count · {kiosk.kioskId} · {chainName(chain)}</p>
       <form
         className="row"
         onSubmit={(e) => {
           e.preventDefault();
           void run(value === kiosk.reserve ? "Count recorded — matches the chain." : "Count recorded — it differs, so the kiosk is now frozen.", () =>
-            operatorPost("/api/ops/attest", token, { kioskId: kiosk.kioskId, counted: value }),
+            operatorPost("/api/ops/attest", token, { kioskId: kiosk.kioskId, counted: value, chain }),
           );
         }}
       >
@@ -477,7 +503,7 @@ function CountForm({ kiosk, token, onChanged }: { kiosk: KioskState; token: stri
             type="button"
             className="btn btn-ghost small"
             disabled={busy || !token}
-            onClick={() => void run("Kiosk unfrozen.", () => operatorPost(`/api/ops/kiosks/${encodeURIComponent(kiosk.kioskId)}/unfreeze`, token))}
+            onClick={() => void run("Kiosk unfrozen.", () => operatorPost(`/api/ops/kiosks/${encodeURIComponent(kiosk.kioskId)}/unfreeze`, token, { chain }))}
           >
             Unfreeze
           </button>
@@ -488,7 +514,7 @@ function CountForm({ kiosk, token, onChanged }: { kiosk: KioskState; token: stri
         <p className={`small ${msg.ok ? "tone-ok" : "tone-bad"}`}>
           {msg.text}
           {msg.tx && (
-            <> · <a href={txUrl(msg.tx)} target="_blank" rel="noreferrer">{shortHex(msg.tx)}</a></>
+            <> · <a href={txUrl(msg.tx, chain)} target="_blank" rel="noreferrer">{shortHex(msg.tx)}</a></>
           )}
         </p>
       )}

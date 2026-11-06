@@ -15,7 +15,7 @@ const money = (n: number) => `$${n.toFixed(2)}`;
 const face = (amount: number, currency: string) => (currency === "MYR" ? `RM${amount}` : money(amount));
 const short = (h: string) => `${h.slice(0, 10)}…${h.slice(-6)}`;
 
-export function receiptPdf(r: Receipt, account: { email: string; ensName: string | null }): Promise<Buffer> {
+export function receiptPdf(r: Receipt, account: { email: string; label: string | null }): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     // Page height follows the number of notes (a receipt, not a letter).
     const notes = Math.min(r.notes.length, 14);
@@ -36,7 +36,7 @@ export function receiptPdf(r: Receipt, account: { email: string; ensName: string
 
     let y = 122;
     doc.fillColor(MUTED).font("Helvetica").fontSize(8).text("DEPOSITED TO", 28, y);
-    doc.fillColor(INK).font("Courier").fontSize(10).text(account.ensName ?? account.email, 28, y + 12);
+    doc.fillColor(INK).font("Courier").fontSize(10).text(account.label ?? account.email, 28, y + 12);
     doc.fillColor(MUTED).font("Helvetica").fontSize(8).text((r.finishedAt ?? r.startedAt).toUTCString(), 28, y + 28);
     y += 52;
 

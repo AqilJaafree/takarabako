@@ -25,7 +25,7 @@ async function bridge(path: string, body?: unknown): Promise<Response> {
   });
 }
 
-export async function bridgeStartSession(s: { token: string; ensName: string; scope: string; expiresAt: string }) {
+export async function bridgeStartSession(s: { token: string; label: string | null; scope: string; expiresAt: string }) {
   if (!PI_BRIDGE_URL) return "skipped" as const;
   try {
     const res = await bridge("/session", { ...s, expiresAt: Date.parse(s.expiresAt) });
@@ -49,13 +49,12 @@ export async function bridgeEvents(since: number): Promise<unknown[]> {
 
 interface BackendLogin {
   token: string;
-  ensName: string;
+  label: string | null;
   balance: number;
   scope: "full" | "deposit";
   expiresAt: string;
   qrFallback?: string | null;
   qrEmailed?: boolean;
-  worldVerified?: boolean;
   limit?: DailyLimit;
 }
 
@@ -66,7 +65,7 @@ export async function kioskLoginResponse(req: NextRequest, login: BackendLogin) 
   let depositBlocked: string | null = null;
   const depositSession = await backendFetch<{ id: string }>("/deposit-sessions", { token: login.token, method: "POST" }).catch(
     (err) => {
-      // An unverified customer who has used today's limit: keep the slot closed.
+      // A customer who has used today's limit: keep the slot closed.
       if (err instanceof BackendError && err.status === 403) depositBlocked = err.message;
       else console.error("[kiosk] could not open a deposit session:", err instanceof Error ? err.message : err);
       return null;
@@ -74,7 +73,7 @@ export async function kioskLoginResponse(req: NextRequest, login: BackendLogin) 
   );
   const bridgeStatus = depositBlocked ? "skipped" : await bridgeStartSession(login);
   const body: KioskLogin = {
-    ensName: login.ensName,
+    label: login.label,
     balance: login.balance,
     scope: login.scope,
     expiresAt: login.expiresAt,
@@ -82,7 +81,6 @@ export async function kioskLoginResponse(req: NextRequest, login: BackendLogin) 
     qrEmailed: login.qrEmailed ?? false,
     bridge: bridgeStatus,
     depositSessionId: depositSession?.id ?? null,
-    worldVerified: login.worldVerified ?? false,
     limit: login.limit ?? null,
     depositBlocked,
   };

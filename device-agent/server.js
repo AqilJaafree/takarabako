@@ -44,7 +44,7 @@ const CONTENT_TYPES = {
 //
 // In-memory only, single active session — matches this kiosk's single-user-
 // at-a-time design (one box, one person standing in front of it).
-let session = null; // { token, ensName, scope, expiresAt (ms) }
+let session = null; // { token, label, scope, expiresAt (ms) }
 
 // A session the backend will still honour. Past expiresAt the serial
 // listener must hand notes back rather than stack cash nobody is logged in for.
@@ -155,9 +155,9 @@ function sendJson(res, status, body) {
 }
 
 async function handleSessionStart(req, res) {
-  const { token, ensName, scope, expiresAt } = await readJsonBody(req);
+  const { token, label, scope, expiresAt } = await readJsonBody(req);
   if (!token || !(expiresAt > 0)) return sendJson(res, 400, { error: "token and expiresAt required" });
-  session = { token, ensName: ensName ?? null, scope: scope ?? "deposit", expiresAt };
+  session = { token, label: label ?? null, scope: scope ?? "deposit", expiresAt };
   events = [];
   openBackendStream(token);
   sendJson(res, 200, { ok: true });
@@ -214,7 +214,7 @@ async function handlePulseDeposit(req, res) {
   if (!sessionActive()) return sendJson(res, 409, { error: "no active session — log in before inserting cash" });
   const { token } = session;
   // This machine signs the note it just took; the backend checks the
-  // signature against the kiosk's ENS name before crediting it.
+  // signature against the kiosk's registered key before crediting it.
   const machine = await signNote({ amount, currency: currency ?? "USD", token });
 
   let body;

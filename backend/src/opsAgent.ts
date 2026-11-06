@@ -5,7 +5,7 @@ import type {
   BetaToolResultBlockParam,
   BetaToolUseBlock,
 } from "@anthropic-ai/sdk/resources/beta/messages/messages";
-import { config } from "./config.js";
+import { config, isCashChain, type CashChainKey } from "./config.js";
 import { POLICY, type ProposalAction } from "./policy.js";
 import { createProposal } from "./proposals.js";
 import { mb, mbError, mbEvents, mbQuery, multibaasReady } from "./multibaas.js";
@@ -41,7 +41,7 @@ const mandateText = MANDATE.map(
   (r) => `- ${r.label}: ${r.autonomous ? (r.dailyLimit !== null ? `on your own up to ${r.dailyLimit} USDC a day` : "on your own") : "always needs a human"}`,
 ).join("\n");
 
-const SYSTEM = `You are the treasury operations agent for Takarabako, a cash-in kiosk network on Ethereum Sepolia.
+const SYSTEM = `You are the treasury operations agent for Takarabako, a cash-in kiosk network running on two chains: Ethereum Sepolia and Arc Testnet (each has its own vault and tkCASH; USDC moves between them with Circle CCTP). Always say which chain a number is from, and check both when asked about the network as a whole.
 Customers insert banknotes at a kiosk; the treasury deposits the USD value into a yield vault (mUSDC) and mints tkCASH, a token that is a claim on the physical cash in that kiosk's box.
 
 You answer operators' questions from live data and act when something needs doing. Ground every number in a tool result from this conversation, and say which tool it came from; if the data isn't available, say so rather than estimating.
@@ -49,7 +49,8 @@ You answer operators' questions from live data and act when something needs doin
 You act only through the propose_* tools. Hard limits, enforced in code — a proposal that breaks one is rejected:
 - vault APY between ${POLICY.minApyBps} and ${POLICY.maxApyBps} bps
 - yield-reserve funding at most ${POLICY.maxYieldReserveFundingPerDay} USDC per UTC day
-- float minting at most ${POLICY.maxFloatMintPerDay} mUSDC per UTC day
+- float minting at most ${POLICY.maxFloatMintPerDay} mUSDC per UTC day (Sepolia only; Arc's USDC comes from the Circle faucet)
+- moving USDC between chains at most ${POLICY.maxRebalancePerDay} USDC per UTC day, and always by a human
 - pausing a kiosk is always allowed; unpausing is for humans only
 
 Your mandate — what executes immediately, without a human:
@@ -58,7 +59,7 @@ ${config.opsAgent.autonomy ? "" : "(Autonomy is switched off right now: everythi
 
 Cash integrity: check_cash_integrity compares three independent records per kiosk — notes signed by the kiosk's device key, tkCASH minted on-chain, and operators' physical counts. A short count means cash left the box after it was credited; a mint without a signed note means a deposit that didn't come from the box. Both are serious: pause the kiosk and say plainly what the numbers show and what a human should check.
 
-Key health signals: vault reserveCoverage (below 1.2 means the yield reserve is getting thin), tkCASH supply vs total reserve (must be equal), attestation deltas (non-zero means a kiosk's count disagreed and its minting froze), and the treasury's Sepolia ETH (it pays gas for every deposit; below 0.05 ETH is urgent).
+Key health signals: vault reserveCoverage (below 1.2 means the yield reserve is getting thin), tkCASH supply vs total reserve (must be equal), attestation deltas (non-zero means a kiosk's count disagreed and its minting froze), and the treasury's gas on each chain (Sepolia ETH below 0.05 is urgent; on Arc the gas asset is USDC, the same funds as the USDC float, so never add the two).
 
 Answer in a few short paragraphs or a short list. Use plain language an operator can act on.`;
 
@@ -71,9 +72,9 @@ const obj = (properties: Record<string, unknown>, required: string[] = []) => ({
 
 /// The tools, once, in a provider-neutral shape.
 const TOOLS: ToolDef[] = [
-  { name: "get_vault_state", description: "Vault APY, total liability to depositors, USDC it holds, and reserve coverage (balance ÷ liability).", parameters: obj({}) },
-  { name: "get_reserve_status", description: "tkCASH supply vs total kiosk reserve, each kiosk's reserve/active/frozen state, and recent operator attestations.", parameters: obj({}) },
-  { name: "get_treasury_balances", description: "The treasury wallet's Sepolia ETH (gas) and mUSDC float.", parameters: obj({}) },
+  { name: "get_vault_state", description: "Vault APY, total liability to depositors, USDC it holds, and reserve coverage (balance ÷ liability), on one chain.", parameters: obj({ chain: { type: "string", enum: ["sepolia", "arc-testnet"] } }, ["chain"]) },
+  { name: "get_reserve_status", description: "tkCASH supply vs total kiosk reserve, each kiosk's reserve/active/frozen state, and recent operator attestations, on one chain.", parameters: obj({ chain: { type: "string", enum: ["sepolia", "arc-testnet"] } }, ["chain"]) },
+  { name: "get_treasury_balances", description: "The treasury wallet's gas and USDC float on one chain (on Arc the gas asset is USDC itself, one pool: report the usdc figure only).", parameters: obj({ chain: { type: "string", enum: ["sepolia", "arc-testnet"] } }, ["chain"]) },
   {
     name: "check_cash_integrity",
     description: "Reconciles a kiosk's machine-signed notes, on-chain tkCASH mints and physical counts over the last 7 days, and lists any findings. kioskId empty string = every kiosk.",
@@ -82,38 +83,43 @@ const TOOLS: ToolDef[] = [
   { name: "get_mandate", description: "Your mandate: which actions you may execute on your own, the daily limits, and how much of each you've used today.", parameters: obj({}) },
   {
     name: "run_event_query",
-    description: `Runs one of the saved MultiBaas Event Queries over indexed contract events: ${SAVED_QUERIES.join(", ")}. Amounts are raw 6-decimal integers (divide by 1,000,000 for USD); kioskId is hex-encoded bytes32 text.`,
+    description: `Runs one of the saved MultiBaas Event Queries over indexed contract events (Ethereum Sepolia only; use list_recent_events for Arc): ${SAVED_QUERIES.join(", ")}. Amounts are raw 6-decimal integers (divide by 1,000,000 for USD); kioskId is hex-encoded bytes32 text.`,
     parameters: obj({ name: { type: "string", enum: [...SAVED_QUERIES] } }, ["name"]),
   },
   {
     name: "list_recent_events",
-    description: "Most recent indexed contract events, newest first. contract is a MultiBaas label: takarabako_vault, takarabako_cash_receipt, mock_usdc, oneinch_aqua or ens_user_registry; empty string for all.",
-    parameters: obj({ contract: { type: "string" }, limit: { type: "integer", description: "1 to 50" } }, ["contract", "limit"]),
+    description: "Most recent indexed contract events, newest first. contract is a MultiBaas label: takarabako_vault, takarabako_cash_receipt, mock_usdc or oneinch_aqua; empty string for all.",
+    parameters: obj({ contract: { type: "string" }, limit: { type: "integer", description: "1 to 50" }, chain: { type: "string", enum: ["sepolia", "arc-testnet"] } }, ["contract", "limit", "chain"]),
   },
   {
     name: "lookup_alias",
-    description: "Resolves a MultiBaas address alias (e.g. vault, tkcash, treasury, or a customer's ENS label) to its address and linked contracts.",
+    description: "Resolves a MultiBaas address alias (e.g. vault, tkcash, treasury, or a customer's label) to its address and linked contracts.",
     parameters: obj({ alias: { type: "string" } }, ["alias"]),
   },
   {
     name: "propose_fund_yield_reserve",
     description: "Tops up the vault's yield reserve from the treasury's mUSDC. Executes at once within your mandate, otherwise waits for a human.",
-    parameters: obj({ amount: { type: "number", description: "USDC" }, rationale: { type: "string" } }, ["amount", "rationale"]),
+    parameters: obj({ amount: { type: "number", description: "USDC" }, chain: { type: "string", enum: ["sepolia", "arc-testnet"] }, rationale: { type: "string" } }, ["amount", "chain", "rationale"]),
   },
   {
     name: "propose_set_apy",
     description: "Changes the vault's APY. Always waits for a human.",
-    parameters: obj({ bps: { type: "integer" }, rationale: { type: "string" } }, ["bps", "rationale"]),
+    parameters: obj({ bps: { type: "integer" }, chain: { type: "string", enum: ["sepolia", "arc-testnet"] }, rationale: { type: "string" } }, ["bps", "chain", "rationale"]),
   },
   {
     name: "propose_pause_kiosk",
     description: "Takes a kiosk out of service (no new cash-ins). Within your mandate: executes at once.",
-    parameters: obj({ kioskId: { type: "string" }, reason: { type: "string" }, rationale: { type: "string" } }, ["kioskId", "reason", "rationale"]),
+    parameters: obj({ kioskId: { type: "string" }, chain: { type: "string", enum: ["sepolia", "arc-testnet"] }, reason: { type: "string" }, rationale: { type: "string" } }, ["kioskId", "chain", "reason", "rationale"]),
+  },
+  {
+    name: "propose_rebalance_chains",
+    description: "Moves treasury USDC from one chain to the other with Circle CCTP (burn on the source, mint on the destination), e.g. when one chain's vault reserve runs thin. Always waits for a human.",
+    parameters: obj({ from: { type: "string", enum: ["sepolia", "arc-testnet"] }, to: { type: "string", enum: ["sepolia", "arc-testnet"] }, amount: { type: "number", description: "USDC" }, rationale: { type: "string" } }, ["from", "to", "amount", "rationale"]),
   },
   {
     name: "propose_mint_usdc_float",
     description: "Mints mUSDC to the treasury so it can keep fronting deposits. Executes at once within your mandate, otherwise waits for a human.",
-    parameters: obj({ amount: { type: "number", description: "USDC" }, rationale: { type: "string" } }, ["amount", "rationale"]),
+    parameters: obj({ amount: { type: "number", description: "USDC" }, chain: { type: "string", enum: ["sepolia", "arc-testnet"] }, rationale: { type: "string" } }, ["amount", "chain", "rationale"]),
   },
 ];
 
@@ -129,6 +135,7 @@ const PROPOSE: Record<string, ProposalAction> = {
   propose_set_apy: "set_apy",
   propose_pause_kiosk: "pause_kiosk",
   propose_mint_usdc_float: "mint_usdc_float",
+  propose_rebalance_chains: "rebalance_chains",
 };
 
 export interface TraceStep {
@@ -138,14 +145,20 @@ export interface TraceStep {
   error?: boolean;
 }
 
+function agentChain(input: Record<string, unknown>): CashChainKey {
+  const c = String(input.chain ?? config.defaultChain);
+  if (!isCashChain(c)) throw new Error(`unknown chain "${c}"`);
+  return c;
+}
+
 async function runTool(name: string, input: Record<string, unknown>, source: "ask" | "monitor", filed: string[]): Promise<unknown> {
   switch (name) {
     case "get_vault_state":
-      return vaultState();
+      return vaultState(agentChain(input));
     case "get_reserve_status":
-      return reserveStatus();
+      return reserveStatus(agentChain(input));
     case "get_treasury_balances":
-      return treasuryBalances();
+      return treasuryBalances(agentChain(input));
     case "check_cash_integrity": {
       const id = String(input.kioskId ?? "").trim();
       return id ? checkKiosk(id) : checkAllKiosks();
@@ -160,7 +173,10 @@ async function runTool(name: string, input: Record<string, unknown>, source: "as
     case "list_recent_events": {
       const limit = Math.min(Number(input.limit) || 20, 50);
       const contract = String(input.contract || "") || undefined;
-      return mbEvents({ contractLabel: contract, limit }).catch(() => recentEvents(limit));
+      const chain = agentChain(input);
+      // MultiBaas indexes the primary chain; the other chain's events come from our own log indexer.
+      if (chain !== config.defaultChain) return recentEvents(limit, chain);
+      return mbEvents({ contractLabel: contract, limit }).catch(() => recentEvents(limit, chain));
     }
     case "lookup_alias": {
       try {

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { HistoryItem } from "@/lib/types";
-import { txUrl, apy, cash, shortHex, usd } from "@/lib/format";
+import { txUrl, apy, cash, chainName, shortHex, usd } from "@/lib/format";
 
 const FILTERS = [
   { kind: null, label: "All" },
@@ -13,7 +13,7 @@ const FILTERS = [
   { kind: "refused", label: "Refused" },
 ] as const;
 
-const ASSET_TEXT = { balance: "Box balance", tkcash: "tkCASH", position: "Yield position" } as const;
+const ASSET_TEXT = { balance: "Box balance", tkcash: "tkCASH" } as const;
 
 const REFUSED_TEXT = {
   unsupported: "Note not supported — handed back",
@@ -25,10 +25,10 @@ function when(iso: string) {
   return new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 }
 
-function TxLink({ hash }: { hash: string | null }) {
+function TxLink({ hash, chain }: { hash: string | null; chain?: string | null }) {
   if (!hash) return null;
   return (
-    <a className="mono small" href={txUrl(hash)} target="_blank" rel="noreferrer">
+    <a className="mono small" href={txUrl(hash, chain)} target="_blank" rel="noreferrer">
       {shortHex(hash)} ↗
     </a>
   );
@@ -91,14 +91,15 @@ export function HistoryList({ items }: { items: HistoryItem[] }) {
                           <span className="small">
                             {n.status === "confirmed" ? (
                               <>
-                                {usd(n.usdAmount)} · <TxLink hash={n.txHash} />
+                                {usd(n.usdAmount)} · <TxLink hash={n.txHash} chain={n.chain} />
                                 {n.tkcashTxHash && (
                                   <>
-                                    {" "}· tkCASH <TxLink hash={n.tkcashTxHash} />
+                                    {" "}· tkCASH <TxLink hash={n.tkcashTxHash} chain={n.chain} />
                                   </>
                                 )}
+                                {n.chain && <span className="chain-chip">{chainName(n.chain)}</span>}
                                 {n.machineVerified && n.machineName && (
-                                  <span className="machine-badge" title="Signed by the kiosk's device key, checked against its ENS name">
+                                  <span className="machine-badge" title="Signed by the kiosk's registered device key">
                                     ✓ {n.machineName}
                                   </span>
                                 )}
@@ -130,12 +131,12 @@ export function HistoryList({ items }: { items: HistoryItem[] }) {
                   <span style={{ textAlign: "right" }}>
                     <span className="amount">−{usd(item.grossUsd)}</span>
                     <br />
-                    <TxLink hash={item.txHash} />
+                    <TxLink hash={item.txHash} chain={item.chain} />
                     {item.tkcashTxHash && (
                       <>
                         <br />
                         <span className="small muted">{usd(item.tkcashBurned ?? 0)} tkCASH redeemed · </span>
-                        <TxLink hash={item.tkcashTxHash} />
+                        <TxLink hash={item.tkcashTxHash} chain={item.chain} />
                       </>
                     )}
                   </span>
@@ -175,14 +176,14 @@ export function HistoryList({ items }: { items: HistoryItem[] }) {
                       <span className="mono">{item.counterparty ?? "an external wallet"}</span>
                     </b>
                     <br />
-                    <span className="muted small">{when(item.at)} · by ENS name</span>
+                    <span className="muted small">{when(item.at)} · by label or address</span>
                   </span>
                   <span style={{ textAlign: "right" }}>
                     <span className="amount" style={{ color: sent ? undefined : "var(--ok)" }}>
                       {item.amountUsd != null ? `${sent ? "−" : "+"}${usd(item.amountUsd)}` : ""}
                     </span>
                     <br />
-                    <TxLink hash={item.txHash} />
+                    <TxLink hash={item.txHash} chain={item.chain} />
                   </span>
                 </li>
               );

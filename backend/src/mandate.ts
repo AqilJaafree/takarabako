@@ -20,6 +20,7 @@ export const MANDATE: MandateRule[] = [
   { action: "pause_kiosk", label: "Pause a kiosk", autonomous: true, dailyLimit: null, why: "Only stops new cash coming in; a human unpauses." },
   { action: "fund_yield_reserve", label: "Top up the yield reserve", autonomous: true, dailyLimit: 100, why: "Keeps interest payable; larger top-ups need a human." },
   { action: "mint_usdc_float", label: "Mint mUSDC float", autonomous: true, dailyLimit: 2000, why: "Keeps deposits flowing; larger mints need a human." },
+  { action: "rebalance_chains", label: "Move USDC between chains", autonomous: false, dailyLimit: null, why: "Moves treasury funds across chains (CCTP) — always a human decision." },
   { action: "set_apy", label: "Change the vault APY", autonomous: false, dailyLimit: null, why: "Changes every depositor's return — always a human decision." },
 ];
 

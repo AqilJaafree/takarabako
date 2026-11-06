@@ -17,8 +17,18 @@ export function resolveExplorer(chain: string | undefined) {
 
 const net = resolveExplorer(process.env.NEXT_PUBLIC_CHAIN);
 
+/// The two chains Takarabako runs on at once.
+export type CashChain = "sepolia" | "arc-testnet";
+export const CASH_CHAINS: readonly CashChain[] = ["sepolia", "arc-testnet"];
+export const chainName = (chain: string | undefined | null) => resolveExplorer(chain ?? undefined).name;
+const pick = (chain?: string | null) => (chain ? resolveExplorer(chain) : net);
+
 export const NETWORK_NAME = net.name;
-export const txUrl = (hash: string) => `${net.url}/tx/${hash}`;
-export const addressUrl = (address: string) => `${net.url}/address/${address}`;
+/// Link to a transaction. Pass the chain a hash belongs to (default: the primary chain).
+export const txUrl = (hash: string, chain?: string | null) => `${pick(chain).url}/tx/${hash}`;
+export const addressUrl = (address: string, chain?: string | null) => `${pick(chain).url}/address/${address}`;
 /// Etherscan has a token page; other explorers show tokens on the address page.
-export const tokenUrl = (address: string) => `${net.url}/${net.etherscan ? "token" : "address"}/${address}`;
+export const tokenUrl = (address: string, chain?: string | null) => {
+  const n = pick(chain);
+  return `${n.url}/${n.etherscan ? "token" : "address"}/${address}`;
+};

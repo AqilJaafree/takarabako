@@ -13,7 +13,7 @@ export interface PreparedTx {
 }
 
 /// Has the customer sign a transaction the backend prepared, in their own
-/// Privy embedded wallet (the one their ENS name and tkCASH belong to).
+/// Privy embedded wallet (the one their tkCASH belongs to).
 /// Privy shows its confirmation sheet; returns the transaction hash.
 export function useWalletSend() {
   const { ready, authenticated, login } = usePrivy();

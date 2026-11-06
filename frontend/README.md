@@ -59,8 +59,9 @@ https once deployed.
 | `GET /api/stream` | Customer's live deposit events (backend `/events/stream`, proxied) |
 | `POST /api/yield`, `/api/withdraw` | Open a position; withdraw to wallet |
 | `POST /api/kiosk/verify`, `/api/kiosk/login-qr` | Kiosk logins; hands the session to the Pi bridge |
-| `GET /api/kiosk/login-world/request`, `POST /api/kiosk/login-world` | World ID login on `/deposit` (verified customers); same session as the wallet QR |
-| `GET /api/worldid/request`, `POST /api/me/worldid` | World ID Selfie Check on `/verify` |
+| `GET /api/lookup` | A label or wallet address to who it is |
+| `GET/POST /api/bridge`, `POST /api/bridge/quote`, `GET /api/bridge/:id` | Move USDC between chains (CCTP) |
+| `GET /api/kiosk/registered` | The kiosks an operator has registered (id, device key, chain) |
 | `POST /api/kiosk/logout` | Ends the backend session and the bridge's |
 | `GET /api/kiosk/stream`, `/api/kiosk/bridge-events` | Live deposits; refused notes from the bridge |
 | `POST /api/kiosk/yield`, `/api/kiosk/withdraw` | Kiosk actions (cash withdrawal is kiosk-only) |

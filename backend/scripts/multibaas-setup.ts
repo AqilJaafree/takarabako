@@ -4,19 +4,18 @@
 //   cd contracts && forge build        (the ABIs come from contracts/out)
 //   cd backend && npm run mb:setup
 //
-// 1. uploads five contract ABIs (the free tier's cap) under stable labels
+// 1. uploads the four contract ABIs under stable labels (the free tier caps at five)
 // 2. creates address aliases and links each address to its ABI, indexing
 //    from the latest block (the free tier looks back only 100 blocks)
 // 3. saves the Event Queries the dashboard runs
 // 4. registers the webhook that streams events to /webhooks/multibaas
 import { readFile } from "node:fs/promises";
-import { parseAbi, type Abi } from "viem";
+import type { Abi } from "viem";
 import type { EventQuery } from "@curvegrid/multibaas-sdk";
 import { config } from "../src/config.js";
 import { ALIASES, LABELS, mb, mbCall, mbError, mbSend, multibaasReady, toAlias } from "../src/multibaas.js";
 import { pool } from "../src/db.js";
 import { aq } from "../src/aquaSdk.js";
-import { registryAbi } from "../src/ensV2.js";
 import { treasuryAddress } from "../src/chain.js";
 
 if (!multibaasReady) {
@@ -25,8 +24,8 @@ if (!multibaasReady) {
 }
 
 // Retired links, unlinked first so the new ones fit the free tier's five:
-// Uniswap's position manager (replaced by 1inch Aqua) and the beta ENS
-// registry under wantest.eth (replaced by takarabako.eth on official ENS v2).
+// Uniswap's position manager (replaced by 1inch Aqua) and the ENS
+// registry (ENS was removed from Takarabako).
 const RETIRED = [
   { alias: "uniswap-npm", label: "uniswap_v3_npm" },
   { alias: "ens-wantest", label: "ens_user_registry" },
@@ -49,15 +48,6 @@ async function foundryArtifact(contract: string): Promise<Artifact> {
   }
 }
 
-// Only the parts of these third-party contracts we call or index.
-const ensAbi = [
-  ...registryAbi,
-  ...parseAbi([
-    "event NameRegistered(uint256 indexed tokenId, bytes32 indexed labelHash, string label, address owner, uint64 expiry, address indexed sender)",
-    "event TransferBatch(address indexed operator, address indexed from, address indexed to, uint256[] ids, uint256[] values)",
-  ]),
-] as Abi;
-
 // Third-party contracts: only the ABI subset; we never deploy them, so a
 // placeholder bytecode satisfies MultiBaas.
 const external = (abi: Abi) => async (): Promise<Artifact> => ({ abi, bin: "0x00" });
@@ -67,7 +57,6 @@ const contracts: Array<{ label: string; name: string; alias: string; address: st
   { label: LABELS.cashReceipt, name: "TakarabakoCashReceipt", alias: ALIASES.tkcash, address: config.cashReceiptAddress, artifact: () => foundryArtifact("TakarabakoCashReceipt") },
   { label: LABELS.usdc, name: "MockUSDC", alias: ALIASES.musdc, address: config.usdcAddress, artifact: () => foundryArtifact("MockUSDC") },
   { label: LABELS.aqua, name: "Aqua", alias: "aqua", address: config.aqua.address, artifact: external(aq.ABI.AQUA_ABI as unknown as Abi) },
-  { label: LABELS.ensRegistry, name: "UserRegistry", alias: "takarabako-names", address: config.ens.registryAddress, artifact: external(ensAbi) },
 ];
 
 const status = (err: unknown) => (err as { response?: { status?: number } })?.response?.status;
@@ -228,9 +217,9 @@ console.log("5. Existing customers");
 // Accounts registered before MultiBaas was set up: allowlist their wallet
 // for tkCASH and give it an alias (new accounts get both at registration).
 try {
-  const { rows } = await pool.query("select ens_name, privy_wallet from accounts where ens_name is not null");
-  for (const a of rows as Array<{ ens_name: string; privy_wallet: string }>) {
-    const alias = toAlias(a.ens_name.split(".")[0] ?? a.ens_name);
+  const { rows } = await pool.query("select label, privy_wallet from accounts where label is not null");
+  for (const a of rows as Array<{ label: string; privy_wallet: string }>) {
+    const alias = toAlias(a.label);
     await step(`alias ${alias} → ${a.privy_wallet}`, () => mb.addresses.setAddress({ alias, address: a.privy_wallet }), false);
     if (!config.cashReceiptAddress) continue;
     const allowed = await mbCall<boolean>(ALIASES.tkcash, LABELS.cashReceipt, "allowlist", [a.privy_wallet]).catch(() => false);

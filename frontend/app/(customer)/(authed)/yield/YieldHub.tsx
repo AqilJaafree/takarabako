@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Market, PositionView, Preview, RiskTier, Shape } from "@/lib/types";
+import type { ChainBalance, Market, PositionView, Preview, RiskTier, Shape } from "@/lib/types";
 import type { NetworkKey, NetworksResponse } from "@/lib/networks";
 import { addressUrl, apy, usd } from "@/lib/format";
+import { aquaBalance } from "@/lib/boxes";
 import { TreasureStage } from "@/components/treasure/TreasureStage";
 import { useStageDirector } from "@/components/treasure/useStageDirector";
 import { RangeChart } from "./RangeChart";
@@ -12,8 +13,6 @@ import { MarketHero } from "./MarketHero";
 import { NetworkSwitcher } from "./NetworkSwitcher";
 import { ConfirmRealMoney, RealMoneyNotice } from "./RealMoney";
 import { QuickStart } from "./QuickStart";
-import { NameField, useResolvedName } from "../send/SendForm";
-import { useWalletSend, type PreparedTx } from "@/lib/useWalletSend";
 
 // The bubble keeps to a sentence or two; the full rationale is shown below.
 const bubble = (text: string) => (text.length > 170 ? `${text.slice(0, 167).trimEnd()}…` : text);
@@ -53,7 +52,7 @@ function YieldHubBody({ balance, market, positions: initialPositions }: { balanc
   const [positions, setPositions] = useState(initialPositions);
   const [box, setBox] = useState(balance);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState<{ text: string; ens?: string; rationale?: string | null } | null>(null);
+  const [notice, setNotice] = useState<{ text: string; tag?: string; rationale?: string | null } | null>(null);
   const open = positions.filter((p) => p.status !== "closed"); // a closing one stays here until it is finished
   const { stage, say } = useStageDirector(
     box > 0 ? "Quick start picks a range for you — or go Advanced and draw your own." : "Your box is empty. Feed me a note at the kiosk first!",
@@ -69,8 +68,9 @@ function YieldHubBody({ balance, market, positions: initialPositions }: { balanc
   const refresh = useCallback(async () => {
     const [pos, me] = await Promise.all([fetch("/api/yield/positions"), fetch("/api/me")]);
     if (pos.ok) setPositions(((await pos.json()) as { positions: PositionView[] }).positions);
-    if (me.ok) setBox(((await me.json()) as { balance: number }).balance);
-  }, []);
+    // Yield runs on the chain 1inch Aqua is on, so it draws on that chain's box.
+    if (me.ok) setBox(aquaBalance(((await me.json()) as { balances: ChainBalance[] }).balances, market.network?.key));
+  }, [market.network?.key]);
 
   const onFail = (e: unknown) => {
     if ((e as { status?: number }).status === 401) return router.replace("/login");
@@ -78,8 +78,8 @@ function YieldHubBody({ balance, market, positions: initialPositions }: { balanc
     say("Hmm, that didn't work. Try again?", "worried");
   };
 
-  const onOpened = async (label: string, body: { ensName?: string; rationale?: string | null }) => {
-    setNotice({ text: `${label} position opened`, ens: body.ensName, rationale: body.rationale });
+  const onOpened = async (label: string, body: { name?: string; rationale?: string | null }) => {
+    setNotice({ text: `${label} position opened`, tag: body.name, rationale: body.rationale });
     say(bubble(body.rationale ?? `Done! Your ${label} position is live on 1inch Aqua.`), "happy", 0);
     await refresh();
     router.refresh();
@@ -115,7 +115,7 @@ function YieldHubBody({ balance, market, positions: initialPositions }: { balanc
       {notice && (
         <div className="notice success">
           {notice.text}
-          {notice.ens && <div className="ens small">{notice.ens}</div>}
+          {notice.tag && <div className="account-label small">{notice.tag}</div>}
           {notice.rationale && <p className="speech small" style={{ margin: "8px 0 0" }}>{notice.rationale}</p>}
         </div>
       )}
@@ -124,13 +124,6 @@ function YieldHubBody({ balance, market, positions: initialPositions }: { balanc
         <PositionsList
           positions={open}
           onClose={close}
-          onGiven={async (p, to) => {
-            setNotice({ text: `${p.label} position given to ${to} — its ENS deed is in their wallet now` });
-            say(`Sent to ${to}!`, "happy");
-            await refresh();
-            router.refresh();
-          }}
-          onError={onFail}
         />
       )}
 
@@ -155,7 +148,7 @@ function YieldHubBody({ balance, market, positions: initialPositions }: { balanc
             setError("");
             say(`Placing your ${tier}-risk strategy on 1inch Aqua…`, "thinking", 0);
             try {
-              const body = await postJson<{ ensName: string; rationale: string; pair: string }>("/api/yield", { riskLevel: tier, amount });
+              const body = await postJson<{ name: string; rationale: string; pair: string }>("/api/yield", { riskLevel: tier, amount });
               await onOpened(market.tiers.find((t) => t.riskTier === tier)?.label ?? tier, body);
             } catch (e) {
               onFail(e);
@@ -171,7 +164,7 @@ function YieldHubBody({ balance, market, positions: initialPositions }: { balanc
             setError("");
             say("Shipping your strategies to 1inch Aqua…", "thinking", 0);
             try {
-              const body = await postJson<{ ensName: string }>("/api/yield/advanced", req);
+              const body = await postJson<{ name: string }>("/api/yield/advanced", req);
               await onOpened(`Advanced ${req.shape === "bidask" ? "Bid-Ask" : req.shape === "curve" ? "Curve" : req.shape === "hybrid" ? "Hybrid" : "Spot"}`, body);
             } catch (e) {
               onFail(e);
@@ -388,16 +381,11 @@ function ShapeIcon({ shape }: { shape: AdvShape }) {
 function PositionsList({
   positions,
   onClose,
-  onGiven,
-  onError,
 }: {
   positions: PositionView[];
   onClose: (p: PositionView) => Promise<void>;
-  onGiven: (p: PositionView, to: string) => Promise<void>;
-  onError: (e: unknown) => void;
 }) {
   const [closing, setClosing] = useState<string | null>(null);
-  const [giving, setGiving] = useState<string | null>(null);
   return (
     <section className="card">
       <h2>Your strategies</h2>
@@ -451,13 +439,7 @@ function PositionsList({
                 >
                   {closing === p.id ? "Closing…" : p.status === "closing" ? "Finish closing" : "Close & return to box"}
                 </button>
-                {p.status !== "closing" && (
-                  <button className="btn btn-ghost small" onClick={() => setGiving(giving === p.id ? null : p.id)}>
-                    {giving === p.id ? "Cancel" : "Give to…"}
-                  </button>
-                )}
               </div>
-              {giving === p.id && <GiveForm position={p} onGiven={(to) => { setGiving(null); return onGiven(p, to); }} onError={onError} />}
             </li>
           );
         })}
@@ -466,48 +448,5 @@ function PositionsList({
         Runs on <a href={addressUrl("0x1111113ccf1426a8e30e2bff5e005d929bf6a90a")} target="_blank" rel="noreferrer">1inch Aqua ↗</a>
       </p>
     </section>
-  );
-}
-
-
-/// Hands a position to someone else by sending its deed — the position's ENS
-/// v2 name token — from the customer's own wallet to the recipient's.
-function GiveForm({ position, onGiven, onError }: { position: PositionView; onGiven: (to: string) => Promise<void>; onError: (e: unknown) => void }) {
-  const [to, setTo] = useState("");
-  const [busy, setBusy] = useState(false);
-  const resolved = useResolvedName(to);
-  const signAndSend = useWalletSend();
-  const r = resolved.result;
-  const deed = `aqua-${position.id.replace(/-/g, "").slice(0, 8)}`;
-
-  return (
-    <div className="give-form">
-      <p className="muted small" style={{ margin: "10px 0 6px" }}>
-        Sends the deed <span className="mono">{deed}.takarabako.eth</span>, and with it the position, to them.
-      </p>
-      <NameField value={to} onChange={setTo} resolved={resolved} />
-      {r && !r.customer && <div className="notice pending" style={{ marginTop: 10 }}>Not a Takarabako customer: they couldn&apos;t manage it here.</div>}
-      <button
-        className="btn btn-gold btn-block"
-        style={{ marginTop: 10 }}
-        disabled={busy || !r}
-        onClick={async () => {
-          if (!r) return;
-          setBusy(true);
-          try {
-            const prep = await postJson<{ tx: PreparedTx; from: string; deed: string }>(`/api/yield/positions/${position.id}/give/prepare`, { to: r.name });
-            const hash = await signAndSend(prep.tx, prep.from, `Give ${prep.deed} to ${r.name}`);
-            await postJson(`/api/yield/positions/${position.id}/give/confirm`, { txHash: hash });
-            await onGiven(r.name);
-          } catch (e) {
-            onError(e);
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        {busy ? "Waiting for your wallet…" : r ? `Give this position to ${r.name}` : "Enter a name"}
-      </button>
-    </div>
   );
 }

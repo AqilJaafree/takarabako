@@ -1,32 +1,23 @@
 import type { Account } from "./accounts.js";
 import { recordYieldEvent } from "./history.js";
-import { issueName, positionSubname } from "./ens.js";
+import { positionLabel } from "./labels.js";
 import { closePosition, ethUsd, listPositions, openPosition, viewPosition, type OpenRequest, type PositionRow, type PositionView } from "./aqua.js";
 import { TIERS } from "./aquaMath.js";
 import { assertWithinLimit } from "./limits.js";
 
 /// The customer-facing side of Aqua yield: opening a position records it in
-/// History and gives it an ENS name; closing records that too. Shared by the
+/// History and a short tag; closing records that too. Shared by the
 /// web app, the kiosk and withdraw.
 
 export interface OpenedPosition {
   position: PositionView;
-  ensName: string;
+  name: string;
 }
 
 export async function openForCustomer(account: Account, req: Omit<OpenRequest, "privyUserId" | "boundAddress">): Promise<OpenedPosition> {
   await assertWithinLimit(account, req.amount, "this position");
   const row = await openPosition({ ...req, privyUserId: account.privyUserId, boundAddress: account.boundAddress });
-  const ensName = positionSubname(row.id);
-  // The name is the position's deed: an ENS v2 token in the customer's own
-  // wallet that they can send to someone else, and the position follows it.
-  // A failed registration never undoes the position.
-  await issueName({
-    name: ensName,
-    owner: account.privyWallet,
-    transferable: true,
-    texts: { "takarabako.kind": "aqua-position", "takarabako.position": row.id, "takarabako.strategy": `${row.mode}/${row.shape}` },
-  }).catch((err) => console.error(`[ens] ${ensName}:`, err instanceof Error ? err.message : err));
+  const name = positionLabel(row.id);
   const spot = await ethUsd();
   const view = await viewPosition(row, spot);
   await recordYieldEvent({
@@ -37,10 +28,10 @@ export async function openForCustomer(account: Account, req: Omit<OpenRequest, "
     apyBps: row.apyEstBps,
     amountUsd: row.amountUsd,
     rationale: row.rationale,
-    ensName,
+    label: name,
     txHash: row.strategies[0]?.shipTx ?? null,
   });
-  return { position: view, ensName };
+  return { position: view, name };
 }
 
 export async function closeForCustomer(account: Account, row: PositionRow) {
@@ -53,7 +44,7 @@ export async function closeForCustomer(account: Account, row: PositionRow) {
     apyBps: row.apyEstBps,
     amountUsd: value,
     rationale: null,
-    ensName: positionSubname(row.id),
+    label: positionLabel(row.id),
     txHash: closeTx,
   });
   return { value, closeTx };
@@ -77,7 +68,7 @@ export async function positionSummaries(privyUserId: string) {
       const view = spot ? await viewPosition(row, spot).catch(() => null) : null;
       return {
         positionId: row.id,
-        ensName: positionSubname(row.id),
+        name: positionLabel(row.id),
         riskTier: row.mode === "advanced" ? ("high" as const) : row.mode,
         mode: row.mode,
         shape: row.shape,

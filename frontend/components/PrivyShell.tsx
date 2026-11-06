@@ -2,7 +2,7 @@
 
 import { PrivyProvider } from "@privy-io/react-auth";
 import { sepolia } from "viem/chains";
-import { ARC_MAINNET } from "@/lib/arcChain";
+import { ARC_MAINNET, ARC_TESTNET } from "@/lib/arcChain";
 
 const APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
 
@@ -27,10 +27,10 @@ export function PrivyShell({ children }: { children: React.ReactNode }) {
         loginMethods: ["email", "google"],
         appearance: { theme: "dark", accentColor: "#e3b36a" },
         embeddedWallets: { ethereum: { createOnLogin: "off" } },
-        // Customers sign their own transfers (tkCASH, position deeds) on Sepolia, and
+        // Customers sign their own tkCASH transfers on Sepolia and Arc Testnet, and
         // their own self-custody positions on Arc mainnet.
         defaultChain: sepolia,
-        supportedChains: [sepolia, ARC_MAINNET],
+        supportedChains: [sepolia, ARC_TESTNET, ARC_MAINNET],
       }}
     >
       {children}

@@ -1,15 +1,14 @@
 import { Router } from "express";
-import type { Address } from "viem";
 import QRCode from "qrcode";
 import { findByPrivyUserId, listDeposits } from "../accounts.js";
 import { requireSession } from "../sessions.js";
 import { positionSummaries } from "../yieldPositions.js";
-import { chainReady, previewValueOnChain, currentApyBpsOnChain } from "../chain.js";
+import { balancesByChain, totalOf } from "../balances.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { config } from "../config.js";
 import { allowanceJson, dailyAllowance } from "../limits.js";
-import { ALIASES, LABELS, mbCall } from "../multibaas.js";
-import { cashReceiptReady, fromTkUnits, kioskState, tkSupply } from "../cashReceipt.js";
+import { cashReceiptReadyOn, fromTkUnits, kioskState, tkRead, tkSupply } from "../cashReceipt.js";
+import { isCashChain, type CashChainKey } from "../config.js";
 import { issueDepositCode } from "../depositCode.js";
 
 /// Read endpoints for the web app (full sessions only): the account at a
@@ -23,17 +22,17 @@ meRouter.get("/me", requireSession("full"), asyncHandler(async (_req, res) => {
     res.status(404).json({ error: "unknown account" });
     return;
   }
-  const [balance, apyBps] = chainReady
-    ? await Promise.all([previewValueOnChain(account.boundAddress as Address), currentApyBpsOnChain()])
-    : [0, 0];
+  const balances = await balancesByChain(account.boundAddress);
+  const balance = totalOf(balances);
+  const apyBps = balances.find((b) => b.chain === config.defaultChain)?.apyBps ?? balances[0]?.apyBps ?? 0;
   res.json({
     userId,
-    ensName: account.ensName,
+    label: account.label,
     privyWallet: account.privyWallet,
     balance,
+    balances,
     apyBps,
     positions: await positionSummaries(userId).catch(() => []),
-    worldId: { verified: Boolean(account.worldVerifiedAt), credential: account.worldCredential, verifiedAt: account.worldVerifiedAt },
     limit: allowanceJson(await dailyAllowance(account)),
     expiresAt: res.locals.session.expiresAt,
   });
@@ -63,31 +62,44 @@ meRouter.get("/me/qr", requireSession("full"), asyncHandler(async (_req, res) =>
   });
 }));
 
-/// GET /me/cash-receipts — the customer's tkCASH: their balance (a claim on
-/// banknotes in the kiosk's box) and the proof that it's backed.
-meRouter.get("/me/cash-receipts", requireSession("full"), asyncHandler(async (_req, res) => {
+/// GET /me/cash-receipts?chain= — the customer's tkCASH on one chain: their balance (a
+/// claim on banknotes in the kiosk's box) and the proof that it's backed. Without
+/// `chain`, every enabled chain is returned under `chains`.
+meRouter.get("/me/cash-receipts", requireSession("full"), asyncHandler(async (req, res) => {
   const account = await findByPrivyUserId(res.locals.session.privyUserId);
   if (!account) {
     res.status(404).json({ error: "unknown account" });
     return;
   }
-  if (!cashReceiptReady) {
-    res.json({ configured: false });
+  const one = async (chain: CashChainKey) => {
+    if (!cashReceiptReadyOn(chain)) return { chain, configured: false as const };
+    const [balance, kiosk, supply] = await Promise.all([
+      tkRead<string>(chain, "balanceOf", [account.privyWallet]),
+      kioskState(config.kioskId, chain),
+      tkSupply(chain),
+    ]);
+    return {
+      chain,
+      configured: true as const,
+      contract: config.chains[chain].cashReceiptAddress,
+      wallet: account.privyWallet,
+      balance: fromTkUnits(balance),
+      kiosk: { kioskId: kiosk.kioskId, reserve: kiosk.reserve, active: kiosk.active, frozen: kiosk.frozen, lastAuditAt: kiosk.lastAuditAt },
+      supply: supply.supply,
+      reserve: supply.reserve,
+      backed: Math.abs(supply.supply - supply.reserve) < 1e-6,
+    };
+  };
+  const wanted = typeof req.query.chain === "string" ? req.query.chain : null;
+  if (wanted) {
+    if (!isCashChain(wanted)) {
+      res.status(400).json({ error: `unknown chain "${wanted}"` });
+      return;
+    }
+    res.json(await one(wanted));
     return;
   }
-  const [balance, kiosk, supply] = await Promise.all([
-    mbCall<string>(ALIASES.tkcash, LABELS.cashReceipt, "balanceOf", [account.privyWallet]),
-    kioskState(),
-    tkSupply(),
-  ]);
-  res.json({
-    configured: true,
-    contract: config.cashReceiptAddress,
-    wallet: account.privyWallet,
-    balance: fromTkUnits(balance),
-    kiosk: { kioskId: kiosk.kioskId, reserve: kiosk.reserve, active: kiosk.active, frozen: kiosk.frozen, lastAuditAt: kiosk.lastAuditAt },
-    supply: supply.supply,
-    reserve: supply.reserve,
-    backed: Math.abs(supply.supply - supply.reserve) < 1e-6,
-  });
+  const chains = await Promise.all(config.enabledChains.map(one));
+  const primary = chains.find((c) => c.chain === config.defaultChain) ?? chains[0];
+  res.json({ ...primary, chains, totalBalance: chains.reduce((s, c) => s + (c.configured ? c.balance : 0), 0) });
 }));

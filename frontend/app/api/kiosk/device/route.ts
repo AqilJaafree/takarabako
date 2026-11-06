@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { PI_BRIDGE_URL } from "@/lib/kiosk";
 
-/// GET /api/kiosk/device — this kiosk's ENS name and device key, from the Pi bridge.
+/// GET /api/kiosk/device — this kiosk's id and device key, from the Pi bridge.
 export async function GET() {
   if (!PI_BRIDGE_URL) return NextResponse.json({ kiosk: null, address: null, signing: false });
   try {

@@ -36,10 +36,10 @@ agentRouter.post("/agent/open-position", requireSession("full"), asyncHandler(as
     return;
   }
   const rationale = await tierRationale(riskLevel, amount, await ethUsd());
-  const { position, ensName } = await openForCustomer(account, { mode: riskLevel, amount, rationale });
+  const { position, name } = await openForCustomer(account, { mode: riskLevel, amount, rationale });
   res.json({
     positionId: position.id,
-    ensName,
+    name,
     pair: `ETH/USDC · ${position.label}`,
     apyBps: position.apyEstBps,
     txHash: position.vaultTx,

@@ -38,7 +38,7 @@ export async function policyContext(opts: { includePending?: boolean } = {}): Pr
     [opts.includePending ?? false],
   );
   const total = (a: string) => rows.find((r) => r.action === a)?.total ?? 0;
-  return { fundedToday: total("fund_yield_reserve"), mintedToday: total("mint_usdc_float"), knownKiosks: [config.kioskId, ...config.previousKioskIds] };
+  return { fundedToday: total("fund_yield_reserve"), mintedToday: total("mint_usdc_float"), rebalancedToday: total("rebalance_chains"), knownKiosks: [config.kioskId, ...config.previousKioskIds] };
 }
 
 export type CreateResult = { ok: true; proposal: Proposal; mandate?: string } | { ok: false; reason: string };

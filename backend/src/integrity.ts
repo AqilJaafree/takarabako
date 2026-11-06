@@ -1,6 +1,7 @@
 import { pool } from "./db.js";
-import { config } from "./config.js";
-import { cashReceiptReady, kioskState, knownKioskIds } from "./cashReceipt.js";
+import { config, isCashChain, type CashChainKey } from "./config.js";
+import { cashReceiptReadyOn, kioskState, knownKioskIds } from "./cashReceipt.js";
+import { getKiosk } from "./kiosks.js";
 import { reserveAttestations, decodeKiosk } from "./treasury.js";
 
 /// Cash integrity: three independent records of the cash in a kiosk's box
@@ -180,7 +181,10 @@ export function reconcile(input: IntegrityInput): IntegrityReport {
 /// Gathers the three records for one kiosk and runs the rules.
 export async function checkKiosk(kioskId: string): Promise<IntegrityReport> {
   const since = new Date(Date.now() - INTEGRITY.windowDays * 86_400_000);
-  const machineName = `${kioskId}.${config.ens.parentName}`;
+  const machineName = kioskId;
+  // A kiosk's cash lives on one chain: its registered home chain, else the primary one.
+  const home = (await getKiosk(kioskId))?.chain;
+  const chain: CashChainKey = home && isCashChain(home) ? home : config.defaultChain;
   // Notes signed by this kiosk; unsigned notes are attributed to the current
   // kiosk, since that's the one the backend mints against.
   const notesQ = pool.query(
@@ -191,14 +195,14 @@ export async function checkKiosk(kioskId: string): Promise<IntegrityReport> {
     [since, machineName, kioskId === config.kioskId],
   );
   const mintsQ = pool.query(
-    `select tx_hash as "txHash", inputs, triggered_at as at from chain_events where name = 'CashIn' and triggered_at >= $1`,
-    [since],
+    `select tx_hash as "txHash", inputs, triggered_at as at from chain_events where name = 'CashIn' and triggered_at >= $1 and chain = $2`,
+    [since, chain],
   );
   const [notes, mints, attestations, state] = await Promise.all([
     notesQ,
     mintsQ,
-    reserveAttestations(50).catch(() => []),
-    cashReceiptReady ? kioskState(kioskId).catch(() => null) : Promise.resolve(null),
+    reserveAttestations(50, chain).catch(() => []),
+    cashReceiptReadyOn(chain) ? kioskState(kioskId, chain).catch(() => null) : Promise.resolve(null),
   ]);
   return reconcile({
     kioskId,

@@ -34,7 +34,7 @@ const net = selfNet("sepolia");
 check(net.manager !== null, `Sepolia self-custody is on and uses the manager ${net.manager}`);
 
 const id = `e2e-manager-${Date.now()}`;
-const account: Account = await insertAccount({ privyUserId: id, email: `${id}@example.test`, privyWallet: treasuryAddress.toLowerCase(), boundAddress: `0x${Date.now().toString(16).padStart(40, "0")}`, ensName: null });
+const account: Account = await insertAccount({ privyUserId: id, email: `${id}@example.test`, privyWallet: treasuryAddress.toLowerCase(), boundAddress: `0x${Date.now().toString(16).padStart(40, "0")}`, label: null });
 try {
   step("wallet state");
   const w = await walletState(net, treasuryAddress.toLowerCase());

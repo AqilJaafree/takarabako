@@ -1,4 +1,5 @@
 import { pool } from "./db.js";
+import { config } from "./config.js";
 import { LABELS } from "./multibaas.js";
 
 /// The contract events MultiBaas delivers by webhook, persisted in Postgres
@@ -14,6 +15,8 @@ export interface StoredEvent {
   txHash: string | null;
   blockNumber: number | null;
   triggeredAt: Date;
+  /// Which cash chain emitted it (default: the primary chain, where MultiBaas runs).
+  chain?: string;
 }
 
 /// One entry of a MultiBaas `event.emitted` webhook payload (an array of these).
@@ -46,11 +49,10 @@ export function fromDelivery(d: WebhookDelivery): StoredEvent {
 
 /// 1inch Aqua is shared with the rest of Sepolia, so MultiBaas delivers
 /// everyone's events for it: keep only strategies whose maker is the
-/// treasury. Our ENS registry (takarabako.eth's subnames) is ours entirely.
+/// treasury.
 export async function isOurs(e: StoredEvent, treasury: string | undefined): Promise<boolean> {
   const t = treasury?.toLowerCase();
   const is = (v: string | undefined) => Boolean(t && v?.toLowerCase() === t);
-  if (e.contractLabel === LABELS.ensRegistry) return true; // our own UserRegistry under takarabako.eth
   if (e.contractLabel === LABELS.aqua) return is(e.inputs.maker);
   return true;
 }
@@ -58,19 +60,19 @@ export async function isOurs(e: StoredEvent, treasury: string | undefined): Prom
 /// Returns false if this delivery was already stored (MultiBaas retries).
 export async function saveEvent(e: StoredEvent): Promise<boolean> {
   const { rowCount } = await pool.query(
-    `insert into chain_events (id, name, contract_label, contract_addr, inputs, tx_hash, block_number, triggered_at)
-     values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict (id) do nothing`,
-    [e.id, e.name, e.contractLabel, e.contractAddress, JSON.stringify(e.inputs), e.txHash, e.blockNumber, e.triggeredAt],
+    `insert into chain_events (id, name, contract_label, contract_addr, inputs, tx_hash, block_number, triggered_at, chain)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9) on conflict (id) do nothing`,
+    [e.id, e.name, e.contractLabel, e.contractAddress, JSON.stringify(e.inputs), e.txHash, e.blockNumber, e.triggeredAt, e.chain ?? config.defaultChain],
   );
   return (rowCount ?? 0) > 0;
 }
 
-export async function recentEvents(limit = 50): Promise<StoredEvent[]> {
+export async function recentEvents(limit = 50, chain?: string): Promise<StoredEvent[]> {
   const { rows } = await pool.query(
     `select id, name, contract_label as "contractLabel", contract_addr as "contractAddress", inputs,
-            tx_hash as "txHash", block_number::int as "blockNumber", triggered_at as "triggeredAt"
-     from chain_events order by triggered_at desc limit $1`,
-    [limit],
+            tx_hash as "txHash", block_number::int as "blockNumber", triggered_at as "triggeredAt", chain
+     from chain_events where ($2::text is null or chain = $2) order by triggered_at desc limit $1`,
+    [limit, chain ?? null],
   );
   return rows;
 }

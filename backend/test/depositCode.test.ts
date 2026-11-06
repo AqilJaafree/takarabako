@@ -16,7 +16,7 @@ after(async () => {
 await accounts.insertAccount({
   privyUserId: "u-dq", email: "dq@x.io",
   privyWallet: "0x00000000000000000000000000000000000000d1",
-  boundAddress: "0x00000000000000000000000000000000000000d2", ensName: "dq.takarabako.eth",
+  boundAddress: "0x00000000000000000000000000000000000000d2", label: "dq",
 });
 
 test("a deposit QR carries a random code that lives 5 minutes", async () => {

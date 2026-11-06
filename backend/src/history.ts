@@ -13,8 +13,9 @@ export interface ReceiptNote {
   usdAmount: number | null;
   txHash: string | null;
   tkcashTxHash: string | null; // the tkCASH minted for this note
-  machineName: string | null; // the kiosk that took it (ENS name), when its signature checked out
+  machineName: string | null; // the kiosk id that took it, when its signature checked out
   machineVerified: boolean;
+  chain: string; // the chain the note was credited on
   status: "queued" | "sending" | "confirmed" | "failed";
   at: Date;
 }
@@ -45,6 +46,7 @@ export type HistoryItem =
       txHash: string | null;
       tkcashBurned: number;
       tkcashTxHash: string | null;
+      chain: string;
     }
   | {
       kind: "yield";
@@ -56,7 +58,7 @@ export type HistoryItem =
       apyBps: number | null;
       amountUsd: number | null;
       rationale: string | null;
-      ensName: string | null;
+      label: string | null;
       txHash: string | null;
     }
   | { kind: "refused"; at: Date; id: string; reason: RefusedReason; sessionId: string | null }
@@ -66,9 +68,10 @@ export type HistoryItem =
       id: string;
       asset: "balance" | "tkcash" | "position";
       direction: "sent" | "received";
-      counterparty: string | null; // the other side's ENS name, or address
+      counterparty: string | null; // the other side's label, or address
       amountUsd: number | null;
       positionId: string | null;
+      chain: string;
       txHash: string | null;
     };
 
@@ -124,7 +127,7 @@ function buildReceipt(session: { id: string; privyUserId: string; status: "open"
   };
 }
 
-const NOTE_COLUMNS = `id, amount::float as amount, currency, usd_amount::float as "usdAmount", tx_hash as "txHash", tkcash_tx_hash as "tkcashTxHash", machine_name as "machineName", machine_verified as "machineVerified", status,
+const NOTE_COLUMNS = `id, amount::float as amount, currency, usd_amount::float as "usdAmount", tx_hash as "txHash", tkcash_tx_hash as "tkcashTxHash", machine_name as "machineName", machine_verified as "machineVerified", chain, status,
   created_at as at, session_id as "sessionId"`;
 
 export async function getReceipt(id: string): Promise<Receipt | null> {
@@ -149,11 +152,12 @@ export async function recordWithdrawal(w: {
   txHash: string | null;
   tkcashBurned?: number;
   tkcashTxHash?: string | null;
+  chain?: string;
 }) {
   await pool.query(
-    `insert into withdrawals (id, privy_user_id, destination, gross_usd, fee_bps, net_usd, tx_hash, tkcash_burned, tkcash_tx_hash)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [crypto.randomUUID(), w.privyUserId, w.destination, w.grossUsd, w.feeBps, w.netUsd, w.txHash, w.tkcashBurned ?? 0, w.tkcashTxHash ?? null],
+    `insert into withdrawals (id, privy_user_id, destination, gross_usd, fee_bps, net_usd, tx_hash, tkcash_burned, tkcash_tx_hash, chain)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    [crypto.randomUUID(), w.privyUserId, w.destination, w.grossUsd, w.feeBps, w.netUsd, w.txHash, w.tkcashBurned ?? 0, w.tkcashTxHash ?? null, w.chain ?? "sepolia"],
   );
 }
 
@@ -165,13 +169,13 @@ export async function recordYieldEvent(y: {
   apyBps: number | null;
   amountUsd: number | null;
   rationale: string | null;
-  ensName: string | null;
+  label: string | null;
   txHash: string | null;
 }) {
   await pool.query(
-    `insert into yield_events (id, privy_user_id, action, risk_tier, pair, apy_bps, amount_usd, rationale, ens_name, tx_hash)
+    `insert into yield_events (id, privy_user_id, action, risk_tier, pair, apy_bps, amount_usd, rationale, label, tx_hash)
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-    [crypto.randomUUID(), y.privyUserId, y.action, y.riskTier, y.pair, y.apyBps, y.amountUsd, y.rationale, y.ensName, y.txHash],
+    [crypto.randomUUID(), y.privyUserId, y.action, y.riskTier, y.pair, y.apyBps, y.amountUsd, y.rationale, y.label, y.txHash],
   );
 }
 
@@ -217,7 +221,7 @@ export async function listHistory(privyUserId: string, opts: { limit: number; ki
   if (want("withdrawal")) {
     const { rows } = await pool.query(
       `select id, destination, gross_usd::float as "grossUsd", fee_bps as "feeBps", net_usd::float as "netUsd",
-              tx_hash as "txHash", tkcash_burned::float as "tkcashBurned", tkcash_tx_hash as "tkcashTxHash", created_at as at
+              tx_hash as "txHash", tkcash_burned::float as "tkcashBurned", tkcash_tx_hash as "tkcashTxHash", chain, created_at as at
        from withdrawals where privy_user_id = $1 order by created_at desc limit $2`,
       [privyUserId, limit],
     );
@@ -227,7 +231,7 @@ export async function listHistory(privyUserId: string, opts: { limit: number; ki
   if (want("yield")) {
     const { rows } = await pool.query(
       `select id, action, risk_tier as "riskTier", pair, apy_bps as "apyBps", amount_usd::float as "amountUsd", rationale,
-              ens_name as "ensName", tx_hash as "txHash", created_at as at
+              label, tx_hash as "txHash", created_at as at
        from yield_events where privy_user_id = $1 order by created_at desc limit $2`,
       [privyUserId, limit],
     );
@@ -236,9 +240,9 @@ export async function listHistory(privyUserId: string, opts: { limit: number; ki
 
   if (want("transfer")) {
     const { rows } = await pool.query(
-      `select t.id, t.kind as asset, t.created_at as at, t.amount_usd::float as "amountUsd", t.position_id as "positionId", t.tx_hash as "txHash",
+      `select t.id, t.kind as asset, t.created_at as at, t.amount_usd::float as "amountUsd", t.position_id as "positionId", t.tx_hash as "txHash", t.chain,
               case when t.from_user = $1 then 'sent' else 'received' end as direction,
-              case when t.from_user = $1 then coalesce(t.to_name, rcv.ens_name, t.to_address) else snd.ens_name end as counterparty
+              case when t.from_user = $1 then coalesce(t.to_name, rcv.label, t.to_address) else snd.label end as counterparty
        from transfers t
        left join accounts snd on snd.privy_user_id = t.from_user
        left join accounts rcv on rcv.privy_user_id = t.to_user

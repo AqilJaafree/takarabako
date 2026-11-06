@@ -2,7 +2,12 @@
 
 export type Panel<T> = { data: T | null; error: string | null };
 
+export type ChainKey = "sepolia" | "arc-testnet";
+/// Which chains a view covers.
+export type ChainFilter = "all" | ChainKey;
+
 export interface VaultState {
+  chain?: ChainKey;
   apyBps: number;
   totalShares: number;
   liabilityUsd: number;
@@ -27,12 +32,19 @@ export interface Attestation {
 }
 
 export type ReserveStatus =
-  | { configured: false }
-  | { configured: true; supply: number; reserve: number; paused: boolean; backed: boolean; kiosks: KioskState[]; attestations: Attestation[] };
+  | { configured: false; chain?: ChainKey }
+  | { configured: true; chain?: ChainKey; supply: number; reserve: number; paused: boolean; backed: boolean; kiosks: KioskState[]; attestations: Attestation[] };
 
+/// The treasury on one chain. `usdc` is the ERC-20 view of the funds. Where the gas asset is USDC
+/// (Arc) `native` is the same pool in its 18-decimal gas view: show `usdc`, never add the two.
 export interface TreasuryBalances {
+  chain?: ChainKey;
   address: string | null;
+  nativeSymbol?: string;
+  gasIsUsdc?: boolean;
+  native?: number;
   eth: number;
+  usdc?: number | null;
   musdc: number | null;
 }
 
@@ -53,7 +65,7 @@ export interface Alert {
 
 export interface Proposal {
   id: string;
-  action: "fund_yield_reserve" | "set_apy" | "pause_kiosk" | "mint_usdc_float";
+  action: "fund_yield_reserve" | "set_apy" | "pause_kiosk" | "mint_usdc_float" | "rebalance_chains";
   args: Record<string, unknown>;
   rationale: string;
   source: "ask" | "monitor";
@@ -64,12 +76,50 @@ export interface Proposal {
   createdAt: string;
 }
 
+export interface BridgeRow {
+  id: string;
+  kind: "customer" | "treasury";
+  fromChain?: ChainKey;
+  toChain?: ChainKey;
+  from?: ChainKey;
+  to?: ChainKey;
+  amountUsd: number;
+  state: "created" | "withdrawn" | "burned" | "attested" | "minted" | "credited" | "failed";
+  burnTx?: string | null;
+  mintTx?: string | null;
+  creditTx?: string | null;
+  error?: string | null;
+  updatedAt: string;
+}
+
+export interface ChainSummary {
+  chain: ChainKey;
+  name: string;
+  ready: boolean;
+  vault: Panel<VaultState>;
+  reserve: Panel<ReserveStatus>;
+  treasury: Panel<TreasuryBalances>;
+}
+
+export interface IndexerStatus {
+  chain: ChainKey;
+  head: number | null;
+  cursor: number | null;
+  behind: number | null;
+  live: boolean;
+}
+
 export interface Summary {
   multibaas: boolean;
+  multibaasChain?: ChainKey;
   cashReceipt: boolean;
   kioskId: string;
   retiredKiosks?: string[];
   feeBps: number;
+  chains: ChainSummary[];
+  totals: { liabilityUsd: number; vaultUsdcBalance: number; tkcashSupply: number; tkcashReserve: number; treasuryUsdc: number };
+  indexers: IndexerStatus[];
+  bridge: { inFlight: number; recent: BridgeRow[] };
   vault: Panel<VaultState>;
   reserve: Panel<ReserveStatus>;
   treasury: Panel<TreasuryBalances>;
@@ -79,24 +129,28 @@ export interface Summary {
 }
 
 export interface Holders {
+  chains?: ChainKey[];
   tkcash: Panel<{
     total: number;
     count: number;
     top1Share: number;
     top3Share: number;
-    holders: Array<{ address: string; balance: number; name: string | null }>;
+    holders: Array<{ address: string; balance: number; name: string | null; chains?: Record<string, number> }>;
   }>;
-  vault: Panel<{ count: number; depositors: Array<{ address: string; deposited: number; name: string | null }> }>;
+  vault: Panel<{ count: number; depositors: Array<{ address: string; deposited: number; name: string | null; chains?: Record<string, number> }> }>;
 }
 
 export interface Flows {
+  chains?: ChainKey[];
   days: number;
-  daily: Array<{ day: string; cashIn: number; cashOut: number }>;
+  daily: Array<{ day: string; cashIn: number; cashOut: number; chains?: Record<string, { cashIn: number; cashOut: number }> }>;
   withdrawals: { gross: number; fees: number; count: number };
   denominations: Panel<Array<{ denomination: number; total: number }>>;
 }
 
 export interface Positions {
+  chain?: ChainKey;
+  chainName?: string;
   spot: number | null;
   aqua: string;
   router: string;
@@ -120,9 +174,19 @@ export interface ChainEvent {
   inputs: Record<string, string>;
   txHash: string | null;
   triggeredAt: string;
+  chain?: ChainKey;
+}
+
+export interface BridgeOverview {
+  inFlight: number;
+  inFlightUsd: number;
+  volume: Array<{ from: ChainKey; to: ChainKey; count: number; amountUsd: number }>;
+  transfers: BridgeRow[];
 }
 
 export interface OpsData {
+  chain: ChainFilter;
+  bridge: BridgeOverview | { error: string };
   summary: Summary | { error: string };
   holders: Holders | { error: string };
   flows: Flows | { error: string };

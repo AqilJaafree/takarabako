@@ -2,7 +2,7 @@
   "name": "@takarabako/backend",
   "version": "0.1.0",
   "private": true,
-  "description": "Takarabako backend/orchestrator — PRD §7.3. Treasury signer, deposit/verify/withdraw API, kiosk-facing endpoints.",
+  "description": "Takarabako backend/orchestrator \u2014 PRD \u00a77.3. Treasury signer, deposit/verify/withdraw API, kiosk-facing endpoints.",
   "type": "module",
   "scripts": {
     "dev": "tsx watch --env-file=.env src/index.ts",
@@ -15,10 +15,11 @@
     "chain:check": "tsx --env-file=.env scripts/chain-check.ts",
     "aqua:smoke": "tsx --env-file=.env scripts/aqua-smoke.ts",
     "mb:setup": "tsx --env-file=.env scripts/multibaas-setup.ts",
-    "ens:setup": "tsx --env-file=.env scripts/ens-setup.ts",
-    "ens:migrate": "tsx --env-file=.env scripts/ens-migrate.ts",
-    "ens:kiosk": "tsx --env-file=.env scripts/ens-kiosk.ts",
-    "world:staging": "tsx --env-file=.env scripts/world-staging.ts"
+    "kiosk:register": "tsx --env-file=.env scripts/kiosk-register.ts",
+    "bridge:smoke": "tsx --env-file=.env scripts/bridge-smoke.ts",
+    "arc:e2e": "tsx scripts/arc-local-e2e.ts",
+    "bridge:e2e": "tsx scripts/bridge-local-e2e.ts",
+    "demo:seed": "tsx scripts/demo-seed.ts"
   },
   "dependencies": {
     "@1inch/aqua-sdk": "^0.3.4",
@@ -26,7 +27,6 @@
     "@anthropic-ai/sdk": "^0.125.0",
     "@curvegrid/multibaas-sdk": "^1.1.1",
     "@privy-io/node": "^0.34.0",
-    "@worldcoin/idkit-core": "^4.3.0",
     "bullmq": "^6.3.9",
     "express": "^4.21.2",
     "ioredis": "^6.0.0",

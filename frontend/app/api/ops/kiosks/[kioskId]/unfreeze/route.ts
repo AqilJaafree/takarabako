@@ -5,8 +5,9 @@ import { backendFetch, errorResponse } from "@/lib/backend";
 export async function POST(req: NextRequest, { params }: { params: Promise<{ kioskId: string }> }) {
   const { kioskId } = await params;
   const token = req.headers.get("x-ops-token");
+  const body = await req.json().catch(() => ({}));
   try {
-    return NextResponse.json(await backendFetch(`/ops/kiosks/${encodeURIComponent(kioskId)}/unfreeze`, { token, body: {} }));
+    return NextResponse.json(await backendFetch(`/ops/kiosks/${encodeURIComponent(kioskId)}/unfreeze`, { token, body }));
   } catch (err) {
     return errorResponse(err);
   }

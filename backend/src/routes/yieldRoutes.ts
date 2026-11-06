@@ -9,7 +9,6 @@ import { ethCandles, ethUsd, listPositions, PAIR, planPosition, viewPosition } f
 import { ADVANCED, allocate } from "../aquaMath.js";
 import { closeForCustomer, openForCustomer } from "../yieldPositions.js";
 import { DailyLimitError } from "../limits.js";
-import { holdsDeed } from "../ensTransfers.js";
 
 /// 1inch Aqua yield for the web app: market data for the chart, a preview
 /// of how a range splits into liquidity, advanced positions and closing.
@@ -110,11 +109,6 @@ yieldRouter.post("/yield/positions/:id/close", requireSession("full"), asyncHand
   }
   if (row.status === "closed") {
     res.status(409).json({ error: "position is already closed" });
-    return;
-  }
-  // The ENS name is the deed: only its current holder can close the position.
-  if (!(await holdsDeed(account, row.id))) {
-    res.status(409).json({ error: "your wallet no longer holds this position's deed" });
     return;
   }
   res.json(await closeForCustomer(account, row));

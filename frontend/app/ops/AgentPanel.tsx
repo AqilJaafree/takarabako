@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { AgentRun, Alert, Proposal } from "@/lib/opsTypes";
-import { shortHex, txUrl, timeAgo } from "@/lib/format";
+import { chainName, shortHex, txUrl, timeAgo } from "@/lib/format";
 
 const EXAMPLES = [
   "Is the yield reserve enough for the next 30 days?",
@@ -16,6 +16,7 @@ const ACTION_LABEL: Record<Proposal["action"], string> = {
   set_apy: "Set vault APY",
   pause_kiosk: "Pause kiosk",
   mint_usdc_float: "Mint mUSDC float",
+  rebalance_chains: "Move USDC between chains",
 };
 
 function describeArgs(p: Proposal) {
@@ -23,11 +24,13 @@ function describeArgs(p: Proposal) {
   switch (p.action) {
     case "fund_yield_reserve":
     case "mint_usdc_float":
-      return `${a.amount} USDC`;
+      return `${a.amount} USDC${a.chain ? ` on ${chainName(String(a.chain))}` : ""}`;
     case "set_apy":
-      return `${Number(a.bps) / 100}% (${a.bps} bps)`;
+      return `${Number(a.bps) / 100}% (${a.bps} bps)${a.chain ? ` on ${chainName(String(a.chain))}` : ""}`;
     case "pause_kiosk":
-      return `${a.kioskId}: ${a.reason}`;
+      return `${a.kioskId}${a.chain ? ` (${chainName(String(a.chain))})` : ""}: ${a.reason}`;
+    case "rebalance_chains":
+      return `${a.amount} USDC, ${chainName(String(a.from))} to ${chainName(String(a.to))}`;
   }
 }
 

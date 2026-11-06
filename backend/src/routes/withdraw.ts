@@ -8,7 +8,9 @@ import { assertWithinLimit } from "../limits.js";
 import { findByPrivyUserId } from "../accounts.js";
 import { requireSession } from "../sessions.js";
 import { recordWithdrawal } from "../history.js";
-import { chainReady, previewValueOnChain, withdrawAllOnChain, treasuryAddress } from "../chain.js";
+import { chainOps, readyChains } from "../chain.js";
+import { balancesByChain, totalOf } from "../balances.js";
+import type { CashChainKey } from "../config.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { redeemAll } from "../cashReceipt.js";
 
@@ -41,13 +43,14 @@ withdrawRouter.post("/withdraw", requireSession("full"), asyncHandler(async (req
     res.status(404).json({ error: "unknown account — complete /verify first" });
     return;
   }
-  if (!chainReady || !treasuryAddress) {
-    res.status(503).json({ error: "chain not configured — set TREASURY_PRIVATE_KEY/USDC_ADDRESS/VAULT_ADDRESS in backend/.env" });
+  const chains = readyChains();
+  if (!chains.length) {
+    res.status(503).json({ error: "no chain is configured: set TREASURY_PRIVATE_KEY, USDC and vault addresses in backend/.env" });
     return;
   }
 
-  // Withdraw takes everything: the box plus open positions.
-  const inBox = await previewValueOnChain(account.boundAddress as Address);
+  // Withdraw takes everything: the box on every chain plus open positions.
+  const inBox = totalOf(await balancesByChain(account.boundAddress));
   const inPositions = (await positionSummaries(account.privyUserId)).reduce((sum, p) => sum + (p.amount ?? 0), 0);
   await assertWithinLimit(account, inBox + inPositions, "this withdrawal");
 
@@ -55,32 +58,44 @@ withdrawRouter.post("/withdraw", requireSession("full"), asyncHandler(async (req
   // price) goes back into the vault, so the vault withdrawal below includes it.
   const { closed: positionsClosed, valueUsd: positionsUsd } = await closeAllForCustomer(account);
 
-  const recipient = destination === "wallet" ? (account.privyWallet as Address) : treasuryAddress;
-  const { txHash: vaultTxHash, amount: vaultUsdc } = await withdrawAllOnChain(account.boundAddress as Address, recipient);
+  // One leg per chain: USDC out of that chain's vault, and that chain's tkCASH burned.
+  const legs: Array<{ chain: CashChainKey; txHash: string | null; grossUsdc: number; feeBps: number; netUsdc: number; tkcashBurned: number; tkcashTxHash: string | null }> = [];
+  for (const chain of chains) {
+    const ops = chainOps(chain);
+    const recipient = destination === "wallet" ? (account.privyWallet as Address) : ops.treasuryAddress!;
+    const { txHash, amount } = await ops.withdrawAllOnChain(account.boundAddress as Address, recipient);
 
-  // tkCASH: the customer's claim on cash in the box ends here — as cash in
-  // hand, or turned into USDC in their wallet (the notes then belong to the
-  // treasury) — so their receipt tokens are burned either way.
-  const tkcash = await redeemAll(account.privyWallet).catch((err) => {
-    console.error(`[tkcash] redeem for ${userId}:`, err instanceof Error ? err.message : err);
-    return { burned: 0, txHash: null };
-  });
+    // tkCASH: the customer's claim on cash in the box ends here (as cash in
+    // hand, or turned into USDC in their wallet), so their receipt tokens are
+    // burned either way.
+    const tkcash = await redeemAll(account.privyWallet, chain).catch((err) => {
+      console.error(`[tkcash] redeem on ${chain} for ${userId}:`, err instanceof Error ? err.message : err);
+      return { burned: 0, txHash: null };
+    });
+    if (amount === 0 && tkcash.burned === 0) continue;
+    const feeBps = destination === "wallet" ? 0 : config.withdrawFeeBps;
+    const fee = (amount * feeBps) / 10_000;
+    legs.push({ chain, txHash, grossUsdc: amount, feeBps, netUsdc: amount - fee, tkcashBurned: tkcash.burned, tkcashTxHash: tkcash.txHash });
+    await recordWithdrawal({
+      privyUserId: userId,
+      destination,
+      grossUsd: amount,
+      feeBps,
+      netUsd: amount - fee,
+      txHash,
+      tkcashBurned: tkcash.burned,
+      tkcashTxHash: tkcash.txHash,
+      chain,
+    });
+  }
 
-  const grossUsdc = vaultUsdc;
+  const grossUsdc = legs.reduce((s, l) => s + l.grossUsdc, 0);
   const feeBps = destination === "wallet" ? 0 : config.withdrawFeeBps;
-  const fee = (grossUsdc * feeBps) / 10_000;
-  const netUsdc = grossUsdc - fee;
-
-  await recordWithdrawal({
-    privyUserId: userId,
-    destination,
-    grossUsd: grossUsdc,
-    feeBps,
-    netUsd: netUsdc,
-    txHash: vaultTxHash,
-    tkcashBurned: tkcash.burned,
-    tkcashTxHash: tkcash.txHash,
-  });
+  const netUsdc = legs.reduce((s, l) => s + l.netUsdc, 0);
+  const tkcashBurned = legs.reduce((s, l) => s + l.tkcashBurned, 0);
+  const last = legs[legs.length - 1];
+  const vaultTxHash = last?.txHash ?? null;
+  const tkcash = { burned: tkcashBurned, txHash: last?.tkcashTxHash ?? null };
 
   store.logWithdraw({
     id: crypto.randomUUID(),
@@ -101,6 +116,7 @@ withdrawRouter.post("/withdraw", requireSession("full"), asyncHandler(async (req
     destination,
     tkcashBurned: tkcash.burned,
     tkcashTxHash: tkcash.txHash,
+    legs,
     receipt:
       destination === "wallet"
         ? `$${grossUsdc.toFixed(2)} sent to your wallet ${account.privyWallet}`

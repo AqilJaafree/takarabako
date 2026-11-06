@@ -1,7 +1,51 @@
-import { NETWORKS, resolveAquaDeployment, resolveNetwork, showApyEstimates } from "./networks.js";
+import { NETWORKS, resolveAquaDeployment, resolveNetwork, showApyEstimates, type Network, type NetworkKey } from "./networks.js";
 
-// CHAIN picks the network: sepolia (default), arc-testnet or arc (mainnet).
+// CHAIN picks the primary network: sepolia (default), arc-testnet or arc (mainnet).
+// The primary chain is where 1inch Aqua yield runs and where the legacy,
+// unprefixed variables (RPC_URL, USDC_ADDRESS, VAULT_ADDRESS, CASH_RECEIPT_ADDRESS)
+// apply. Takarabako itself runs on every chain in ENABLED_CHAINS at once.
 const network = resolveNetwork(process.env.CHAIN);
+
+/// Chains the cash-in flow (vault + tkCASH) can run on.
+export const CASH_CHAIN_KEYS = ["sepolia", "arc-testnet"] as const;
+export type CashChainKey = (typeof CASH_CHAIN_KEYS)[number];
+export const isCashChain = (k: string): k is CashChainKey => (CASH_CHAIN_KEYS as readonly string[]).includes(k);
+
+export interface ChainConfig {
+  key: CashChainKey;
+  network: Network;
+  rpcUrl: string;
+  usdcAddress: string;
+  vaultAddress: string;
+  cashReceiptAddress: string;
+  /// First block to index from when the log indexer starts cold ("" = recent head).
+  indexFromBlock: string;
+}
+
+/// SEPOLIA_* / ARC_TESTNET_* variables win; the unprefixed ones fill in for the primary chain.
+function chainConfig(key: CashChainKey): ChainConfig {
+  const net = NETWORKS[key as NetworkKey];
+  const prefix = key === "sepolia" ? "SEPOLIA" : "ARC_TESTNET";
+  const legacy = (name: string) => (net.key === network.key ? process.env[name] : undefined);
+  const pick = (suffix: string, legacyName: string) => process.env[`${prefix}_${suffix}`] || legacy(legacyName) || "";
+  return {
+    key,
+    network: net,
+    rpcUrl: pick("RPC_URL", "RPC_URL") || net.defaultRpcUrl,
+    usdcAddress: pick("USDC_ADDRESS", "USDC_ADDRESS") || net.defaults.usdc,
+    vaultAddress: pick("VAULT_ADDRESS", "VAULT_ADDRESS"),
+    cashReceiptAddress: pick("CASH_RECEIPT_ADDRESS", "CASH_RECEIPT_ADDRESS"),
+    indexFromBlock: process.env[`${prefix}_INDEX_FROM_BLOCK`] ?? "",
+  };
+}
+
+const chains: Record<CashChainKey, ChainConfig> = { sepolia: chainConfig("sepolia"), "arc-testnet": chainConfig("arc-testnet") };
+/// The primary chain's resolved settings (prefixed variables win over the unprefixed ones), when it is a cash chain.
+const primaryCfg = isCashChain(network.key) ? chains[network.key] : null;
+const enabledChains = (process.env.ENABLED_CHAINS ?? "sepolia,arc-testnet")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(isCashChain);
 const aquaDeployment = resolveAquaDeployment(network.chain.id, {
   aqua: process.env.AQUA_ADDRESS,
   router: process.env.AQUA_ROUTER_ADDRESS,
@@ -10,6 +54,15 @@ const aquaDeployment = resolveAquaDeployment(network.chain.id, {
 export const config = {
   port: Number(process.env.PORT ?? 4000),
   network,
+  chains,
+  enabledChains: (enabledChains.length ? enabledChains : [network.key as CashChainKey].filter(isCashChain)) as readonly CashChainKey[],
+  /// Where a deposit lands when the kiosk that took it has no registered home chain.
+  defaultChain: (isCashChain(network.key) ? network.key : "sepolia") as CashChainKey,
+  /// CCTP bridge between the cash chains (bridge.ts).
+  bridge: {
+    maxUsd: Number(process.env.BRIDGE_MAX_USD ?? 1000),
+    attestationUrl: (process.env.CCTP_ATTESTATION_URL ?? "https://iris-api-sandbox.circle.com").replace(/\/+$/, ""),
+  },
   // Self-custody positions on Arc mainnet (selfPositions.ts): the customer signs with
   // their own wallet. Real money, so off unless SELF_CUSTODY_ARC=1, and capped per position.
   selfCustody: {
@@ -32,22 +85,15 @@ export const config = {
   },
   // Whether the yield page shows APY estimates (hidden on a real-money network).
   showApyEstimates: showApyEstimates(network.real, process.env.SHOW_APY_ESTIMATES),
-  rpcUrl: process.env.RPC_URL || network.defaultRpcUrl,
+  rpcUrl: primaryCfg?.rpcUrl ?? (process.env.RPC_URL || network.defaultRpcUrl),
   treasuryPrivateKey: process.env.TREASURY_PRIVATE_KEY ?? "",
-  usdcAddress: process.env.USDC_ADDRESS || network.defaults.usdc,
-  vaultAddress: process.env.VAULT_ADDRESS ?? "",
-  // PRD §7.8 (revised) — Privy replaces World ID Selfie Check: email in,
+  usdcAddress: primaryCfg?.usdcAddress ?? (process.env.USDC_ADDRESS || network.defaults.usdc),
+  vaultAddress: primaryCfg?.vaultAddress ?? process.env.VAULT_ADDRESS ?? "",
+  // Privy: email in,
   // real embedded wallet + a stable user id out, no phone/QR/bridge needed.
   privy: {
     appId: process.env.PRIVY_APP_ID ?? "",
     appSecret: process.env.PRIVY_APP_SECRET ?? "",
-  },
-  // ENS v2 (official Sepolia deployment; scripts/ens-setup.ts). Our own
-  // UserRegistry holds the subnames, our own PermissionedResolver the records.
-  ens: {
-    parentName: process.env.ENS_PARENT_NAME ?? "takarabako.eth",
-    registryAddress: process.env.ENS_REGISTRY_ADDRESS ?? "",
-    resolverAddress: process.env.ENS_RESOLVER_ADDRESS ?? "",
   },
   agent: {
     apiKey: process.env.ANTHROPIC_API_KEY ?? "",
@@ -83,7 +129,7 @@ export const config = {
   // Where MultiBaas can reach this backend (a tunnel in dev), for the webhook.
   publicBackendUrl: (process.env.PUBLIC_BACKEND_URL ?? "").replace(/\/+$/, ""),
   // tkCASH (contracts/src/TakarabakoCashReceipt.sol) and this kiosk's id in it.
-  cashReceiptAddress: process.env.CASH_RECEIPT_ADDRESS ?? "",
+  cashReceiptAddress: primaryCfg?.cashReceiptAddress ?? process.env.CASH_RECEIPT_ADDRESS ?? "",
   kioskId: process.env.KIOSK_ID ?? "tokyo-01",
   // Kiosks this backend used before (their tkCASH reserve is still redeemable).
   previousKioskIds: (process.env.KIOSK_PREVIOUS_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
@@ -104,28 +150,11 @@ export const config = {
     baseUrl: (process.env.AI_BASE_URL ?? "https://openrouter.ai/api/v1").replace(/\/+$/, ""),
     model: process.env.AI_MODEL ?? "openai/gpt-5-mini",
   },
-  // World ID (worldId.ts): proof of personhood, one human per account.
-  // IDKit 4: the backend signs each request with the RP signing key and
-  // forwards proofs to the Developer Portal to verify.
-  worldId: {
-    appId: process.env.WORLD_APP_ID ?? "",
-    rpId: process.env.WORLD_RP_ID ?? "",
-    signingKey: process.env.WORLD_APP_SIGNING_KEY ?? "",
-    action: process.env.WORLD_ACTION ?? "",
-    // (the variable is spelled WORLD_ENVIROMENT in existing .env files; both work)
-    environment: (process.env.WORLD_ENVIRONMENT ?? process.env.WORLD_ENVIROMENT ?? "production") as "production" | "staging" | "sandbox",
-    // Which credential to ask for: "device" (any World App user), "selfie"
-    // (Selfie Check, World ID 3 proofs) or "selfie-v4" (Selfie Check, World ID 4 only).
-    preset: (process.env.WORLD_PRESET ?? "device") as "device" | "selfie" | "selfie-v4",
-    // Sandbox/staging proofs only verify while the app's staging window is
-    // open (24h, opened from the Developer Portal); this is the token it issues.
-    stagingToken: process.env.WORLD_STAGING_VERIFICATION_TOKEN ?? "",
-  },
-  // Customers who haven't verified with World ID can move this much a day
-  // (deposits, withdrawals, yield, sends — limits.ts).
-  unverifiedDailyLimitUsd: Number(process.env.UNVERIFIED_DAILY_LIMIT_USD ?? 1000),
+  // One limit for every account: the most a customer can move a day in USD
+  // (deposits, withdrawals, yield, sends — limits.ts). 0 = no limit.
+  dailyLimitUsd: Number(process.env.DAILY_LIMIT_USD ?? 1000),
   // Verifiable kiosks (machine.ts): "required" rejects deposits that aren't
-  // signed by a kiosk whose ENS name resolves to the signer; "optional"
+  // signed by a registered kiosk's device key; "optional"
   // credits them but marks them unverified.
   machineSignature: (process.env.MACHINE_SIGNATURE === "required" ? "required" : "optional") as "required" | "optional",
   // 1inch Aqua yield (aqua.ts). Addresses come from the official SDKs' per-chain

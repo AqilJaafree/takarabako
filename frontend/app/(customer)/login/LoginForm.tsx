@@ -39,8 +39,7 @@ export function LoginForm() {
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "login failed");
-      // A brand-new wallet goes straight to the World ID selfie; everyone else to My box.
-      await box.openInto(body.isNew ? "/verify" : "/");
+      await box.openInto("/");
     } catch (e) {
       exchanging.current = false;
       setError(e instanceof Error ? e.message : "login failed");

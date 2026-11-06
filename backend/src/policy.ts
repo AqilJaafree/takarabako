@@ -3,19 +3,21 @@
 /// reaches the approval queue. Checked again at approval time, since the
 /// day's totals may have moved in between.
 
-export type ProposalAction = "fund_yield_reserve" | "set_apy" | "pause_kiosk" | "mint_usdc_float";
+export type ProposalAction = "fund_yield_reserve" | "set_apy" | "pause_kiosk" | "mint_usdc_float" | "rebalance_chains";
 
 export const POLICY = {
   maxApyBps: 2000, // 20% — the vault's mock APY never goes above this
   minApyBps: 0,
   maxYieldReserveFundingPerDay: 500, // USDC topped up into the vault per UTC day
   maxFloatMintPerDay: 10_000, // mUSDC the treasury mints for itself per UTC day
+  maxRebalancePerDay: 2_000, // USDC the treasury moves between chains per UTC day (CCTP)
 } as const;
 
 /// What has already been executed today, per action.
 export interface PolicyContext {
   fundedToday: number;
   mintedToday: number;
+  rebalancedToday: number;
   knownKiosks: string[];
 }
 
@@ -50,6 +52,14 @@ export function checkPolicy(action: ProposalAction, args: Record<string, unknown
           ok: false,
           reason: `float minting is capped at ${POLICY.maxFloatMintPerDay} USDC a day; ${ctx.mintedToday} already minted today`,
         };
+      return { ok: true };
+    }
+    case "rebalance_chains": {
+      if (!positive(args.amount)) return { ok: false, reason: "amount must be a positive number of USDC" };
+      if (typeof args.from !== "string" || typeof args.to !== "string" || args.from === args.to) return { ok: false, reason: "from and to must be two different chains" };
+      const after = ctx.rebalancedToday + args.amount;
+      if (after > POLICY.maxRebalancePerDay)
+        return { ok: false, reason: `moving USDC between chains is capped at ${POLICY.maxRebalancePerDay} USDC a day; ${ctx.rebalancedToday} already moved today` };
       return { ok: true };
     }
     case "pause_kiosk": {

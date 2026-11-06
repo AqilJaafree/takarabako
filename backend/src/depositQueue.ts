@@ -9,7 +9,8 @@ import {
   markDepositFailed,
 } from "./accounts.js";
 import { toUsd } from "./fx.js";
-import { sendDepositTx, waitForDepositTx } from "./chain.js";
+import { chainOps } from "./chain.js";
+import type { CashChainKey } from "./config.js";
 import { publishUserEvent, type UserEvent } from "./events.js";
 import { maybeSendReceipt } from "./receiptEmail.js";
 import { recordCashIn } from "./cashReceipt.js";
@@ -53,12 +54,17 @@ export async function enqueueDeposit(depositId: string) {
 
 export interface ProcessDeps {
   toUsd: (amount: number, currency: "USD" | "MYR") => Promise<{ usdAmount: number; rate: number; source: string }>;
-  send: (user: Address, usdAmount: number) => Promise<`0x${string}`>;
-  wait: (hash: `0x${string}`, user: Address) => Promise<number>;
+  send: (user: Address, usdAmount: number, chain: CashChainKey) => Promise<`0x${string}`>;
+  wait: (hash: `0x${string}`, user: Address, chain: CashChainKey) => Promise<number>;
   publish: (privyUserId: string, event: UserEvent) => Promise<void>;
 }
 
-const liveDeps: ProcessDeps = { toUsd, send: sendDepositTx, wait: waitForDepositTx, publish: publishUserEvent };
+const liveDeps: ProcessDeps = {
+  toUsd,
+  send: (user, usd, chain) => chainOps(chain).sendDepositTx(user, usd),
+  wait: (hash, user, chain) => chainOps(chain).waitForDepositTx(hash, user),
+  publish: publishUserEvent,
+};
 
 export async function processDeposit(depositId: string, deps: ProcessDeps = liveDeps) {
   const row = await getDeposit(depositId);
@@ -74,11 +80,11 @@ export async function processDeposit(depositId: string, deps: ProcessDeps = live
     const fx = await deps.toUsd(row.amount, row.currency as "USD" | "MYR");
     usdAmount = fx.usdAmount;
     rate = fx.rate;
-    hash = await deps.send(user, usdAmount);
+    hash = await deps.send(user, usdAmount, row.chain);
     await markDepositSending(depositId, hash, usdAmount); // stored before waiting
   }
 
-  const balance = await deps.wait(hash, user);
+  const balance = await deps.wait(hash, user, row.chain);
   await markDepositConfirmed(depositId);
   await deps.publish(row.privyUserId, {
     type: "deposit.confirmed",
@@ -89,14 +95,15 @@ export async function processDeposit(depositId: string, deps: ProcessDeps = live
     fxRate: rate,
     txHash: hash,
     balance,
+    chain: row.chain,
   });
   if (row.sessionId) await sendReceiptIfDone(row.sessionId);
 
   // tkCASH: the note is now in the box, so mint its receipt token. In the
   // background — it must never hold up or fail a deposit that went through.
-  void recordCashIn({ depositId, wallet: account.privyWallet, usdAmount, denomination: row.amount, currency: row.currency })
+  void recordCashIn({ depositId, wallet: account.privyWallet, usdAmount, denomination: row.amount, currency: row.currency, chain: row.chain, kioskId: row.machineName ?? undefined })
     .then(async (txHash) => {
-      if (txHash) await deps.publish(row.privyUserId, { type: "tkcash.minted", depositId, amount: usdAmount, txHash });
+      if (txHash) await deps.publish(row.privyUserId, { type: "tkcash.minted", depositId, amount: usdAmount, txHash, chain: row.chain });
     })
     .catch((err) => console.error(`[tkcash] cash-in for deposit ${depositId}:`, err instanceof Error ? err.message : err));
 }
