@@ -2,10 +2,10 @@
 
 import { useCallback, useState } from "react";
 import Link from "next/link";
-import type { CashReceipts, Deposit, LiveEvent, Me } from "@/lib/types";
+import type { CashReceipts, CashReceiptsAll, Deposit, LiveEvent, Me } from "@/lib/types";
 import { useLiveEvents } from "@/lib/useLiveEvents";
 import { useRouter } from "next/navigation";
-import { apy, cash, shortHex, timeAgo, tokenUrl, txUrl, usd, without } from "@/lib/format";
+import { apy, cash, chainName, shortHex, timeAgo, tokenUrl, txUrl, usd, without } from "@/lib/format";
 import { RollingNumber } from "@/components/RollingNumber";
 import { TreasureStage } from "@/components/treasure/TreasureStage";
 import { useStageDirector } from "@/components/treasure/useStageDirector";
@@ -25,11 +25,15 @@ export function Dashboard({
 }: {
   me: Me;
   deposits: Deposit[];
-  receipts: CashReceipts | null;
+  receipts: CashReceiptsAll | null;
 }) {
   const router = useRouter();
-  const [tkBalance, setTkBalance] = useState(receipts?.configured ? receipts.balance : 0);
-  const [balance, setBalance] = useState(me.balance);
+  const [tkBalances, setTkBalances] = useState<Record<string, number>>(
+    Object.fromEntries((receipts?.chains ?? (receipts ? [receipts] : [])).map((c) => [c.chain ?? "sepolia", c.configured ? c.balance : 0])),
+  );
+  // The box holds a balance on each chain; the headline is their total.
+  const [balances, setBalances] = useState<Record<string, number>>(Object.fromEntries(me.balances.map((b) => [b.chain, b.balance])));
+  const balance = Object.values(balances).reduce((s, n) => s + n, 0);
   const [deposits, setDeposits] = useState(initialDeposits);
   const [pending, setPending] = useState<Record<string, Pending>>({});
   const [fresh, setFresh] = useState<string | null>(null);
@@ -54,6 +58,11 @@ export function Dashboard({
     });
   }, []);
 
+  const refreshBalances = useCallback(async () => {
+    const res = await fetch("/api/me");
+    if (res.ok) setBalances(Object.fromEntries(((await res.json()) as Me).balances.map((b) => [b.chain, b.balance])));
+  }, []);
+
   const onEvent = useCallback((e: LiveEvent) => {
     const drop = (id: string) => setPending((p) => without(p, id));
     switch (e.type) {
@@ -70,9 +79,9 @@ export function Dashboard({
         break;
       case "deposit.confirmed":
         drop(e.depositId);
-        setBalance(e.balance);
+        setBalances((b) => ({ ...b, [e.chain ?? "sepolia"]: e.balance }));
         setFresh(e.depositId);
-        upsert({ id: e.depositId, amount: e.amount, currency: e.currency, usdAmount: e.usdAmount, txHash: e.txHash, status: "confirmed" });
+        upsert({ id: e.depositId, amount: e.amount, currency: e.currency, usdAmount: e.usdAmount, txHash: e.txHash, status: "confirmed", chain: e.chain });
         deposit(e.depositId, { status: "confirmed", amount: e.amount, currency: e.currency, usdAmount: e.usdAmount, txHash: e.txHash });
         break;
       case "deposit.failed":
@@ -83,10 +92,14 @@ export function Dashboard({
         break;
       case "tkcash.minted":
         upsert({ id: e.depositId, tkcashTxHash: e.txHash });
-        setTkBalance((b) => b + e.amount);
+        setTkBalances((b) => ({ ...b, [e.chain ?? "sepolia"]: (b[e.chain ?? "sepolia"] ?? 0) + e.amount }));
+        break;
+      case "bridge.update":
+        // A transfer between chains finished: the balances moved, so read them again.
+        if (e.state === "withdrawn" || e.state === "credited") void refreshBalances();
         break;
     }
-  }, [upsert, deposit]);
+  }, [upsert, deposit, refreshBalances]);
 
   // Fallback while the stream is down: refresh the balance and history.
   const poll = useCallback(async () => {
@@ -95,7 +108,7 @@ export function Dashboard({
       router.replace("/login");
       return;
     }
-    if (meRes.ok) setBalance(((await meRes.json()) as Me).balance);
+    if (meRes.ok) setBalances(Object.fromEntries(((await meRes.json()) as Me).balances.map((b) => [b.chain, b.balance])));
     if (depRes.ok) setDeposits(((await depRes.json()) as { deposits: Deposit[] }).deposits);
   }, [router]);
 
@@ -117,18 +130,20 @@ export function Dashboard({
           <span className={`pill ${live === "live" ? "ok" : "warn"}`}>{live === "live" ? "Live" : live === "polling" ? "Reconnecting" : "Connecting"}</span>
         </div>
         <RollingNumber value={balance} className="balance" />
-        <div className="ens">
-          {me.ensName}
-          {me.worldId?.verified ? (
-            <span className="human-badge">✓ verified human</span>
-          ) : me.worldId ? (
-            <Link href="/verify" className="human-badge is-pending" title="Take a World ID selfie to lift the daily limit">
-              {me.limit?.leftUsd != null ? `${usd(me.limit.leftUsd)} left today · verify` : "not verified · verify"}
-            </Link>
-          ) : null}
+        <div className="account-label">
+          {me.label ?? "your box"}
+          {me.limit?.leftUsd != null && <span className="human-badge" title="The same daily limit applies to every account">{usd(me.limit.leftUsd)} left today</span>}
         </div>
+        <ul className="chain-balances" aria-label="Balance on each chain">
+          {me.balances.map((b) => (
+            <li key={b.chain}>
+              <span className="muted small">{b.name}</span> <span className="amount">{usd(balances[b.chain] ?? 0)}</span>
+            </li>
+          ))}
+        </ul>
         <p className="small" style={{ marginTop: 10, marginBottom: 0, color: "rgba(244,233,218,.8)" }}>
           Earning {apy(me.apyBps)} APY in the Takarabako vault
+          {me.balances.length > 1 && <> · <Link href="/bridge">Move USDC between chains →</Link></>}
         </p>
       </section>
 
@@ -140,7 +155,9 @@ export function Dashboard({
       )}
       {failure && <div className="notice error">{failure}</div>}
 
-      {receipts?.configured && <CashReceiptsCard r={receipts} balance={tkBalance} />}
+      {(receipts?.chains ?? (receipts ? [receipts] : [])).map(
+        (r) => r.configured && <CashReceiptsCard key={r.chain ?? "sepolia"} r={r} balance={tkBalances[r.chain ?? "sepolia"] ?? 0} />,
+      )}
 
       {me.positions.length > 0 && (
         <section className="card">
@@ -159,7 +176,7 @@ export function Dashboard({
                       <span className={p.inRange ? "tone-ok" : "tone-warn"}> · {p.inRange ? "earning" : "out of range"}</span>
                     )}
                   </div>
-                  <div className="ens small muted">{p.ensName}</div>
+                  <div className="account-label small muted">{p.name}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div className="amount">{usd(p.amount)}</div>
@@ -189,14 +206,15 @@ export function Dashboard({
                   <div className="small muted">
                     {timeAgo(d.createdAt)}
                     {d.txHash && (
-                      <> · <a href={txUrl(d.txHash)} target="_blank" rel="noreferrer" className="mono">{shortHex(d.txHash)}</a></>
+                      <> · <a href={txUrl(d.txHash, d.chain)} target="_blank" rel="noreferrer" className="mono">{shortHex(d.txHash)}</a></>
                     )}
                     {d.tkcashTxHash && (
-                      <> · <a href={txUrl(d.tkcashTxHash)} target="_blank" rel="noreferrer" title="tkCASH receipt token minted">tkCASH ✓</a></>
+                      <> · <a href={txUrl(d.tkcashTxHash, d.chain)} target="_blank" rel="noreferrer" title="tkCASH receipt token minted">tkCASH ✓</a></>
                     )}
                     {d.machineVerified && d.machineName && (
-                      <span className="machine-badge" title="Signed by the kiosk's device key, checked against its ENS name">✓ {d.machineName}</span>
+                      <span className="machine-badge" title="Signed by the kiosk's registered device key">✓ {d.machineName}</span>
                     )}
+                    {d.chain && <span className="chain-chip">{chainName(d.chain)}</span>}
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
@@ -222,10 +240,11 @@ function DepositStatus({ d }: { d: Deposit }) {
 /// tkCASH: a token for the banknotes this customer put into the kiosk,
 /// with the proof that every token is backed by cash in the box.
 function CashReceiptsCard({ r, balance }: { r: Extract<CashReceipts, { configured: true }>; balance: number }) {
+  const chain = r.chain ?? "sepolia";
   return (
     <section className="card tk-card">
       <div className="spread">
-        <h2 style={{ margin: 0 }}>Cash receipts</h2>
+        <h2 style={{ margin: 0 }}>Cash receipts · {chainName(chain)}</h2>
         <span className={`pill ${r.backed && !r.kiosk.frozen ? "ok" : "bad"}`}>
           {r.kiosk.frozen ? "Kiosk under review" : r.backed ? "Fully backed" : "Backing mismatch"}
         </span>
@@ -241,8 +260,8 @@ function CashReceiptsCard({ r, balance }: { r: Extract<CashReceipts, { configure
         <span className="mono">{r.kiosk.kioskId}</span>
         {r.kiosk.lastAuditAt ? ` · last counted ${timeAgo(new Date(r.kiosk.lastAuditAt * 1000).toISOString())}` : ""}
       </p>
-      <a href={tokenUrl(r.contract)} target="_blank" rel="noreferrer" className="small">
-        View tkCASH on Etherscan →
+      <a href={tokenUrl(r.contract, chain)} target="_blank" rel="noreferrer" className="small">
+        View tkCASH on the {chainName(chain)} explorer →
       </a>
     </section>
   );

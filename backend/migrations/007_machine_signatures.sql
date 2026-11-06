@@ -1,6 +1,6 @@
 -- Verifiable kiosks: every note a kiosk takes is signed by its device key,
--- whose address is its ENS name's addr record (machine.ts).
-alter table deposits add column if not exists machine_name text;      -- e.g. tokyo-01.takarabako.eth
+-- registered for the kiosk id (kiosks table, machine.ts).
+alter table deposits add column if not exists machine_name text;      -- e.g. tokyo-01
 alter table deposits add column if not exists machine_signer text;    -- recovered device address
 alter table deposits add column if not exists machine_nonce numeric;
 alter table deposits add column if not exists machine_sig text;

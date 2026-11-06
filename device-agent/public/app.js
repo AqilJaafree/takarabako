@@ -19,7 +19,7 @@ const state = {
   expiresAt: 0, // ms; the session slides forward on each deposit
   qrFallback: null, // QR image to show when the registration email couldn't be sent
   scanStream: null,
-  ensName: null,
+  label: null,
   balance: 0,
   position: null,
   lastEventSeq: 0,
@@ -53,7 +53,7 @@ function startSession(res) {
     token: res.token,
     scope: res.scope,
     expiresAt: Date.parse(res.expiresAt),
-    ensName: res.ensName,
+    label: res.label,
     balance: res.balance,
   });
   registerSession();
@@ -154,7 +154,7 @@ function registerSession() {
   fetch("/session", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ token: state.token, ensName: state.ensName, scope: state.scope, expiresAt: state.expiresAt }),
+    body: JSON.stringify({ token: state.token, label: state.label, scope: state.scope, expiresAt: state.expiresAt }),
   }).catch(() => {});
 }
 
@@ -240,7 +240,7 @@ function stopScan() {
 async function onLoginQr(text) {
   try {
     const res = await api("/login/qr", { qr: text });
-    log(`quick login — ${res.ensName} (deposit only)`);
+    log(`quick login — ${res.label} (deposit only)`);
     startSession(res);
   } catch (e) {
     log(`QR login failed: ${e.message}`);
@@ -251,7 +251,7 @@ async function onLoginQr(text) {
 // Wallet-QR sessions can only deposit: no yield, no withdraw, no test button.
 function screenDepositOnly() {
   render(`
-    <div class="ens">${state.ensName}</div>
+    <div class="account-label">${state.label}</div>
     <div class="balance">$${state.balance.toLocaleString()}</div>
     ${pendingHtml()}
     <p class="sub">Insert your cash now. Notes are credited to this account.</p>
@@ -315,7 +315,7 @@ function pendingHtml() {
 
 function screenAccount() {
   const positionHtml = state.position
-    ? `<p class="sub">Active: <span class="ens">${state.position.ensName}</span> — ${state.position.pair} @ ${(state.position.apyBps / 100).toFixed(1)}% APY</p>`
+    ? `<p class="sub">Active: <span class="account-label">${state.position.name}</span> — ${state.position.pair} @ ${(state.position.apyBps / 100).toFixed(1)}% APY</p>`
     : "";
 
   const canWithdraw = state.balance > 0 || !!state.position;
@@ -332,7 +332,7 @@ function screenAccount() {
     : "";
 
   render(`
-    <div class="ens">${state.ensName}</div>
+    <div class="account-label">${state.label}</div>
     <div class="balance">$${state.balance.toLocaleString()}</div>
     ${pendingHtml()}
     ${positionHtml}
@@ -376,7 +376,7 @@ function onDone() {
   }
   Object.assign(state, {
     userId: null, token: null, scope: null, expiresAt: 0, qrFallback: null,
-    ensName: null, balance: 0, position: null, lastEventSeq: 0, pending: {},
+    label: null, balance: 0, position: null, lastEventSeq: 0, pending: {},
   });
   screenAuth();
 }
@@ -391,7 +391,7 @@ async function onVerify() {
   statusEl.textContent = "Verifying…";
   try {
     const res = await api("/verify", { email });
-    log(`verified — user ${res.userId}, ${res.ensName}`);
+    log(`verified — user ${res.userId}, ${res.label}`);
     if (res.fundingTxHash) log(`new wallet funded with 0.001 ETH — tx ${res.fundingTxHash}`);
     if (res.qrEmailed) log(`quick-deposit QR emailed to ${email}`);
     state.qrFallback = res.qrFallback;
@@ -406,7 +406,7 @@ async function onDeposit() {
   try {
     const res = await api("/deposit", { amount: 1000 });
     state.balance = res.balance;
-    log(`deposit ok — ${res.ensName}, tx ${res.txHash}`);
+    log(`deposit ok — ${res.label}, tx ${res.txHash}`);
     screenAccount();
   } catch (e) {
     log(`deposit failed: ${e.message}`);
@@ -420,7 +420,7 @@ async function onOpenPosition(riskLevel) {
       amount: state.balance,
     });
     state.position = res;
-    log(`agent opened ${res.pair} — ${res.ensName}`);
+    log(`agent opened ${res.pair} — ${res.label}`);
     if (res.rationale) log(`agent: "${res.rationale}"`);
     screenAccount();
   } catch (e) {

@@ -18,7 +18,7 @@ const siteUrl = () => (config.publicBackendUrl ? new URL(config.publicBackendUrl
 export const maskEmail = (email: string) => email.replace(/^(.)(.*)(@.*)$/, (_m, a, b, c) => `${a}${"•".repeat(Math.min(8, b.length))}${c}`);
 
 /// Email-safe HTML: tables and inline styles only.
-export function receiptHtml(r: Receipt, ensName: string | null): string {
+export function receiptHtml(r: Receipt, label: string | null): string {
   const rows = r.notes
     .map((n) => {
       const right =
@@ -49,7 +49,7 @@ export function receiptHtml(r: Receipt, ensName: string | null): string {
         </td></tr>
         <tr><td style="padding:22px 26px 6px">
           <div style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:1px;color:#8a7462">DEPOSITED TO</div>
-          <div style="font-family:'Courier New',monospace;font-size:15px;color:#1a0f0d;margin-top:4px">${esc(ensName ?? "your Takarabako box")}</div>
+          <div style="font-family:'Courier New',monospace;font-size:15px;color:#1a0f0d;margin-top:4px">${esc(label ?? "your Takarabako box")}</div>
           <div style="font-family:Arial,sans-serif;font-size:12px;color:#8a7462;margin-top:4px">${when}</div>
         </td></tr>
         <tr><td style="padding:8px 26px">
@@ -75,11 +75,11 @@ export function receiptHtml(r: Receipt, ensName: string | null): string {
 }
 
 async function send(receipt: Receipt, account: Account): Promise<boolean> {
-  const pdf = await receiptPdf(receipt, { email: account.email, ensName: account.ensName });
+  const pdf = await receiptPdf(receipt, { email: account.email, label: account.label });
   return sendEmail({
     to: account.email,
     subject: `Takarabako receipt — ${face(receipt.totalAmount, receipt.currency)} deposited`,
-    html: receiptHtml(receipt, account.ensName),
+    html: receiptHtml(receipt, account.label),
     attachments: [{ filename: `takarabako-receipt-${receipt.id.slice(0, 8)}.pdf`, content: pdf, contentType: "application/pdf" }],
   });
 }

@@ -2,13 +2,14 @@ import { Router } from "express";
 import { z } from "zod";
 import { findByPrivyUserId, createQueuedDeposit, markDepositFailed } from "../accounts.js";
 import { requireSession, type Session } from "../sessions.js";
-import { chainReady } from "../chain.js";
+import { chainOps } from "../chain.js";
+import { getKiosk } from "../kiosks.js";
+import { config, isCashChain, type CashChainKey } from "../config.js";
 import { enqueueDeposit } from "../depositQueue.js";
 import { publishUserEvent } from "../events.js";
 import { currentOpenSession } from "../history.js";
 import { asyncHandler } from "../asyncHandler.js";
-import { config } from "../config.js";
-import { checkMachine } from "../machine.js";
+import { checkMachine, machineSignatureRequired } from "../machine.js";
 import { toUsd, usdPerUnit } from "../fx.js";
 
 /// POST /deposit — PRD §6.2 (ATM-style: comes after login). Cash lands in the
@@ -61,22 +62,29 @@ depositRouter.post("/deposit", requireSession("deposit"), asyncHandler(async (re
     res.status(404).json({ error: "unknown account" });
     return;
   }
-  if (!chainReady) {
-    res.status(503).json({ error: "chain not configured — set TREASURY_PRIVATE_KEY/USDC_ADDRESS/VAULT_ADDRESS in backend/.env" });
-    return;
-  }
 
-  // Which machine took this note, proven by its signature and its ENS name.
+  // Which machine took this note, proven by its signature and the kiosk's registered key.
   const token = (req.header("authorization") ?? "").replace(/^Bearer\s+/i, "");
   const machine = await checkMachine(parsed.data.machine, { amount, currency, token });
   if (!machine.verified && parsed.data.machine) console.warn(`[machine] unverified note from ${machine.kiosk ?? "?"}: ${machine.reason}`);
-  if (!machine.verified && config.machineSignature === "required") {
-    res.status(403).json({ error: `deposit not signed by a verified Takarabako kiosk (${machine.reason})` });
+  if (!machine.verified && machineSignatureRequired()) {
+    res.status(403).json({ error: `deposit not signed by a registered Takarabako kiosk (${machine.reason})` });
+    return;
+  }
+
+  // The note is credited on its kiosk's home chain: the registered kiosk that signed it,
+  // else the backend's own kiosk, else the primary chain.
+  const homeKiosk = machine.verified ? null : await getKiosk(config.kioskId);
+  const kioskChain = machine.verified ? machine.chain : homeKiosk?.chain;
+  const chain: CashChainKey = kioskChain && isCashChain(kioskChain) && config.enabledChains.includes(kioskChain) ? kioskChain : config.defaultChain;
+  if (!chainOps(chain).chainReady) {
+    res.status(503).json({ error: `${config.chains[chain].network.name} isn't configured: set the treasury key and the USDC and vault addresses in backend/.env` });
     return;
   }
 
   const open = await currentOpenSession(account.privyUserId);
   const row = await createQueuedDeposit({
+    chain,
     privyUserId: account.privyUserId,
     currency,
     amount,
@@ -104,7 +112,8 @@ depositRouter.post("/deposit", requireSession("deposit"), asyncHandler(async (re
     depositId: row.id,
     sessionId: row.sessionId,
     machine: machine.verified ? { kiosk: machine.kiosk, verified: true } : { verified: false, reason: machine.reason },
-    ensName: account.ensName,
+    label: account.label,
+    chain,
     amount,
     currency,
     estUsd,

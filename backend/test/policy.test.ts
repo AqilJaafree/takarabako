@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkPolicy, POLICY, type PolicyContext } from "../src/policy.js";
 
-const ctx: PolicyContext = { fundedToday: 0, mintedToday: 0, knownKiosks: ["tokyo-01"] };
+const ctx: PolicyContext = { fundedToday: 0, mintedToday: 0, rebalancedToday: 0, knownKiosks: ["tokyo-01"] };
 
 test("APY must stay within 0–2000 bps and be whole", () => {
   assert.deepEqual(checkPolicy("set_apy", { bps: 450 }, ctx), { ok: true });
@@ -36,4 +36,11 @@ test("pausing needs a known kiosk and a reason", () => {
 
 test("unknown actions (like unpausing) are rejected", () => {
   assert.equal(checkPolicy("unpause_kiosk" as never, {}, ctx).ok, false);
+});
+
+test("moving USDC between chains needs two different chains and stays under the daily cap", () => {
+  assert.equal(checkPolicy("rebalance_chains", { from: "sepolia", to: "arc-testnet", amount: 500 }, ctx).ok, true);
+  assert.equal(checkPolicy("rebalance_chains", { from: "sepolia", to: "sepolia", amount: 5 }, ctx).ok, false);
+  assert.equal(checkPolicy("rebalance_chains", { from: "sepolia", to: "arc-testnet", amount: 0 }, ctx).ok, false);
+  assert.equal(checkPolicy("rebalance_chains", { from: "sepolia", to: "arc-testnet", amount: 1 }, { ...ctx, rebalancedToday: 2000 }).ok, false);
 });

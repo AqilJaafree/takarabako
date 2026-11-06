@@ -6,7 +6,6 @@ import { agentRouter } from "./routes/agentRoutes.js";
 import { withdrawRouter } from "./routes/withdraw.js";
 import { positionRouter } from "./routes/position.js";
 import { loginQrRouter } from "./routes/loginQr.js";
-import { loginWorldRouter } from "./routes/loginWorld.js";
 import { authPrivyRouter } from "./routes/authPrivy.js";
 import { eventsRouter } from "./routes/events.js";
 import { meRouter } from "./routes/me.js";
@@ -18,13 +17,14 @@ import { dashboardRouter } from "./routes/dashboard.js";
 import { yieldRouter } from "./routes/yieldRoutes.js";
 import { networkRouter } from "./routes/networkRoutes.js";
 import { selfRouter } from "./routes/selfRoutes.js";
-import { ensRouter } from "./routes/ensRoutes.js";
-import { worldIdRouter } from "./routes/worldIdRoutes.js";
-import { startDeedWatcher } from "./ensTransfers.js";
+import { walletRouter } from "./routes/walletRoutes.js";
+import { bridgeRouter } from "./routes/bridgeRoutes.js";
+import { startLogIndexers } from "./logIndexer.js";
+import { startBridgeWorker } from "./bridge.js";
 import { startOpsMonitor } from "./opsMonitor.js";
 import { startDailyReports } from "./report.js";
 import { startAquaSimulator } from "./aquaSimulator.js";
-import { publicClient } from "./chain.js";
+import { chainOps } from "./chain.js";
 import { aquaReady, aquaUnavailableReason, startApprovalKeeper, verifyAquaOnChain } from "./aqua.js";
 import { migrate } from "./db.js";
 import { startDepositWorker } from "./depositQueue.js";
@@ -50,7 +50,6 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 
 app.use(verifyRouter);
 app.use(loginQrRouter);
-app.use(loginWorldRouter);
 app.use(authPrivyRouter);
 app.use(eventsRouter);
 app.use(meRouter);
@@ -60,8 +59,8 @@ app.use(agentRouter);
 app.use(yieldRouter);
 app.use(networkRouter);
 app.use(selfRouter);
-app.use(ensRouter);
-app.use(worldIdRouter);
+app.use(walletRouter);
+app.use(bridgeRouter);
 app.use(withdrawRouter);
 app.use(positionRouter);
 app.use(opsRouter);
@@ -90,13 +89,20 @@ startOpsMonitor();
 startDailyReports();
 startAquaSimulator();
 startApprovalKeeper();
-startDeedWatcher();
+startLogIndexers();
+startBridgeWorker();
 
-console.log(`[chain] ${config.network.name} (id ${config.network.chain.id}), gas in ${config.network.nativeSymbol}`);
-publicClient
-  .getChainId()
-  .then((id) => id !== config.network.chain.id && console.error(`[chain] RPC_URL is chain ${id} but CHAIN=${config.network.key} expects ${config.network.chain.id} — check RPC_URL, USDC_ADDRESS and VAULT_ADDRESS`))
-  .catch((err) => console.error("[chain] RPC unreachable:", err instanceof Error ? err.message : err));
+for (const key of config.enabledChains) {
+  const ops = chainOps(key);
+  const net = config.chains[key].network;
+  console.log(`[chain] ${net.name} (id ${net.chain.id}), gas in ${net.nativeSymbol}, ${ops.chainReady ? "ready" : "not configured (set the treasury key, USDC and vault addresses)"}`);
+  ops.publicClient
+    .getChainId()
+    .then((id) => id !== net.chain.id && console.error(`[chain] ${key}: RPC is chain ${id} but expected ${net.chain.id}, check its RPC URL`))
+    .catch((err) => console.error(`[chain] ${key}: RPC unreachable:`, err instanceof Error ? err.message : err));
+  // The vault pulls USDC from the treasury: approve it once so deposits work.
+  if (ops.chainReady) ops.ensureVaultApproval().catch((err) => console.error(`[chain] ${key}: vault approval failed:`, err instanceof Error ? err.message : err));
+}
 if (aquaReady) {
   verifyAquaOnChain()
     .then((r) => console.log(r.ok ? `[aqua] ready (${config.aqua.origin} addresses)` : `[aqua] not found on chain: ${r.missing.join(", ")}`))

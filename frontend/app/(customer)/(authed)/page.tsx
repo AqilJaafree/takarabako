@@ -1,4 +1,4 @@
-import type { CashReceipts, Deposit, Me } from "@/lib/types";
+import type { CashReceiptsAll, Deposit, Me } from "@/lib/types";
 import { loadForPage } from "@/lib/serverData";
 import { Dashboard } from "./Dashboard";
 
@@ -9,7 +9,7 @@ export default async function HomePage() {
     loadForPage<Me>("/me"),
     loadForPage<{ deposits: Deposit[] }>("/deposits?limit=20"),
     // tkCASH is extra: if MultiBaas is down, My box still loads without it.
-    loadForPage<CashReceipts>("/me/cash-receipts").catch(() => null),
+    loadForPage<CashReceiptsAll>("/me/cash-receipts").catch(() => null),
   ]);
   return <Dashboard me={me} deposits={deposits} receipts={receipts} />;
 }

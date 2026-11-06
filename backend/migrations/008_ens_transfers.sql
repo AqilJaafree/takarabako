@@ -16,5 +16,3 @@ create index if not exists transfers_from on transfers (from_user, created_at de
 create index if not exists transfers_to on transfers (to_user, created_at desc);
 create unique index if not exists transfers_tx on transfers (kind, tx_hash) where tx_hash is not null and kind <> 'balance';
 
--- Who holds a position's deed right now, when it isn't a Takarabako customer.
-alter table aqua_positions add column if not exists deed_holder text;

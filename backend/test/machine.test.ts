@@ -4,13 +4,14 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { freshDb } from "./helpers.js";
 
 const pool = await freshDb();
-const { checkMachine, primeKioskForTest, sessionHash, DOMAIN, TYPES } = await import("../src/machine.js");
+const { checkMachine, sessionHash, DOMAIN, TYPES } = await import("../src/machine.js");
+const { registerKiosk, setKioskActive } = await import("../src/kiosks.js");
 after(() => pool.end());
 
-const KIOSK = "tokyo-01.takarabako.eth";
+const KIOSK = "tokyo-01";
 const device = privateKeyToAccount(generatePrivateKey());
 const token = "session-token-abc";
-primeKioskForTest(KIOSK, device.address);
+await registerKiosk({ id: KIOSK, signer: device.address, chain: "arc-testnet" });
 
 async function sign(over: Partial<{ amount: string; currency: string; token: string; nonce: bigint; issuedAt: bigint; kiosk: string }> = {}, signer = device) {
   const message = {
@@ -27,10 +28,13 @@ async function sign(over: Partial<{ amount: string; currency: string; token: str
 
 const deposit = { amount: 10, currency: "MYR", token };
 
-test("a note signed by the kiosk's ENS-published device verifies", async () => {
+test("a note signed by the kiosk's registered device key verifies, and reports the kiosk's chain", async () => {
   const r = await checkMachine(await sign(), deposit);
   assert.equal(r.verified, true);
-  if (r.verified) assert.equal(r.signer, device.address);
+  if (r.verified) {
+    assert.equal(r.signer, device.address);
+    assert.equal(r.chain, "arc-testnet");
+  }
 });
 
 test("unsigned deposits are reported as unsigned", async () => {
@@ -54,17 +58,32 @@ test("a signature from another customer's session doesn't verify here", async ()
   assert.equal(r.verified, false);
 });
 
-test("old signatures and non-kiosk names are rejected", async () => {
+test("old signatures and unregistered kiosks are rejected", async () => {
   const old = await checkMachine(await sign({ issuedAt: BigInt(Math.floor(Date.now() / 1000) - 3600) }), deposit);
   assert.match((old as { reason: string }).reason, /too old/);
-  primeKioskForTest("alice-1234.takarabako.eth", device.address, false);
-  const notKiosk = await checkMachine(await sign({ kiosk: "alice-1234.takarabako.eth" }), deposit);
-  assert.match((notKiosk as { reason: string }).reason, /not registered as a kiosk/);
+  const unknown = await checkMachine(await sign({ kiosk: "fake-box" }), deposit);
+  assert.match((unknown as { reason: string }).reason, /isn't registered/);
+});
+
+test("a switched-off kiosk is rejected, and works again when switched on", async () => {
+  await setKioskActive(KIOSK, false);
+  assert.match(((await checkMachine(await sign({ nonce: 3n }), deposit)) as { reason: string }).reason, /switched off/);
+  await setKioskActive(KIOSK, true);
+  assert.equal((await checkMachine(await sign({ nonce: 3n }), deposit)).verified, true);
+});
+
+test("registering a kiosk again rotates its key", async () => {
+  const next = privateKeyToAccount(generatePrivateKey());
+  await registerKiosk({ id: KIOSK, signer: next.address, chain: "sepolia" });
+  assert.match(((await checkMachine(await sign({ nonce: 4n }), deposit)) as { reason: string }).reason, /different device/);
+  assert.equal((await checkMachine(await sign({ nonce: 4n }, next), deposit)).verified, true);
 });
 
 test("a device nonce can't be replayed", async () => {
-  await pool.query("insert into accounts (privy_user_id, email, privy_wallet, bound_address, ens_name) values ('u-m', 'm@x.io', '0x00000000000000000000000000000000000000a1', '0x00000000000000000000000000000000000000a2', 'm.takarabako.eth')");
+  await pool.query("insert into accounts (privy_user_id, email, privy_wallet, bound_address, label) values ('u-m', 'm-test', '0x00000000000000000000000000000000000000a1', '0x00000000000000000000000000000000000000a2', 'm')");
   await pool.query("insert into deposits (id, privy_user_id, currency, amount, status, machine_name, machine_nonce, machine_verified) values ($1, 'u-m', 'MYR', 10, 'confirmed', $2, 7, true)", [crypto.randomUUID(), KIOSK]);
-  const r = await checkMachine(await sign({ nonce: 7n }), deposit);
+  const next = privateKeyToAccount(generatePrivateKey());
+  await registerKiosk({ id: KIOSK, signer: next.address });
+  const r = await checkMachine(await sign({ nonce: 7n }, next), deposit);
   assert.match((r as { reason: string }).reason, /replayed/);
 });

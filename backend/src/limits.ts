@@ -1,12 +1,11 @@
 import { config } from "./config.js";
 import { pool } from "./db.js";
 import type { Account } from "./accounts.js";
-import { worldIdReady } from "./worldId.js";
 
-/// Daily limit for customers who haven't verified with a World ID selfie:
-/// everything they move in a day (UTC) — cash deposited, withdrawals, yield
-/// positions opened, and anything sent by name — adds up to at most
-/// UNVERIFIED_DAILY_LIMIT_USD ($1,000). Verifying lifts it.
+/// One daily limit for every account: everything a customer moves in a day
+/// (UTC) — cash deposited, withdrawals, yield positions opened, and anything
+/// sent to another customer or bridged to another chain — adds up to at most DAILY_LIMIT_USD ($1,000 by
+/// default). The tkCASH contract enforces the same figure on transfers.
 
 export interface DailyAllowance {
   limited: boolean;
@@ -29,29 +28,28 @@ export async function usedToday(privyUserId: string): Promise<number> {
        (select coalesce(sum(usd_amount), 0) from deposits where privy_user_id = $1 and created_at >= $2 and status <> 'failed')
      + (select coalesce(sum(gross_usd), 0) from withdrawals where privy_user_id = $1 and created_at >= $2)
      + (select coalesce(sum(amount_usd), 0) from yield_events where privy_user_id = $1 and action = 'open' and created_at >= $2)
-     + (select coalesce(sum(amount_usd), 0) from transfers where from_user = $1 and created_at >= $2) as used`,
+     + (select coalesce(sum(amount_usd), 0) from transfers where from_user = $1 and created_at >= $2)
+     + (select coalesce(sum(amount_usd), 0) from bridge_transfers where privy_user_id = $1 and created_at >= $2 and state <> 'failed') as used`,
     [privyUserId, startOfUtcDay()],
   );
   return Number(rows[0]?.used ?? 0);
 }
 
 export async function dailyAllowance(account: Account): Promise<DailyAllowance> {
-  const limitUsd = config.unverifiedDailyLimitUsd;
-  if (!worldIdReady || account.worldVerifiedAt) return { limited: false, limitUsd, usedUsd: 0, leftUsd: Infinity };
+  const limitUsd = config.dailyLimitUsd;
+  if (!(limitUsd > 0)) return { limited: false, limitUsd, usedUsd: 0, leftUsd: Infinity };
   const usedUsd = await usedToday(account.privyUserId);
   return { limited: true, limitUsd, usedUsd, leftUsd: Math.max(0, limitUsd - usedUsd) };
 }
 
 const usd = (n: number) => `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 
-/// Throws DailyLimitError if moving `amountUsd` would take an unverified
-/// customer over today's limit.
+/// Throws DailyLimitError if moving `amountUsd` would take the customer over today's limit.
 export async function assertWithinLimit(account: Account, amountUsd: number, what = "this"): Promise<void> {
   const a = await dailyAllowance(account);
   if (!a.limited || amountUsd <= a.leftUsd + 1e-9) return;
   throw new DailyLimitError(
-    `Unverified accounts can move ${usd(a.limitUsd)} a day and you have ${usd(a.leftUsd)} left today, so ${what} (${usd(amountUsd)}) can't go through. ` +
-      "Verify with a World ID selfie to lift the limit.",
+    `Accounts can move ${usd(a.limitUsd)} a day and you have ${usd(a.leftUsd)} left today, so ${what} (${usd(amountUsd)}) can't go through.`,
   );
 }
 

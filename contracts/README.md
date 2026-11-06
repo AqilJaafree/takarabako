@@ -22,6 +22,9 @@ Foundry workspace for Takarabako's on-chain pieces (PRD §7.4).
   self-approves the vault, and mints a demo faucet balance.
 - `script/DeployCashReceipt.s.sol` — deploys tkCASH on its own and
   registers the first kiosk (`KIOSK_ID`, default `tokyo-01`).
+- `script/DeployCashChain.s.sol` — deploys one chain's vault and tkCASH against
+  real USDC (Arc Testnet by default; set `USDC_ADDRESS` for Sepolia), approves
+  the vault, registers the kiosk and sets the daily transfer limit.
 
 ## Setup
 
@@ -49,6 +52,4 @@ Put the printed tkCASH address in `backend/.env` as `CASH_RECEIPT_ADDRESS`.
 ## Not yet in this workspace
 
 Per the PRD build plan, `ITakarabakoAgentController` (the guardrailed
-proposer the Claude Haiku agent calls into, §7.4/§7.9) and the World ID
-`registerUser` identity gate (§7.4) land in Phase 2–3, once the backend's
-stub `/verify` and `/agent/open-position` routes are wired to real calls.
+proposer the Claude Haiku agent calls into, §7.4/§7.9) lands in a later phase.

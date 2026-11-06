@@ -1,5 +1,5 @@
 import type { Chain } from "viem";
-import { arc } from "viem/chains";
+import { arc, arcTestnet } from "viem/chains";
 
 export const ARC_CHAIN_ID = 5042;
 
@@ -13,6 +13,14 @@ export const ARC_MAINNET: Chain = {
   ...arc,
   rpcUrls: { default: { http: [process.env.NEXT_PUBLIC_ARC_RPC_URL || "https://rpc.mainnet.arc.io"] } },
   blockExplorers: { default: { name: "Arc Explorer", url: "https://explorer.arc.io" } },
+};
+
+/// Arc Testnet, with the RPC and explorer from Circle's contract docs (viem's own defaults point at
+/// other hosts). Customers sign their tkCASH transfers here.
+export const ARC_TESTNET: Chain = {
+  ...arcTestnet,
+  rpcUrls: { default: { http: [process.env.NEXT_PUBLIC_ARC_TESTNET_RPC_URL || "https://rpc.testnet.arc.io"] } },
+  blockExplorers: { default: { name: "Arc Testnet Explorer", url: "https://explorer.testnet.arc.io" } },
 };
 
 /// "eip155:5042" (how Privy reports a wallet's chain) to 5042.

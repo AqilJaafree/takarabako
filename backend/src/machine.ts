@@ -1,15 +1,15 @@
 import { keccak256, recoverTypedDataAddress, toBytes, type Hex } from "viem";
 import { config } from "./config.js";
 import { pool } from "./db.js";
-import { resolveName, textRecord } from "./ens.js";
+import { getKiosk } from "./kiosks.js";
 
-/// Verifiable kiosks. Each kiosk has an ENS name (tokyo-01.takarabako.eth)
-/// whose addr record is a signing key generated on the machine itself
-/// (device-agent/machine.js). The machine signs every note it takes; a note
-/// is credited as "verified" only if the signer recovered from the signature
-/// is the address the kiosk's name resolves to through the official ENS v2
-/// Universal Resolver — so a fake box, or a replayed signature, can't mint
-/// deposits. MACHINE_SIGNATURE=required rejects unsigned deposits outright.
+/// Verifiable kiosks. Each kiosk generates a signing key on its own device
+/// (device-agent/machine.js) and an operator registers the key's public
+/// address against the kiosk id (kiosks.ts, POST /ops/kiosks). The machine
+/// signs every note it takes; a note is credited as "verified" only if the
+/// signer recovered from the signature is the registered key of an active
+/// kiosk, so a fake box, or a replayed signature, can't mint deposits.
+/// MACHINE_SIGNATURE=required rejects unsigned deposits outright.
 
 export const DOMAIN = { name: "Takarabako Kiosk", version: "1", chainId: 11155111 } as const;
 export const TYPES = {
@@ -34,38 +34,21 @@ export interface MachineAttestation {
 }
 
 export type MachineCheck =
-  | { verified: true; kiosk: string; signer: string; nonce: string; signature: string }
+  | { verified: true; kiosk: string; signer: string; nonce: string; signature: string; chain: string }
   | { verified: false; reason: string; kiosk?: string };
 
 const MAX_AGE_S = 10 * 60;
-const nameCache = new Map<string, { at: number; address: string | null; isKiosk: boolean }>();
-
-/// The kiosk's published device address, from ENS (cached 5 min).
-export async function kioskAddress(kiosk: string): Promise<{ address: string | null; isKiosk: boolean }> {
-  const hit = nameCache.get(kiosk);
-  if (hit && Date.now() - hit.at < 300_000) return hit;
-  const [resolved, kind] = await Promise.all([resolveName(kiosk), textRecord(kiosk, "takarabako.kind")]);
-  const entry = { at: Date.now(), address: resolved?.address ?? null, isKiosk: kind === "kiosk" };
-  nameCache.set(kiosk, entry);
-  return entry;
-}
-
-/// Tests only: pretend ENS says `kiosk` resolves to `address`.
-export function primeKioskForTest(kiosk: string, address: string | null, isKiosk = true) {
-  nameCache.set(kiosk, { at: Date.now(), address, isKiosk });
-}
 
 export function sessionHash(token: string): Hex {
   return keccak256(toBytes(token));
 }
 
-/// Checks a signed note against the deposit it claims to be and the kiosk's ENS name.
+/// Checks a signed note against the deposit it claims to be and the registered kiosk.
 export async function checkMachine(
   att: MachineAttestation | undefined,
   deposit: { amount: number; currency: string; token: string },
 ): Promise<MachineCheck> {
   if (!att) return { verified: false, reason: "unsigned" };
-  if (!att.kiosk.endsWith(`.${config.ens.parentName}`)) return { verified: false, reason: "not a Takarabako kiosk name", kiosk: att.kiosk };
   if (Number(att.amount) !== deposit.amount || att.currency !== deposit.currency)
     return { verified: false, reason: "signed amount doesn't match the deposit", kiosk: att.kiosk };
   const age = Math.floor(Date.now() / 1000) - Number(att.issuedAt);
@@ -91,13 +74,15 @@ export async function checkMachine(
     return { verified: false, reason: "bad signature", kiosk: att.kiosk };
   }
 
-  const published = await kioskAddress(att.kiosk);
-  if (!published.address) return { verified: false, reason: "kiosk name has no device address", kiosk: att.kiosk };
-  if (!published.isKiosk) return { verified: false, reason: "name is not registered as a kiosk", kiosk: att.kiosk };
-  if (published.address.toLowerCase() !== signer.toLowerCase())
-    return { verified: false, reason: "signed by a different device than the kiosk's ENS name", kiosk: att.kiosk };
+  const kiosk = await getKiosk(att.kiosk);
+  if (!kiosk) return { verified: false, reason: "kiosk isn't registered", kiosk: att.kiosk };
+  if (!kiosk.active) return { verified: false, reason: "kiosk is switched off", kiosk: kiosk.id };
+  if (kiosk.signer.toLowerCase() !== signer.toLowerCase())
+    return { verified: false, reason: "signed by a different device than the registered key", kiosk: kiosk.id };
 
-  const { rowCount } = await pool.query("select 1 from deposits where machine_name = $1 and machine_nonce = $2", [att.kiosk, att.nonce]);
-  if (rowCount) return { verified: false, reason: "replayed signature", kiosk: att.kiosk };
-  return { verified: true, kiosk: att.kiosk, signer, nonce: att.nonce, signature: att.signature };
+  const { rowCount } = await pool.query("select 1 from deposits where machine_name = $1 and machine_nonce = $2", [kiosk.id, att.nonce]);
+  if (rowCount) return { verified: false, reason: "replayed signature", kiosk: kiosk.id };
+  return { verified: true, kiosk: kiosk.id, signer, nonce: att.nonce, signature: att.signature, chain: kiosk.chain };
 }
+
+export const machineSignatureRequired = () => config.machineSignature === "required";

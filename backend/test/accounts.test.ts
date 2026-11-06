@@ -11,7 +11,7 @@ const row = {
   email: "a@example.com",
   privyWallet: "0xAbCdEf0000000000000000000000000000000001",
   boundAddress: "0x0000000000000000000000000000000000000abc",
-  ensName: "a-1234.wantest.eth",
+  label: "a-1234",
 };
 
 test("insert then find by id and by wallet (case-insensitive)", async () => {

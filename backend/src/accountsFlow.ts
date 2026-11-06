@@ -1,11 +1,11 @@
-import type { Address } from "viem";
 import { deriveBoundAddress } from "./store.js";
 import { findByPrivyUserId, insertAccount, markQrEmailed, type Account } from "./accounts.js";
 import { createSession, type Session } from "./sessions.js";
 import { sendQrEmail } from "./qrEmail.js";
-import { chainReady, previewValueOnChain } from "./chain.js";
-import { deriveEnsLabel, walletSubname, registerSubname } from "./ens.js";
+import { totalBalance } from "./balances.js";
+import { deriveLabel } from "./labels.js";
 import { allowlist } from "./cashReceipt.js";
+import { config } from "./config.js";
 import { multibaasReady, mbSetAlias, toAlias } from "./multibaas.js";
 
 /// Everything a full login does once the Privy user is known — shared by the
@@ -15,17 +15,13 @@ export async function loginFull(user: { privyUserId: string; email: string; wall
   const { privyUserId, email, walletAddress } = user;
 
   let account: Account | null = await findByPrivyUserId(privyUserId);
-  let ensTxHash: string | null = null;
   const isNew = !account;
   if (!account) {
     const boundAddress = deriveBoundAddress(privyUserId);
-    const ensName = walletSubname(deriveEnsLabel(email));
-    // The name is the customer's own: owned by (and resolving to) their
-    // Privy wallet on the official ENS v2 deployment. Not transferable — it's
-    // their identity. Idempotent: an existing name just gets its records set.
-    ({ txHash: ensTxHash } = await registerSubname(ensName, walletAddress, { texts: { "takarabako.kind": "customer" } }));
-    account = await insertAccount({ privyUserId, email, privyWallet: walletAddress, boundAddress, ensName });
-    onboardOnChain(ensName, walletAddress);
+    // The label is a friendly handle kept in Postgres; the wallet is the identity.
+    const label = deriveLabel(email);
+    account = await insertAccount({ privyUserId, email, privyWallet: walletAddress, boundAddress, label });
+    onboardOnChain(label, walletAddress);
   }
 
   // First bind (including accounts that predate Postgres): email the QR once.
@@ -33,7 +29,7 @@ export async function loginFull(user: { privyUserId: string; email: string; wall
   let qrFallback: string | null = null;
   let qrEmailed = false;
   if (!account.qrEmailedAt) {
-    const result = await sendQrEmail(email, account.privyWallet, account.ensName);
+    const result = await sendQrEmail(email, account.privyWallet, account.label);
     if (result.sent) {
       await markQrEmailed(privyUserId);
       qrEmailed = true;
@@ -44,12 +40,12 @@ export async function loginFull(user: { privyUserId: string; email: string; wall
 
   // Full access (deposit, yield, withdraw) only ever comes from an email login.
   const session: Session = await createSession(privyUserId, "full");
-  const balance = chainReady ? await previewValueOnChain(account.boundAddress as Address) : 0;
+  const balance = await totalBalance(account.boundAddress);
 
   return {
     verified: true,
     userId: privyUserId,
-    ensName: account.ensName,
+    label: account.label,
     privyWalletAddress: account.privyWallet,
     balance,
     reused: !isNew,
@@ -58,19 +54,18 @@ export async function loginFull(user: { privyUserId: string; email: string; wall
     expiresAt: session.expiresAt,
     qrEmailed,
     qrFallback,
-    ensTxHash,
-    worldVerified: Boolean(account.worldVerifiedAt),
   };
 }
 
-/// A new, identity-verified customer: allow their wallet to hold and move
-/// tkCASH, and give it a MultiBaas alias (their ENS label) so the dashboard
-/// and event queries show a name instead of an address. Background work —
-/// registration never waits for it.
-function onboardOnChain(ensName: string, wallet: string) {
-  if (!multibaasReady) return;
+/// A new, registered customer: allow their wallet to hold and move tkCASH on every
+/// enabled chain, and give it a MultiBaas alias (their label) so the dashboard and
+/// event queries show a name instead of an address. Background work: registration
+/// never waits for it.
+function onboardOnChain(label: string, wallet: string) {
   const log = (what: string) => (err: unknown) =>
-    console.error(`[multibaas] ${what} for ${ensName}:`, err instanceof Error ? err.message : err);
-  void allowlist(wallet).catch(log("tkCASH allowlist"));
-  void mbSetAlias(toAlias(ensName.split(".")[0] ?? ensName), wallet).catch(log("alias"));
+    console.error(`[onboard] ${what} for ${label}:`, err instanceof Error ? err.message : err);
+  for (const chain of config.enabledChains) {
+    void allowlist(wallet, chain).catch(log(`tkCASH allowlist on ${chain}`));
+  }
+  if (multibaasReady) void mbSetAlias(toAlias(label), wallet).catch(log("alias"));
 }

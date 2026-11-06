@@ -15,10 +15,10 @@ export async function POST(req: NextRequest) {
   const { accessToken } = (await req.json().catch(() => ({}))) as { accessToken?: string };
   if (!accessToken) return NextResponse.json({ error: "accessToken required" }, { status: 400 });
   try {
-    const login = await backendFetch<{ token: string; ensName: string; reused: boolean }>("/auth/privy", {
+    const login = await backendFetch<{ token: string; label: string | null; reused: boolean }>("/auth/privy", {
       body: { accessToken },
     });
-    const res = NextResponse.json({ ensName: login.ensName, isNew: !login.reused });
+    const res = NextResponse.json({ label: login.label, isNew: !login.reused });
     setSessionCookie(res, req, "web", login.token);
     return res;
   } catch (err) {

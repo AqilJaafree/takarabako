@@ -1,4 +1,3 @@
-import type { Address } from "viem";
 import QRCode from "qrcode";
 import { pool } from "./db.js";
 import { config } from "./config.js";
@@ -8,7 +7,7 @@ import { allowanceJson, dailyAllowance } from "./limits.js";
 import { positionSummaries } from "./yieldPositions.js";
 import { getTiersInfo } from "./agent.js";
 import { ethUsd } from "./aqua.js";
-import { chainReady, previewValueOnChain } from "./chain.js";
+import { totalBalance } from "./balances.js";
 import { issueDepositCode } from "./depositCode.js";
 import { chat, llmReady, type ChatMessage, type ContentPart, type ToolDef } from "./llm.js";
 
@@ -48,7 +47,7 @@ const SYSTEM = `You are Maneki, the lucky-cat assistant of Takarabako — a kios
 You talk with one logged-in customer. Be warm, brief and concrete: 1–4 short paragraphs or a short list, plain language, a light cat touch at most (an occasional "nya" is fine, never more).
 Format numbers for people: money as $2.70 (two decimals), ringgit as RM10, dates and times as "27 Sep, 8:45 AM" — never raw timestamps, long decimals or field names.
 
-Use tools for anything about this customer — balance, deposits, receipts, withdrawals, yield positions, daily limit, World ID — and only state numbers you got from a tool in this conversation. You only ever see this customer's own data.
+Use tools for anything about this customer — balance, deposits, receipts, withdrawals, yield positions, daily limit — and only state numbers you got from a tool in this conversation. You only ever see this customer's own data.
 
 You cannot move money. To help with an action, call propose_yield or propose_withdraw: the app shows the customer a confirm card and nothing happens until they tap Confirm. Say "I've prepared it — tap Confirm if it looks right", never "done". If the tool returns prepared:false, no card was made: say why (e.g. the box is empty) and don't mention Confirm.
 - To show their deposit QR, call show_deposit_qr (it lasts 5 minutes; they show it to the kiosk camera).
@@ -60,7 +59,7 @@ Never ask for passwords, seed phrases or codes.`;
 const obj = (properties: Record<string, unknown>, required: string[] = []) => ({ type: "object", properties, required, additionalProperties: false });
 
 const TOOLS: ToolDef[] = [
-  { name: "get_my_account", description: "The customer's box: ENS name, balance (USD), wallet, vault APY, World ID status and today's deposit allowance.", parameters: obj({}) },
+  { name: "get_my_account", description: "The customer's box: label, balance (USD), wallet, vault APY and today's deposit allowance.", parameters: obj({}) },
   {
     name: "get_my_history",
     description: "The customer's recent activity, newest first: deposit sessions with each note and its status, withdrawals, yield actions, refused notes.",
@@ -88,7 +87,7 @@ const TOOLS: ToolDef[] = [
 const money = (n: number) => `$${n.toFixed(2)}`;
 
 async function balanceOf(account: Account) {
-  return chainReady ? previewValueOnChain(account.boundAddress as Address).catch(() => 0) : 0;
+  return totalBalance(account.boundAddress).catch(() => 0);
 }
 
 async function runTool(name: string, input: Record<string, unknown>, account: Account, cards: Card[]): Promise<unknown> {
@@ -96,10 +95,9 @@ async function runTool(name: string, input: Record<string, unknown>, account: Ac
     case "get_my_account": {
       const [balance, allowance] = await Promise.all([balanceOf(account), dailyAllowance(account)]);
       return {
-        ensName: account.ensName,
+        label: account.label,
         balanceUsd: balance,
         wallet: account.privyWallet,
-        worldIdVerified: Boolean(account.worldVerifiedAt),
         dailyAllowance: allowanceJson(allowance),
       };
     }
@@ -115,7 +113,7 @@ async function runTool(name: string, input: Record<string, unknown>, account: Ac
     }
     case "find_kiosk":
       return {
-        kiosk: `${config.kioskId}.${config.ens.parentName}`,
+        kiosk: config.kioskId,
         where: "ETHTokyo hackathon venue, floor 5F, south Hacking Space by the Partners and Mentor Station",
         map: "/kiosks",
         accepts: "Malaysian ringgit notes",

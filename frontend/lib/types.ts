@@ -3,9 +3,12 @@
 
 export type RiskTier = "low" | "medium" | "high";
 
+/// The cash chains Takarabako runs on (backend config CASH_CHAIN_KEYS).
+export type ChainKey = "sepolia" | "arc-testnet";
+
 export interface Position {
   positionId: string;
-  ensName: string;
+  name: string; // short tag, e.g. aqua-1a2b3c4d
   riskTier: RiskTier; // for the 3D box's gems (advanced counts as high)
   mode: RiskTier | "advanced";
   shape: Shape;
@@ -23,17 +26,26 @@ export type Shape = "full" | "spot" | "curve" | "bidask" | "hybrid";
 /// GET /me
 export interface Me {
   userId: string;
-  ensName: string;
+  label: string | null;
   privyWallet: string;
-  balance: number;
+  balance: number; // total across chains
+  balances: ChainBalance[];
   apyBps: number;
   positions: Position[];
-  worldId?: { verified: boolean; credential: string | null; verifiedAt: string | null };
   limit?: DailyLimit;
   expiresAt: string;
 }
 
-/// What an account that hasn't verified with World ID may still move today.
+/// The customer's box on one chain.
+export interface ChainBalance {
+  chain: ChainKey;
+  name: string;
+  chainId: number;
+  balance: number;
+  apyBps: number;
+}
+
+/// What an account may still move today (the same limit for everyone).
 export interface DailyLimit {
   limited: boolean;
   limitUsd: number;
@@ -49,8 +61,9 @@ export interface Deposit {
   usdAmount: number | null;
   txHash: string | null;
   tkcashTxHash?: string | null; // the tkCASH receipt token minted for this note
-  machineName?: string | null; // the kiosk that took it, when its signature checked out against ENS
+  machineName?: string | null; // the kiosk that took it, when its signature checked out
   machineVerified?: boolean;
+  chain?: ChainKey;
   status: "queued" | "sending" | "confirmed" | "failed";
   attempts: number;
   error: string | null;
@@ -59,9 +72,10 @@ export interface Deposit {
 
 /// GET /me/cash-receipts — the customer's tkCASH and its backing.
 export type CashReceipts =
-  | { configured: false }
+  | { configured: false; chain?: ChainKey }
   | {
       configured: true;
+      chain?: ChainKey;
       contract: string;
       wallet: string;
       balance: number;
@@ -70,6 +84,9 @@ export type CashReceipts =
       reserve: number;
       backed: boolean;
     };
+
+/// GET /me/cash-receipts without ?chain= : the primary chain's fields plus every chain.
+export type CashReceiptsAll = CashReceipts & { chains?: CashReceipts[]; totalBalance?: number };
 
 /// GET /agent/pools
 export interface Pool {
@@ -150,7 +167,7 @@ export interface PositionView {
 /// POST /agent/open-position
 export interface OpenedPosition {
   positionId: string;
-  ensName: string;
+  name: string;
   pair: string;
   apyBps: number;
   nftTokenId: string | null;
@@ -169,6 +186,7 @@ export interface WithdrawResult {
   receipt: string;
   tkcashBurned?: number;
   tkcashTxHash?: string | null;
+  legs?: Array<{ chain: ChainKey; txHash: string | null; grossUsdc: number; netUsdc: number; tkcashBurned: number }>;
 }
 
 /// Live events from GET /events/stream (backend/src/events.ts).
@@ -184,11 +202,13 @@ export type LiveEvent =
       fxRate: number;
       txHash: string;
       balance: number;
+      chain?: ChainKey;
       ts: number;
     }
   | { type: "deposit.failed"; depositId: string; amount: number; currency: string; error: string; ts: number }
   | { type: "deposit.refused"; reason: "unsupported" | "bad_condition"; sessionId: string | null; ts: number }
-  | { type: "tkcash.minted"; depositId: string; amount: number; txHash: string; ts: number };
+  | { type: "tkcash.minted"; depositId: string; amount: number; txHash: string; chain?: ChainKey; ts: number }
+  | { type: "bridge.update"; transferId: string; state: BridgeState; fromChain: ChainKey; toChain: ChainKey; amount: number; ts: number };
 
 /// A deposit session's receipt (backend history.ts).
 export interface ReceiptNote {
@@ -200,6 +220,7 @@ export interface ReceiptNote {
   tkcashTxHash?: string | null;
   machineName?: string | null;
   machineVerified?: boolean;
+  chain?: ChainKey;
   status: "queued" | "sending" | "confirmed" | "failed";
   at: string;
 }
@@ -229,6 +250,7 @@ export type HistoryItem =
       txHash: string | null;
       tkcashBurned?: number;
       tkcashTxHash?: string | null;
+      chain?: ChainKey;
     }
   | {
       kind: "yield";
@@ -240,7 +262,7 @@ export type HistoryItem =
       apyBps: number | null;
       amountUsd: number | null;
       rationale: string | null;
-      ensName: string | null;
+      label: string | null;
       txHash: string | null;
     }
   | { kind: "refused"; at: string; id: string; reason: "unsupported" | "bad_condition" | "no_session"; sessionId: string | null }
@@ -248,39 +270,76 @@ export type HistoryItem =
       kind: "transfer";
       at: string;
       id: string;
-      asset: "balance" | "tkcash" | "position";
+      asset: "balance" | "tkcash";
       direction: "sent" | "received";
       counterparty: string | null;
       amountUsd: number | null;
       positionId: string | null;
+      chain?: ChainKey;
       txHash: string | null;
     };
 
-/// GET /ens/resolve
-export interface ResolvedName {
-  name: string;
+/// GET /lookup?q=
+export interface ResolvedRecipient {
+  query: string;
   address: string;
-  kind: string | null;
-  verifiedHuman?: boolean;
-  customer: { ensName: string | null } | null;
+  label: string | null;
+  customer: boolean;
   tkcashAllowlisted: boolean | null;
 }
 
-/// GET /me/wallet
+/// GET /me/wallet — the customer's own wallet on each chain.
 export interface MyWallet {
-  ensName: string | null;
+  label: string | null;
   wallet: string;
-  eth: number;
-  tkcash: { balance: number; allowlisted: boolean; dailyLimit: number | null; spentToday: number } | null;
-  chainId: number;
-  worldId?: { verified: boolean; credential: string | null };
+  chains: Array<{
+    chain: ChainKey;
+    name: string;
+    chainId: number;
+    nativeSymbol: string;
+    native: number | null;
+    tkcash: { balance: number; allowlisted: boolean; dailyLimit: number | null; spentToday: number } | null;
+  }>;
   limit?: DailyLimit;
+}
+
+/// CCTP bridge (backend bridge.ts).
+export type BridgeState = "created" | "withdrawn" | "burned" | "attested" | "minted" | "credited" | "failed";
+
+export interface BridgeTransfer {
+  id: string;
+  kind: "customer" | "treasury";
+  fromChain: ChainKey;
+  toChain: ChainKey;
+  amountUsd: number;
+  state: BridgeState;
+  withdrawTx: string | null;
+  burnTx: string | null;
+  mintTx: string | null;
+  creditTx: string | null;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+  explorers: { from: string; to: string };
+}
+
+/// POST /bridge/quote
+export interface BridgeQuote {
+  from: ChainKey;
+  to: ChainKey;
+  amount: number;
+  feeUsd: number;
+  receiveUsd: number;
+  availableOnSource: number;
+  enough: boolean;
+  estimatedMinutes: number;
+  maxUsd: number;
 }
 
 /// What a kiosk login hands the browser. The backend session token stays in
 /// the httpOnly cookie; the browser only gets what it displays.
 export interface KioskLogin {
-  ensName: string;
+  label: string | null;
   balance: number;
   scope: "full" | "deposit";
   expiresAt: string;
@@ -288,7 +347,6 @@ export interface KioskLogin {
   qrEmailed: boolean;
   bridge: "ok" | "skipped" | "failed";
   depositSessionId: string | null;
-  worldVerified: boolean;
-  limit: DailyLimit | null; // unverified accounts: what's left today
+  limit: DailyLimit | null; // what's left of today's limit
   depositBlocked: string | null; // why a deposit couldn't start (e.g. today's limit is used)
 }

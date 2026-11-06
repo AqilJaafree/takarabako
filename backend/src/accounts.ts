@@ -1,4 +1,5 @@
 import { pool } from "./db.js";
+import { config, type CashChainKey } from "./config.js";
 
 /// Registered customers: the Privy user, the embedded wallet whose QR logs
 /// them in for deposits, and the vault account their deposits credit.
@@ -7,15 +8,12 @@ export interface Account {
   email: string;
   privyWallet: string; // lowercase 0x address, what the QR holds
   boundAddress: string; // vault account (deriveBoundAddress in store.ts)
-  ensName: string | null;
+  label: string | null; // friendly handle shown in place of the address (labels.ts)
   qrEmailedAt: Date | null;
-  worldVerifiedAt: Date | null; // set once World ID proved this is a unique human (worldId.ts)
-  worldCredential: string | null;
 }
 
 const COLUMNS = `privy_user_id as "privyUserId", email, privy_wallet as "privyWallet",
-  bound_address as "boundAddress", ens_name as "ensName", qr_emailed_at as "qrEmailedAt",
-  world_verified_at as "worldVerifiedAt", world_credential as "worldCredential"`;
+  bound_address as "boundAddress", label, qr_emailed_at as "qrEmailedAt"`;
 
 export async function findByPrivyUserId(privyUserId: string): Promise<Account | null> {
   const { rows } = await pool.query(`select ${COLUMNS} from accounts where privy_user_id = $1`, [privyUserId]);
@@ -33,17 +31,11 @@ export async function findByWallet(wallet: string): Promise<Account | null> {
   return rows[0] ?? null;
 }
 
-/// The account a World ID proof's nullifier was recorded on (verifyHuman).
-export async function findByWorldNullifier(nullifier: string): Promise<Account | null> {
-  const { rows } = await pool.query(`select ${COLUMNS} from accounts where world_nullifier = $1`, [nullifier.toLowerCase()]);
-  return rows[0] ?? null;
-}
-
-export async function insertAccount(a: Omit<Account, "qrEmailedAt" | "worldVerifiedAt" | "worldCredential">): Promise<Account> {
+export async function insertAccount(a: Omit<Account, "qrEmailedAt">): Promise<Account> {
   const { rows } = await pool.query(
-    `insert into accounts (privy_user_id, email, privy_wallet, bound_address, ens_name)
+    `insert into accounts (privy_user_id, email, privy_wallet, bound_address, label)
      values ($1, $2, $3, $4, $5) returning ${COLUMNS}`,
-    [a.privyUserId, a.email, a.privyWallet.toLowerCase(), a.boundAddress, a.ensName],
+    [a.privyUserId, a.email, a.privyWallet.toLowerCase(), a.boundAddress, a.label],
   );
   return rows[0];
 }
@@ -66,12 +58,13 @@ export interface DepositRow {
   tkcashTxHash: string | null;
   machineName: string | null;
   machineVerified: boolean;
+  chain: CashChainKey;
   createdAt: Date;
 }
 
 const DEPOSIT_COLUMNS = `id, privy_user_id as "privyUserId", currency, amount::float as amount,
   usd_amount::float as "usdAmount", tx_hash as "txHash", status, attempts, error, session_id as "sessionId",
-  tkcash_tx_hash as "tkcashTxHash", machine_name as "machineName", machine_verified as "machineVerified", created_at as "createdAt"`;
+  tkcash_tx_hash as "tkcashTxHash", machine_name as "machineName", machine_verified as "machineVerified", chain, created_at as "createdAt"`;
 
 /// A deposit starts as a queued row; the deposit queue (depositQueue.ts)
 /// sends it and moves it to sending → confirmed | failed.
@@ -81,13 +74,14 @@ export async function createQueuedDeposit(d: {
   amount: number;
   sessionId?: string | null; // the deposit session (history.ts) the note belongs to
   machine?: { name: string; signer: string; nonce: string; signature: string } | null; // a verified kiosk signature
+  chain?: CashChainKey; // which chain the note is credited on (the kiosk's home chain)
 }): Promise<DepositRow> {
   const m = d.machine ?? null;
   const { rows } = await pool.query(
-    `insert into deposits (id, privy_user_id, currency, amount, status, session_id, machine_name, machine_signer, machine_nonce, machine_sig, machine_verified)
-     values ($1, $2, $3, $4, 'queued', $5, $6, $7, $8, $9, $10)
+    `insert into deposits (id, privy_user_id, currency, amount, status, session_id, machine_name, machine_signer, machine_nonce, machine_sig, machine_verified, chain)
+     values ($1, $2, $3, $4, 'queued', $5, $6, $7, $8, $9, $10, $11)
      returning ${DEPOSIT_COLUMNS}`,
-    [crypto.randomUUID(), d.privyUserId, d.currency, d.amount, d.sessionId ?? null, m?.name ?? null, m?.signer ?? null, m?.nonce ?? null, m?.signature ?? null, Boolean(m)],
+    [crypto.randomUUID(), d.privyUserId, d.currency, d.amount, d.sessionId ?? null, m?.name ?? null, m?.signer ?? null, m?.nonce ?? null, m?.signature ?? null, Boolean(m), d.chain ?? config.defaultChain],
   );
   return rows[0];
 }

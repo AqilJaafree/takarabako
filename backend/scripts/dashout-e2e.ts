@@ -44,7 +44,7 @@ const METH = net.pair.eth.address as Address;
 const bal = (t: Address, a: Address) => c.readContract({ address: t, abi: erc20, functionName: "balanceOf", args: [a] });
 
 const lpId = `e2e-dashout-${Date.now()}`;
-const lp = await insertAccount({ privyUserId: lpId, email: `${lpId}@example.test`, privyWallet: treasuryAddress.toLowerCase(), boundAddress: `0x${Date.now().toString(16).padStart(40, "0")}`, ensName: null });
+const lp = await insertAccount({ privyUserId: lpId, email: `${lpId}@example.test`, privyWallet: treasuryAddress.toLowerCase(), boundAddress: `0x${Date.now().toString(16).padStart(40, "0")}`, label: null });
 let lpPositionId: string | null = null;
 try {
   step("LP: open a USDC-only Bid-Ask position below the market, through the manager (the liquidity to trade against)");

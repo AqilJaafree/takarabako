@@ -8,7 +8,7 @@ import { asyncHandler } from "../asyncHandler.js";
 /// POST /verify — PRD §6.1 (ATM-style: identity first, cash second). Takes
 /// an email on the kiosk screen, resolves (or creates) that person's real
 /// Privy user + embedded wallet server-side, and — for a brand-new
-/// account — registers their ENS v2 subname right here, before any cash
+/// account, registers their label right here, before any cash
 /// has been inserted. This is the sybil gate for the whole system (PRD
 /// §10): like a real ATM, you identify yourself before the machine knows
 /// which account to credit, rather than depositing blind and hoping the

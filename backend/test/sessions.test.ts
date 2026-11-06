@@ -10,7 +10,7 @@ after(() => pool.end());
 await insertAccount({
   privyUserId: "did:privy:s1", email: "s@example.com",
   privyWallet: "0x0000000000000000000000000000000000000001",
-  boundAddress: "0x0000000000000000000000000000000000000002", ensName: null,
+  boundAddress: "0x0000000000000000000000000000000000000002", label: null,
 });
 
 test("scopeAllows", () => {

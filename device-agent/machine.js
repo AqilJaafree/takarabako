@@ -1,10 +1,10 @@
 // The kiosk's device identity. A signing key generated on this machine the
 // first time the bridge starts (kept in ~/.takarabako/device-key.json,
-// readable only by this user) signs every note the bill acceptor takes. Its
-// address is published as the addr record of the kiosk's ENS name (e.g.
-// tokyo-01.takarabako.eth), so the backend — or anyone — can check that
-// a deposit really came from this machine: resolve the name, recover the
-// signer, compare.
+// readable only by this user) signs every note the bill acceptor takes. An
+// operator registers its public address against the kiosk id (e.g. tokyo-01)
+// with `npm run kiosk:register` in the backend, so the backend can check that
+// a deposit really came from this machine: recover the signer, compare it to
+// the registered key.
 //
 // EIP-712, mirrored in backend/src/machine.ts:
 //   NoteAccepted(string kiosk, string amount, string currency, bytes32 session, uint256 nonce, uint64 issuedAt)
@@ -15,7 +15,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 const KEY_FILE = process.env.DEVICE_KEY_FILE || join(homedir(), ".takarabako", "device-key.json");
-export const KIOSK_NAME = process.env.KIOSK_ENS_NAME || "tokyo-01.takarabako.eth";
+export const KIOSK_NAME = process.env.KIOSK_ID || "tokyo-01";
 
 export const DOMAIN = { name: "Takarabako Kiosk", version: "1", chainId: 11155111 };
 export const TYPES = {
@@ -50,7 +50,7 @@ async function load() {
   return state;
 }
 
-/// The device address (for GET /device and the kiosk's ENS addr record).
+/// The device address (for GET /device, and to register this kiosk with the backend).
 export async function deviceInfo() {
   try {
     const s = await load();

@@ -1,18 +1,19 @@
 # Takarabako (宝箱)
 
 **Takarabako turns banknotes into on-chain money: insert cash at a kiosk and it
-becomes a yield-bearing balance and a tokenized cash receipt (tkCASH) on
-Ethereum, with Curvegrid MultiBaas indexing every flow for a treasury
-dashboard and a policy-bound AI agent.**
+becomes a yield-bearing USDC balance and a tokenized cash receipt (tkCASH) on
+Ethereum Sepolia or Arc Testnet, with Circle CCTP moving USDC between the two,
+and one treasury dashboard and policy-bound AI agent watching both chains.**
 
 An ATM-style cash-in kiosk: verify your identity with just an email (Privy —
 real embedded wallet, no seed phrase, no app), *then* insert cash, and it's
-credited to an ENS-named on-chain wallet (`*.takarabako.eth`) with optional
-risk-tiered yield as 1inch Aqua liquidity strategies (Uniswap v3 before), with a Claude Haiku
+credited to your wallet address (with a friendly label such as `alice-1a2b`
+kept in Postgres) on the chain your kiosk is registered to, with optional
+risk-tiered yield as 1inch Aqua liquidity strategies (Sepolia), with a Claude Haiku
 4.5 call. Built for ETHGlobal Online 2026. Full product spec lives in
 `takarabako-prd.md` (gitignored, local-only).
 
-Nearly everything below is real, on Ethereum Sepolia — not a stub. See
+Nearly everything below is real, on Ethereum Sepolia and Arc Testnet — not a stub. See
 [`DEPLOYMENTS.md`](./DEPLOYMENTS.md) for the full deployment history and
 independent on-chain verification of each piece, and
 [`FEEDBACK.md`](./FEEDBACK.md) for integration notes gathered along the way.
@@ -32,9 +33,8 @@ to confirm:
 | `TakarabakoCashReceipt (tkCASH)` | `0x8023edf927c0a53f5620998f972b3d0740e04ea9` | [Verified ✅](https://sepolia.etherscan.io/address/0x8023edf927c0a53f5620998f972b3d0740e04ea9#code) |
 
 Everything else the app talks to is a canonical, already-verified deployment
-we don't own — real Uniswap v3 (Factory/NPM/WETH9), real ENS v2 Beta
-(ETHRegistry/ETHRegistrar/VerifiableFactory), and our own `wantest.eth`
-subname registry deployed via that factory. Full addresses, how each was
+we don't own — real Uniswap v3 (Factory/NPM/WETH9), 1inch Aqua and Circle's
+CCTP contracts. Full addresses, how each was
 independently confirmed on-chain (not just trusting a tx receipt), and the
 per-risk-tier pool addresses are all in [`DEPLOYMENTS.md`](./DEPLOYMENTS.md).
 
@@ -66,7 +66,7 @@ backend's contract layer and indexer:
 - **Reads** of the vault, tkCASH and mUSDC go through the same API
   (`mbCall`), including the customer's live vault value on `/position`.
 - **Address aliases** name the contracts (`vault`, `tkcash`, `musdc`,
-  `treasury`) and each new customer's wallet (their ENS label).
+  `treasury`) and each new customer's wallet (their label).
 - **Saved Event Queries** power the dashboard: `cash_in_by_kiosk`,
   `cash_in_by_denomination`, `tkcash_holders` (balances rebuilt from
   Transfer events with `add`/`subtract` aggregators), `deposits_by_user`,
@@ -83,7 +83,7 @@ backend's contract layer and indexer:
 flowchart LR
     Kiosk[Kiosk / bill acceptor] -->|note accepted| API[backend]
     API -->|recordCashIn / redeem / agent actions<br/>unsigned tx from MultiBaas,<br/>signed locally| MB[(Curvegrid MultiBaas)]
-    MB -->|broadcast| Chain[Ethereum Sepolia<br/>vault · tkCASH · mUSDC<br/>1inch Aqua · ENS registry]
+    MB -->|broadcast| Chain[Ethereum Sepolia<br/>vault · tkCASH · mUSDC<br/>1inch Aqua]
     Chain -->|events indexed| MB
     MB -->|signed webhooks| API
     MB -->|Event Queries · reads| API
@@ -103,99 +103,79 @@ flowchart LR
 See the MultiBaas section of [`FEEDBACK.md`](./FEEDBACK.md#feedback-curvegrid-multibaas)
 for what worked, what tripped us up, and suggestions.
 
-## ENS v2: verifiable machines and sending by name
+## Two chains: Ethereum Sepolia and Arc Testnet
 
-Takarabako's names live under **`takarabako.eth` on the official ENS v2
-Sepolia deployment** (`npm run ens:setup`): the name points at our own
-UserRegistry (subnames are ERC-1155 tokens) and PermissionedResolver
-(records), so every name resolves through the official
-`UniversalResolverV2` — any ENS-aware app sees them.
+Takarabako runs on every chain in `ENABLED_CHAINS` at once. Each chain has its
+own `TakarabakoVault`, its own tkCASH and its own USDC; one treasury key signs
+on all of them.
 
-- **Verifiable machines.** Each kiosk is a name, e.g.
-  `tokyo-01.takarabako.eth`, whose address record is a signing key
-  generated on the Raspberry Pi itself (`device-agent/machine.js`). The Pi
-  signs every note it accepts (EIP-712 `NoteAccepted`: kiosk, amount,
-  currency, session hash, nonce, time). `/deposit` resolves the kiosk's name,
-  recovers the signer and credits the note as verified only if they match; a
-  fake box or a replayed signature can't mint deposits
-  (`MACHINE_SIGNATURE=required` rejects unsigned ones outright). The kiosk
-  screen, receipts and History show "✓ tokyo-01.takarabako.eth".
-- **Customer names** (`alice-1a2b.takarabako.eth`) are owned by, and resolve
-  to, the customer's own Privy wallet.
-- **Send by name.** Type a name, it resolves through ENS: box balance moves
-  between boxes (Takarabako does it), **tkCASH** is signed by the customer in
-  their own wallet, with the token's on-chain rules (both wallets
-  identity-verified, $500/day limit).
-- **Positions as deeds.** Each 1inch Aqua position has a transferable name
-  (`aqua-1a2b3c4d.takarabako.eth`) in its owner's wallet. Sending that name
-  token gives the position away; the backend follows the token (webhook from
-  MultiBaas, or on confirm), and only the deed's holder can close it.
+| | Ethereum Sepolia | Arc Testnet |
+|---|---|---|
+| Chain id | 11155111 | 5042002 |
+| USDC | Circle's Sepolia USDC (the vault must use it for CCTP to work) | `0x3600…0000` (6 decimals as an ERC-20) |
+| Gas | ETH | USDC (the same funds as the USDC balance, 18-decimal gas view) |
+| Indexing | Curvegrid MultiBaas | the backend's own log reader (`logIndexer.ts`) |
+| 1inch Aqua yield | yes | not deployed there |
 
-Scripts: `npm run ens:setup` (register the parent, deploy registry and
-resolver), `npm run ens:kiosk -- http://<pi>:8080` (publish a kiosk's device
-key), `npm run ens:migrate` (re-issue names).
+- A kiosk is registered to one **home chain**; the notes it takes are credited
+  there (vault `depositFor`, tkCASH `recordCashIn`).
+- A customer's box is one account (the same vault address on every chain) with a
+  balance on each. **My box** shows the total and the split.
+- **tkCASH never crosses chains.** It is a claim on cash in a specific kiosk's
+  box, so each chain has its own tkCASH and its own proof of reserve. Only USDC
+  moves between chains.
+- Deploy a chain's contracts with your own treasury key:
+  ```bash
+  cd contracts
+  # Arc Testnet (sends need maxFeePerGas >= 20 gwei)
+  forge script script/DeployCashChain.s.sol --rpc-url https://rpc.testnet.arc.io \
+    --broadcast --private-key $TREASURY_PRIVATE_KEY --with-gas-price 25gwei --legacy
+  # Ethereum Sepolia against Circle's USDC, so it can be bridged
+  USDC_ADDRESS=0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238 forge script script/DeployCashChain.s.sol \
+    --rpc-url $SEPOLIA_RPC_URL --broadcast --private-key $TREASURY_PRIVATE_KEY
+  ```
+  Then put the printed addresses in `backend/.env` (`ARC_TESTNET_VAULT_ADDRESS`,
+  `ARC_TESTNET_CASH_RECEIPT_ADDRESS`, …; see `.env.example`). The treasury needs
+  testnet USDC on each chain (Circle's faucet) and Sepolia ETH for gas.
 
-## World ID: one human, one account
+## Bridging USDC with CCTP
 
-Right after a customer creates their wallet in the web app, they take a
-**World ID Selfie Check** in World App (`/verify`). On a phone the button
-opens World App directly; on a computer they scan a QR code. The backend
-signs each request with the RP signing key (it never reaches the browser)
-and binds it to the new wallet's address as the signal, so the proof only
-ever verifies that account. It then checks the proof with the Developer
-Portal's v4 verify endpoint (`backend/src/worldId.ts`). The proof's
-nullifier, World ID's anonymous per-app id for a person, is stored under a
-unique index, so one human can't run two accounts.
+`/bridge` in the web app moves USDC from a customer's box on one chain to their
+box on the other, with Circle's CCTP V2 (standard transfer, no fee):
 
-Before asking World, the backend refuses a proof that:
+1. the USDC leaves the customer's box on the source chain (vault withdrawal to
+   the treasury);
+2. the treasury burns it with `depositForBurn`;
+3. Circle's attestation service signs the burn once the source chain is final
+   (about 20 minutes from Sepolia, a few from Arc);
+4. the treasury mints it on the destination chain with `receiveMessage`;
+5. the minted USDC is deposited into the customer's box there.
 
-- was made for another account (signal) or another action,
-- comes from a different World ID environment than the backend runs in (so
-  sandbox test identities can't pass as real humans in production),
-- carries a weaker credential than `WORLD_PRESET` asks for (the preset isn't
-  covered by the request signature, so the browser could swap it).
+Every step is stored in Postgres before the next one starts, so a backend
+restart resumes a transfer instead of burning twice. Operators can also
+rebalance the treasury's own float between chains from `/ops`, and the ops agent
+can propose the same (always needs a human). `npm run bridge:smoke --
+sepolia arc-testnet 1` moves $1 of treasury USDC end to end.
 
-It also requires every per-credential entry in World's answer to succeed,
-not only the top-level `success`.
+## Labels, kiosks and the daily limit
 
-The Selfie Check is requested as a **World ID 3.0** proof (IDKit's
-`selfieCheckLegacy` preset). The 4.0 version needs World ID 4.0 in the
-customer's World App, and World App reports `world_id_4_not_available`
-without it. The customer needs a completed Selfie Check in World App.
-
-The selfie can be skipped. An unverified account can move **$1,000 a day**
-(UTC) across everything: cash deposited at the kiosk, withdrawals, yield
-positions opened, and anything sent by name (`backend/src/limits.ts`). A
-kiosk visit won't start once the day's limit is used (notes already taken are
-always credited). Verifying lifts the limit, and the customer's ENS name gets
-`takarabako.verified = world-id`.
-
-### Logging in with World ID at the deposit terminal
-
-`/deposit` has two ways in: **Scan my QR** (the wallet QR, for everyone) and
-**World ID** (for customers who have verified). The World ID tab shows a
-World App QR code. The backend binds that request to a one-time nonce in
-Redis (5 minutes), and the proof has to carry it. The backend then spends
-the nonce, checks the proof as above, and finds the account whose stored
-nullifier matches. It opens the same deposit-only session a wallet QR does
-(`backend/src/worldLogin.ts`, `GET /login/world/request`,
-`POST /login/world`). A World ID that hasn't verified an account is told to
-scan their QR instead.
-
-Login uses the same action and preset as verification, because a person's
-nullifier differs between actions and between credentials. Changing either
-means verified customers have to verify again before World ID login finds
-them. World's v4 endpoint accepts the same person proving the same action
-repeatedly, which is what makes repeat logins work.
-
-Config (`backend/.env`): `WORLD_APP_ID`, `WORLD_RP_ID`,
-`WORLD_APP_SIGNING_KEY`, `WORLD_ACTION` (`selfie`), `WORLD_ENVIRONMENT`
-(`production`, or `sandbox` for the sandbox World App), `WORLD_PRESET`
-(`selfie` = 3.0 Selfie Check, `selfie-v4`, or `device` for any World App
-user), `UNVERIFIED_DAILY_LIMIT_USD`. For sandbox testing,
-`npm run world:staging` opens a 24-hour staging verification window and
-saves its token as `WORLD_STAGING_VERIFICATION_TOKEN` (needs
-`WORLD_TEAM_API_KEY`); production doesn't use it.
+- **Accounts** are identified by their Privy wallet address. A label derived
+  from the email (`alice-1a2b`) is stored in Postgres as a friendly handle, and
+  people send to each other by label or by address.
+- **Verifiable kiosks.** Each kiosk generates a signing key on its own device
+  (`device-agent/machine.js`) and signs every note it takes (EIP-712
+  `NoteAccepted`). An operator registers the key's public address against the
+  kiosk id and its home chain:
+  ```bash
+  cd backend && npm run kiosk:register -- tokyo-01 0xDEVICE_ADDRESS sepolia
+  ```
+  (or `POST /ops/kiosks` with the operator token). A note counts as
+  machine-verified only if it is signed by the registered key of an active
+  kiosk; replays are rejected. `MACHINE_SIGNATURE=required` refuses unsigned
+  deposits outright.
+- **One daily limit.** Every account can move `DAILY_LIMIT_USD` a day (default
+  $1,000) across deposits, withdrawals, yield, sends and bridging. Set the tkCASH
+  contract's daily transfer limit to the same figure (`DeployCashChain` does).
 
 ## Yield on 1inch Aqua
 
@@ -232,15 +212,16 @@ The pair is mETH (a mintable ETH stand-in priced off live ETH/USD) and mUSDC.
 - **`contracts/`** — Foundry workspace: `MockUSDC`, mock risk-tier tokens,
   `TakarabakoVault` (mock-yield ERC-4626-flavored vault) and
   `TakarabakoCashReceipt` (tkCASH).
-- **`backend/`** — Node/TypeScript orchestrator: real Privy identity, real
-  ENS v2 subname registration, real vault deposit/withdraw, real per-user
+- **`backend/`** — Node/TypeScript orchestrator: real Privy identity, a
+  label and kiosk registry in Postgres, vault deposit/withdraw on two chains,
+  CCTP bridging, real per-user
   1inch Aqua yield strategies (beginner tiers and a drawable advanced range), real Claude Haiku 4.5
   rationale.
 - **`frontend/`** — Next.js web app: the customer app (Privy email-code
   login, live balance, quick-deposit QR, yield, withdraw), `/kiosk`, the
   box's new screen, `/deposit`, the public cash-deposit terminal (wallet QR
-  or World ID login), and
-  `/ops`, the treasury dashboard. See [`frontend/README.md`](./frontend/README.md).
+  login), `/bridge`, and
+  `/ops`, the combined treasury dashboard for both chains. See [`frontend/README.md`](./frontend/README.md).
 - **`device-agent/`** — kiosk page for the Raspberry Pi 4 touchscreen, plus
   the software bridge for a real TB74 pulse bill acceptor (`gpio/`).
 
@@ -254,15 +235,13 @@ sequenceDiagram
     participant Privy
     participant Claude as Claude Haiku 4.5
     participant Aqua as 1inch Aqua (SwapVM)
-    participant ENS as ENS v2 (takarabako.eth)
     participant Vault as TakarabakoVault
 
     User->>Kiosk: enter email
     Kiosk->>API: POST /verify {email}
     API->>Privy: getByEmailAddress / create
     Privy-->>API: userId + embedded wallet
-    API->>ENS: register <label>.takarabako.eth (new account only)
-    API-->>Kiosk: {userId, ensName, balance: 0}
+    API-->>Kiosk: {userId, label, balance: 0}
 
     User->>Kiosk: insert cash (or fallback button)
     Kiosk->>API: POST /deposit {userId, amount}
@@ -275,8 +254,7 @@ sequenceDiagram
     Claude-->>API: rationale (tier is never overridden)
     API->>Vault: withdrawTo(treasury, amount's shares)
     API->>Aqua: ship SwapVM strategies (one per bin)
-    API->>ENS: register aqua-<id>.takarabako.eth
-    API-->>Kiosk: {ensName, pair, apyBps, rationale}
+    API-->>Kiosk: {name, pair, apyBps, rationale}
 
     User->>Kiosk: withdraw
     Kiosk->>API: POST /withdraw {userId}
@@ -326,13 +304,20 @@ cd device-agent && cp public/config.example.js public/config.js && node server.j
 ### Testing
 
 ```bash
-cd contracts && forge test          # vault + tkCASH (18 tests, incl. a supply == reserve fuzz)
-cd backend && npm test              # needs Postgres + Redis (npm run services); 78 tests:
+cd contracts && forge test          # vault, tkCASH and one cash chain's flows (35 tests, incl. a supply == reserve fuzz)
+cd backend && npm test              # needs Postgres + Redis (npm run services); 193 tests:
                                     # webhook signatures, tkCASH encoding, policy limits,
                                     # proposal lifecycle with the executor stubbed, monitor
-                                    # rules, World ID proof checks and login, …
+                                    # rules, kiosk keys, the daily limit, CCTP helpers, …
 cd backend && npm run typecheck
 ```
+
+Two end-to-end checks run against local nodes, with no testnet funds (see the
+header of each script for the setup): `npm run arc:e2e` exercises a second
+chain's vault, tkCASH, event log and dashboard panels; `npm run bridge:e2e`
+runs the real bridge state machine between two local chains with a stand-in
+for Circle's CCTP contracts (`contracts/test/mocks/MockCctp.sol`), including
+resuming a transfer after a restart.
 
 End to end: log in at the kiosk and insert a note (or use the test-deposit
 button), then check `/ops` — a CashIn arrives by webhook, the reserve and

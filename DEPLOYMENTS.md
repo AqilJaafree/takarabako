@@ -1,4 +1,34 @@
-# Deployments — Ethereum Sepolia (chain 11155111)
+# Deployments — Ethereum Sepolia (chain 11155111) and Arc Testnet (chain 5042002)
+
+> ENS v2 names and World ID were removed from Takarabako. Accounts are a wallet
+> address plus a label in Postgres, and kiosks are registered device keys. The
+> ENS and World ID deployments that used to be listed here are gone from this
+> file; the history is in git.
+
+## Arc Testnet
+
+Not deployed yet. Deploy with your own treasury key (the contracts are owned by
+whoever deploys them), then record the addresses here and in `backend/.env`:
+
+```bash
+cd contracts
+forge script script/DeployCashChain.s.sol --rpc-url https://rpc.testnet.arc.io \
+  --broadcast --private-key $TREASURY_PRIVATE_KEY --with-gas-price 25gwei --legacy
+```
+
+| Contract | Address |
+|---|---|
+| USDC (Circle, 6 decimals as an ERC-20) | `0x3600000000000000000000000000000000000000` |
+| `TakarabakoVault` | _to deploy_ |
+| `TakarabakoCashReceipt (tkCASH)` | _to deploy_ |
+| CCTP `TokenMessengerV2` (testnet) | `0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA` |
+| CCTP `MessageTransmitterV2` (testnet) | `0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275` |
+
+CCTP domains: Ethereum Sepolia 0, Arc Testnet 26. The Sepolia vault below uses a
+mock USDC, which CCTP cannot bridge. To bridge from Sepolia, redeploy the vault
+against Circle's Sepolia USDC (`0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`) with
+the same script and set `SEPOLIA_USDC_ADDRESS` / `SEPOLIA_VAULT_ADDRESS`.
+
 
 Live testnet addresses this build actually talks to. Update this file
 whenever something new is deployed or seeded — it's the source of truth
@@ -81,111 +111,13 @@ capital, not just gas; mAAVE/mDOGE are freely mintable mocks for
 medium/high). Mint amounts are small and fixed per tier, not literally
 proportional to the user's deposit — see the "why" comment in `agent.ts`.
 
-## ENS v2 (Sepolia Beta — genuinely live, confirmed on-chain)
-
-Earlier drafts of this doc assumed ENS v2/Namechain testnet availability
-was unconfirmed. It's not unconfirmed — it's live. Every address below
-was verified two ways before use: bytecode presence, then the *actual*
-Etherscan-verified contract name (not a doc summary) via WebFetch, then
-cross-checked against a related contract's own on-chain reference (e.g.
-`ETHRegistrar.ETH_REGISTRY()` == the `ETHRegistry` address independently
-found).
-
-| Contract | Address | Verified as |
-|---|---|---|
-| `ETHRegistry` (root PermissionedRegistry for `.eth`) | `0xbdc85dd5b15d7ecb354cd7cb6f2c50b4f2c4f0e2` | `PermissionedRegistry` |
-| `ETHRegistrar` | `0xa88553f454b77203b0d036a05c894d555eaaa2cc` | `ETHRegistrar`; `.ETH_REGISTRY()` matches the row above exactly |
-| `VerifiableFactory` | `0x10dc6333cdfe1fcef624c6e0a8221b91804cd7ef` | `VerifiableFactory` |
-| `StandardRentPriceOracle` | `0x8914b66260EB8C4fff795650c3AE8Cd335958987` | accepts real Circle Sepolia USDC (`0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`) as `paymentToken` — **not** ETH, **not** our MockUSDC |
-
-**`wantest.eth` is registered**, owned by the treasury:
-- `findOwner("wantest")` → treasury address (independently verified, not just trusting the tx receipt)
-- `findExpiry("wantest")` → 2027-09-12 (1-year registration)
-- Paid 8.000021 real Circle-USDC (commit tx `0x1cf2f306...`, register tx `0x0a10c61f...`)
-- Registered with `address(0)` subregistry/resolver placeholders first (a deliberate lower-risk sequencing — see below), then `setSubregistry` was called once the real registry deployment was confirmed working; `getSubregistry("wantest")` now returns that real registry (see next section). `getResolver("wantest")` is still `address(0)` — no resolver deployed/needed yet.
-
-### Subname registry — real, deployed, issuing real subnames
-
-Found the exact deployment mechanics by getting `RegistryRolesLib.sol`'s
-authoritative source from `ensdomains/contracts-v2` on GitHub (via `gh api`,
-not a doc summary) rather than guessing a role bitmap, and by confirming
-`UserRegistry` (not the root's `PermissionedRegistry`) is the actual
-`VerifiableFactory`-clonable implementation, with its own `initialize()`.
-
-| Contract | Address | Verified as |
-|---|---|---|
-| `UserRegistry` implementation | `0x624a25d67b59d587752ebec8dded8827dae52050` | `UserRegistry`; has `initialize(address,uint256)`, unlike the root's constructor-only `PermissionedRegistry` |
-| **Our subregistry for `wantest.eth`** | `0x786441fDe1a4006EadD745A8b90d8621F7a99916` | deployed via `VerifiableFactory.deployProxy`; `factory.verifyContract(...)` confirms it points at the `UserRegistry` impl above |
-
-Deployment used `salt = uint256(keccak256(abi.encode(keccak256("UserRegistry"), namehash("wantest.eth"), 0)))`
-and `data = initialize(treasury, ALL_ROLES)`, where `ALL_ROLES` is every
-role constant from `RegistryRolesLib.sol` (base + `<<128` admin variant)
-OR'd together. Both `namehash("wantest.eth")` and `keccak256("wantest")`
-were cross-checked against values that appeared independently inside the
-`wantest.eth` registration transaction's own logs — not just internal
-consistency, agreement with what the real ENS contracts had already
-computed on-chain. Every step (proxy deployment, linking it to
-`wantest.eth` via `ETHRegistry.setSubregistry(findTokenId("wantest"), ...)`,
-then registering the first real subname) was dry-run via `eth_call`
-first — all succeeded with no reverts before any real transaction was sent.
-
-`ETHRegistry.getSubregistry("wantest")` now returns our registry above,
-confirmed independently (not just the tx receipt).
-
-**Real subnames issued and independently verified** (`findOwner(label)`
-on our registry matches exactly):
-
-| Subname | Owner | Register tx |
-|---|---|---|
-| `machina.wantest.eth` | `0xb018D435f253f63fff95E3a37a11FA54D9283702` | `0x15ad190b...` |
-| `realenstest.wantest.eth` | `0x62F5422C49F448d2D3B57F0dd26F14fF6b43A82B` | `0x0b5a23b4...` |
-| `uniswap-1.wantest.eth` | `0x62F5422C49F448d2D3B57F0dd26F14fF6b43A82B` | `0x3ebf71d1...` |
-
-`backend/src/ens.ts` calls this for real now (`registerEnsLabelOnChain` in
-`chain.ts`) — `POST /deposit` and `POST /agent/open-position` both mint
-genuine subnames, no stub path left for the happy case.
-
-## Identity: World ID → Privy (swapped)
-
-World ID Selfie Check (`backend/src/worldId.ts`, now deleted) was replaced
-with Privy (`backend/src/privy.ts`) after its bridge/QR handoff never got a
-scanned phone to actually connect — repeated real attempts (with the SDK's
-own `getDebugReport()` logged) sat at `waiting_for_connection` forever, even
-after registering the missing World ID action via the
-`worldcoin-developer-portal` MCP. Privy needs no phone, no QR, no bridge:
-the kiosk takes an email on-screen, the backend calls `users().create()` /
-`users().getByEmailAddress()` directly (server-to-server, app secret auth)
-and gets back a real embedded wallet synchronously. Sybil-resistance signal
-is now "one email → one Privy user" — weaker than World ID's biometric
-uniqueness proof, a deliberate trade for something that actually works in
-the time available.
-
-`PRIVY_APP_ID` / `PRIVY_APP_SECRET` are set in `backend/.env` (from
-dashboard.privy.io) and **verified working end-to-end**: real Privy user +
-embedded wallet returned synchronously (no polling), same email correctly
-reuses the same user (`reused: true`, no duplicate wallet), backend stayed
-alive throughout.
-
-**New-account funding:** every brand-new Privy user (first-time
-`users().create()` only — not repeat logins) gets **0.001 real Sepolia ETH**
-sent from the treasury to their embedded wallet, so they have gas for
-anything they do with it themselves later (`fundWalletWithEthOnChain` in
-`chain.ts`, gated in `privy.ts`). Verified: a fresh test wallet
-(`0xEe411b45...`) received exactly 0.001 ETH (tx `0x9d6c4ba1...`); a
-second `/verify` with the *same* email correctly returned `reused: true`
-with no `fundingTxHash` and no balance change — confirmed via independent
-`cast balance` checks both times, not just trusting the API response.
-A funding failure (e.g. treasury low on ETH) is caught and logged without
-failing the account creation itself — the user still gets a real wallet,
-just no gas yet.
-
 ## ATM-style flow reorder (verify-then-deposit)
 
 Backend now authenticates before it accepts cash, matching a real ATM
 instead of the original "cash in blind, identify after" order:
 
 - `POST /verify { email }` runs **first**: resolves/creates the Privy user,
-  and — new-account only — derives an ENS label from the email
+  and — new-account only — derives a label from the email
   (`deriveEnsLabel` in `ens.ts`, collision-avoiding hash suffix, e.g.
   `alice-4f2a.wantest.eth`) and registers it immediately, before any money
   has moved. Returns `{ userId, ensName, balance: 0 }` synchronously.
@@ -288,7 +220,7 @@ MultiBaas deployment host (Sepolia, free tier): `lfozlu7lwjb2bl25fgqbersp6u.mult
 | `ens_user_registry` | `UserRegistry` (`LabelRegistered`, `register`, `findOwner`) | `ens-wantest` | `0x786441fDe1a4006EadD745A8b90d8621F7a99916` |
 
 Plus `treasury` → the treasury signer, and one alias per customer (their
-ENS label → their Privy wallet), created at registration.
+label → their Privy wallet), created at registration.
 
 ## 1inch Aqua yield (Sepolia)
 
@@ -309,40 +241,13 @@ MultiBaas links the Aqua contract as `oneinch_aqua` (alias `aqua`) in the slot
 that held Uniswap's position manager; a saved query `aqua_pulled_by_token`
 sums swap volume out of our strategies.
 
-## ENS v2 — official Sepolia deployment (takarabako.eth)
-
-The earlier `wantest.eth` (above) sits on the Sepolia *beta* deployment; the
-official `UniversalResolverV2` (`0x2f8a180604c42457cb56c7c4f708748ff1f91df1`)
-resolves through a different root (`0xc960F7217d3643B525Ef36Bec8Adf86953CD9aB8`
-→ `.eth` registry `0xdedb92913a25abe1f7bcdd85d8a344a43b398b67`), which has no
-`wantest`. So names moved to `takarabako.eth` there (addresses from
-`ensdomains/contracts-v2` `deployments/sepolia-official-v1-20260525-r2`,
-checked on-chain).
-
-| What | Address / value |
-|---|---|
-| `takarabako.eth` | registered with the official `ETHRegistrar` (`0x8c2e866b…affca`) for 1 year, 7.99 of the deployment's open-mint MockUSDC (register tx `0x3dd28cec…`) |
-| Our `UserRegistry` (subnames) | `0x73153594ec5349f2ea191e39b9ec1e2fe4fa4b99` — deployed via the official `VerifiableFactory`, which verifies it points at `UserRegistryImpl` |
-| Our `PermissionedResolver` (records) | `0x6ef4efc23141edf959bcad3b8f3d213f9b244905` — same factory, `PermissionedResolverImpl` |
-| `kl-sentral-01.takarabako.eth` | addr → `0xb3F9928aD5E659b8d22A556FbcfF545cf49EC9f5`, the Pi's device key; `takarabako.kind=kiosk` |
-
-Checked through the official `UniversalResolverV2`: `takarabako.eth` → the
-treasury; `aqiljeff-6263.takarabako.eth` → the customer's Privy wallet;
-`kl-sentral-01.takarabako.eth` → the device key. The first signed note
-(nonce 1) was verified end to end: signer recovered from the Pi's signature ==
-the kiosk name's address record.
-
-tkCASH's daily transfer limit is now set on-chain to $500
-(`setDailyTransferLimit`, tx `0xae068973…`). MultiBaas links our UserRegistry
-as `takarabako_names` (the beta registry link was retired).
-
 ### Kiosk renamed: kl-sentral-01 → tokyo-01
 
 The kiosk is now `tokyo-01`. On tkCASH, `setKiosk(tokyo-01, true)` (tx
 `0x52fe4df9…`) put it in service and `setKiosk(kl-sentral-01, false)` (tx
 `0x1a656cbe…`) retired the old one: no new cash-ins there, but its reserve
 (122.33 at the switch) stays redeemable — the backend burns against the
-current kiosk first, then retired ones (`KIOSK_PREVIOUS_IDS`). On ENS,
+current kiosk first, then retired ones (`KIOSK_PREVIOUS_IDS`). On the kiosk side,
 `tokyo-01.takarabako.eth` resolves to the same Pi device key
 (`0xb3F9…C9f5`, `takarabako.kind=kiosk`), and `kl-sentral-01.takarabako.eth`
 is marked `takarabako.kind=retired-kiosk`, so notes signed as the old kiosk

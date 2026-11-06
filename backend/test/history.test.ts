@@ -13,7 +13,7 @@ await accounts.insertAccount({
   email: "h@example.com",
   privyWallet: "0x0000000000000000000000000000000000000031",
   boundAddress: "0x0000000000000000000000000000000000000032",
-  ensName: "h.wantest.eth",
+  label: "h",
 });
 
 test("a session collects its notes and the receipt adds them up", async () => {
@@ -59,7 +59,7 @@ test("history lists every kind newest first, and filters", async () => {
   await history.recordWithdrawal({ privyUserId: USER, destination: "wallet", grossUsd: 5, feeBps: 0, netUsd: 5, txHash: "0xw" });
   await history.recordYieldEvent({
     privyUserId: USER, action: "open", riskTier: "low", pair: "USDC/ETH", apyBps: 320,
-    amountUsd: 5, rationale: "steady", ensName: "uniswap-1.wantest.eth", txHash: "0xy",
+    amountUsd: 5, rationale: "steady", label: "aqua-1a2b3c4d", txHash: "0xy",
   });
   await history.recordRefused({ privyUserId: USER, sessionId: null, reason: "bad_condition" });
 
