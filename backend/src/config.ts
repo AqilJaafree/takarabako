@@ -23,6 +23,13 @@ export const config = {
     maxUsd: Number(process.env.SELF_CUSTODY_MAX_USD ?? 100),
     arcRpcUrl: process.env.ARC_RPC_URL || NETWORKS.arc.defaultRpcUrl,
   },
+  // Dash out (dashOut.ts): selling a customer's leftover base token for USDC through Aqua. It is refused
+  // when the best strategies pay more than this far below the market, and each swap carries a minimum
+  // payout of its quote less the slippage allowance.
+  dashOut: {
+    maxDiscountPct: Number(process.env.DASH_OUT_MAX_DISCOUNT_PCT ?? 3),
+    slippageBps: Number(process.env.DASH_OUT_SLIPPAGE_BPS ?? 50),
+  },
   // Whether the yield page shows APY estimates (hidden on a real-money network).
   showApyEstimates: showApyEstimates(network.real, process.env.SHOW_APY_ESTIMATES),
   rpcUrl: process.env.RPC_URL || network.defaultRpcUrl,

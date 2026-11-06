@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { z } from "zod";
-import { formatUnits } from "viem";
+import { formatUnits, parseUnits } from "viem";
 import { findByPrivyUserId } from "../accounts.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { config } from "../config.js";
 import { requireSession } from "../sessions.js";
-import { listSelf, prepareClose, prepareOpen, recordClose, recordOpen, walletState } from "../selfPositions.js";
+import { listSelf, prepareClose, prepareOpen, recordClose, recordOpen, walletState, withFees } from "../selfPositions.js";
+import { dashOutQuote, prepareDashOut, type DashOutQuote } from "../dashOut.js";
 import { selfNet } from "../selfChain.js";
 import { SELF_SHAPES, type SelfShape } from "../selfShapes.js";
 
@@ -81,4 +82,49 @@ selfRouter.post("/self/:net/positions/:id/close/record", requireSession("full"),
   const body = RecordClose.safeParse(req.body);
   if (!body.success) return void res.status(400).json({ error: body.error.flatten() });
   res.json(await recordClose(selfNet(String(req.params.net)), await account(res), String(req.params.id), body.data.txHashes));
+}));
+
+// ---- dash out: sell the leftover base token for USDC through Aqua (dashOut.ts) -------------------
+
+const DashOutBody = z.object({ wallet: address.optional(), amount: z.string().regex(/^\d+(\.\d+)?$/).optional() });
+
+/// What the response says about a quote, in human units.
+function dashOutView(net: ReturnType<typeof selfNet>, q: DashOutQuote) {
+  const base = Number(net.pair.eth.decimals);
+  const quote = Number(net.pair.usdc.decimals);
+  return {
+    symbols: net.symbols,
+    balance: Number(formatUnits(q.balance, base)),
+    amountIn: Number(formatUnits(q.amountIn, base)),
+    amountOut: Number(formatUnits(q.amountOut, quote)),
+    unfilled: Number(formatUnits(q.unfilled, base)),
+    rate: q.rate,
+    marketRate: q.marketRate,
+    discountPct: q.discountPct,
+    allowed: q.allowed,
+    reason: q.reason,
+    strategies: q.fills.length,
+    maxDiscountPct: config.dashOut.maxDiscountPct,
+  };
+}
+
+/// GET /self/:net/dashout?address=&amount= — what selling the wallet's leftover base token would get now.
+selfRouter.get("/self/:net/dashout", requireSession("full"), asyncHandler(async (req, res) => {
+  const net = selfNet(String(req.params.net));
+  const asked = address.safeParse(req.query.address);
+  if (req.query.address !== undefined && !asked.success) return void res.status(400).json({ error: "not a wallet address" });
+  const wallet = (asked.success ? asked.data : (await account(res)).privyWallet).toLowerCase();
+  const amount = typeof req.query.amount === "string" && /^\d+(\.\d+)?$/.test(req.query.amount) ? parseUnits(req.query.amount, Number(net.pair.eth.decimals)) : undefined;
+  res.json(dashOutView(net, await dashOutQuote(net, wallet, amount)));
+}));
+
+/// POST /self/:net/dashout/prepare { wallet, amount } — the transactions to sign to sell it.
+selfRouter.post("/self/:net/dashout/prepare", requireSession("full"), asyncHandler(async (req, res) => {
+  const net = selfNet(String(req.params.net));
+  const body = DashOutBody.safeParse(req.body);
+  if (!body.success) return void res.status(400).json({ error: body.error.flatten() });
+  const wallet = (body.data.wallet ?? (await account(res)).privyWallet).toLowerCase();
+  const amount = body.data.amount ? parseUnits(body.data.amount, Number(net.pair.eth.decimals)) : undefined;
+  const { steps, quote, minOut } = await prepareDashOut(net, wallet, amount);
+  res.json({ steps: await withFees(net, steps), quote: dashOutView(net, quote), minOut: Number(formatUnits(minOut, Number(net.pair.usdc.decimals))) });
 }));

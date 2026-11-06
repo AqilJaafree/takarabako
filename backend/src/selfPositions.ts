@@ -123,7 +123,7 @@ export interface PreparedStep extends Step {
   maxPriorityFeePerGas: string;
 }
 
-const withFees = async (net: SelfNet, steps: Step[]): Promise<PreparedStep[]> => {
+export const withFees = async (net: SelfNet, steps: Step[]): Promise<PreparedStep[]> => {
   const f = await fees(net);
   return steps.map((s) => ({ ...s, chainId: net.chainId, ...f }));
 };
