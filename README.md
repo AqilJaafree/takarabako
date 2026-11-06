@@ -2,8 +2,8 @@
 
 **Takarabako turns banknotes into on-chain money: insert cash at a kiosk and it
 becomes a yield-bearing USDC balance and a tokenized cash receipt (tkCASH) on
-Ethereum Sepolia or Arc Testnet, with Circle CCTP moving USDC between the two,
-and one treasury dashboard and policy-bound AI agent watching both chains.**
+Ethereum Sepolia, Arc Testnet or Hedera Testnet (EVM side), with Circle CCTP moving USDC between Sepolia and Arc,
+and one treasury dashboard and policy-bound AI agent watching all of them.**
 
 An ATM-style cash-in kiosk: verify your identity with just an email (Privy —
 real embedded wallet, no seed phrase, no app), *then* insert cash, and it's
@@ -103,19 +103,28 @@ flowchart LR
 See the MultiBaas section of [`FEEDBACK.md`](./FEEDBACK.md#feedback-curvegrid-multibaas)
 for what worked, what tripped us up, and suggestions.
 
-## Two chains: Ethereum Sepolia and Arc Testnet
+## Chains: Ethereum Sepolia, Arc Testnet and Hedera Testnet
 
 Takarabako runs on every chain in `ENABLED_CHAINS` at once. Each chain has its
 own `TakarabakoVault`, its own tkCASH and its own USDC; one treasury key signs
 on all of them.
 
-| | Ethereum Sepolia | Arc Testnet |
-|---|---|---|
-| Chain id | 11155111 | 5042002 |
-| USDC | Circle's Sepolia USDC (the vault must use it for CCTP to work) | `0x3600…0000` (6 decimals as an ERC-20) |
-| Gas | ETH | USDC (the same funds as the USDC balance, 18-decimal gas view) |
-| Indexing | Curvegrid MultiBaas | the backend's own log reader (`logIndexer.ts`) |
-| 1inch Aqua yield | yes | not deployed there |
+| | Ethereum Sepolia | Arc Testnet | Hedera Testnet (EVM side) |
+|---|---|---|---|
+| Chain id | 11155111 | 5042002 | 296 |
+| USDC | Circle's Sepolia USDC (the vault must use it for CCTP to work) | `0x3600…0000` (6 decimals as an ERC-20) | Circle's native USDC, a Hedera Token Service token (`0.0.429274`) through its ERC-20 facade `0x…068cda` |
+| Gas | ETH | USDC (the same funds as the USDC balance, 18-decimal gas view) | HBAR |
+| Indexing | Curvegrid MultiBaas | the backend's own log reader (`logIndexer.ts`) | the same log reader, in 900-block steps (the relay caps a query at 1,000) |
+| CCTP bridge | yes | yes | no: top it up from the treasury |
+| 1inch Aqua yield | yes | not deployed there | not deployed there |
+
+Hedera is the EVM side only: the same vault and tkCASH contracts through Hedera's
+JSON-RPC relay (Hashio by default). Deposits are converted to USD at the same live
+rate as everywhere else, and USDC is 1:1 with USD, so the box is credited the
+equivalent amount of Hedera USDC. A contract can only hold an HTS token after it
+has been associated with it, so Hedera uses `TakarabakoVaultHedera`, which associates
+itself with USDC when it is created; no other contract differs. Native Hedera
+features (HBAR payments, `0.0.x` account ids) are not part of this.
 
 - A kiosk is registered to one **home chain**; the notes it takes are credited
   there (vault `depositFor`, tkCASH `recordCashIn`).
@@ -130,15 +139,21 @@ on all of them.
   # Arc Testnet (sends need maxFeePerGas >= 20 gwei)
   forge script script/DeployCashChain.s.sol --rpc-url https://rpc.testnet.arc.io \
     --broadcast --private-key $TREASURY_PRIVATE_KEY --with-gas-price 25gwei --legacy
+  # Hedera Testnet: Hedera's system contracts don't exist in forge's local simulation
+  HEDERA=1 USDC_ADDRESS=0x0000000000000000000000000000000000068cda \
+    forge script script/DeployCashChain.s.sol --rpc-url https://testnet.hashio.io/api \
+    --broadcast --private-key $TREASURY_PRIVATE_KEY --skip-simulation --legacy
   # Ethereum Sepolia against Circle's USDC, so it can be bridged
   USDC_ADDRESS=0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238 forge script script/DeployCashChain.s.sol \
     --rpc-url $SEPOLIA_RPC_URL --broadcast --private-key $TREASURY_PRIVATE_KEY
   ```
   Then put the printed addresses in `backend/.env` (`ARC_TESTNET_VAULT_ADDRESS`,
   `ARC_TESTNET_CASH_RECEIPT_ADDRESS`, …; see `.env.example`). The treasury needs
-  testnet USDC on each chain (Circle's faucet) and Sepolia ETH for gas.
+  testnet USDC on each chain (Circle's faucet; on Hedera, 20 USDC per request) and gas
+  (Sepolia ETH, Arc USDC, Hedera HBAR). Enable Hedera with
+  `ENABLED_CHAINS=sepolia,arc-testnet,hedera-testnet` and the `HEDERA_TESTNET_*` values.
 
-## Bridging USDC with CCTP
+## Bridging USDC with CCTP (Sepolia and Arc)
 
 `/bridge` in the web app moves USDC from a customer's box on one chain to their
 box on the other, with Circle's CCTP V2 (standard transfer, no fee):

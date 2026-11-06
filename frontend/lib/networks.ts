@@ -1,7 +1,7 @@
 // Shapes returned by the Express backend's GET /networks and
 // GET /networks/:key/status (backend/src/routes/networkRoutes.ts).
 
-export type NetworkKey = "sepolia" | "arc-testnet" | "arc";
+export type NetworkKey = "sepolia" | "arc-testnet" | "hedera-testnet" | "arc";
 
 export interface AquaDeployment {
   aqua: string;

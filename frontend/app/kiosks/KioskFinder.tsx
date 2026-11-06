@@ -7,6 +7,7 @@ import { directionsUrl, distanceM, type KioskLocation } from "@/lib/kiosks";
 import type { KioskMapHandle } from "./KioskMap";
 import { FloorPlan } from "./FloorPlan";
 import { BRAND_MARK } from "@/lib/theme";
+import { chainName } from "@/lib/format";
 
 // WebGL map: browser only.
 const KioskMap = dynamic(() => import("./KioskMap"), { ssr: false, loading: () => <div className="kiosk-map kiosk-map-loading" /> });
@@ -105,7 +106,7 @@ export function KioskFinder({ kiosks }: { kiosks: Kiosk[] }) {
         <div className="spread">
           <div>
             <h2>{kiosk.name}</h2>
-            <p className="mono small muted" style={{ margin: 0 }}>{kiosk.id} · credits {kiosk.chain === "arc-testnet" ? "Arc Testnet" : "Ethereum Sepolia"}</p>
+            <p className="mono small muted" style={{ margin: 0 }}>{kiosk.id} · credits {chainName(kiosk.chain)}</p>
           </div>
           <span className={`pill ${kiosk.status === "open" ? "ok" : kiosk.status === "paused" ? "warn" : ""}`}>
             {kiosk.status === "open" ? "In service" : kiosk.status === "paused" ? "Paused" : "Status unknown"}

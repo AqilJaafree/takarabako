@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CCTP_DOMAIN, addressToBytes32, parseAttestationResponse, estimateMinutes } from "../src/cctp.js";
+import { CCTP_DOMAIN, cctpDomain, cctpSupported, addressToBytes32, parseAttestationResponse, estimateMinutes } from "../src/cctp.js";
 
 test("the chains use Circle's CCTP domains", () => {
   assert.equal(CCTP_DOMAIN.sepolia, 0);
@@ -23,4 +23,10 @@ test("an attestation is ready only when Circle says complete and signs", () => {
 
 test("waiting from Sepolia is longer than from Arc", () => {
   assert.ok(estimateMinutes("sepolia") > estimateMinutes("arc-testnet"));
+});
+
+test("Hedera has no CCTP route", () => {
+  assert.equal(cctpSupported("hedera-testnet"), false);
+  assert.equal(cctpSupported("sepolia"), true);
+  assert.throws(() => cctpDomain("hedera-testnet"), /no CCTP route/);
 });

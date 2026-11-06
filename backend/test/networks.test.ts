@@ -24,7 +24,7 @@ test("Arc Testnet knows its ERC-20 USDC (6 decimals) address and the 20 gwei fee
 });
 
 test("an unknown CHAIN is rejected with the valid choices", () => {
-  assert.throws(() => resolveNetwork("polygon"), /sepolia, arc-testnet, arc/);
+  assert.throws(() => resolveNetwork("polygon"), /sepolia, arc-testnet, hedera-testnet, arc/);
 });
 
 test("Sepolia: shared Aqua registry, earlier SwapVM router", () => {
@@ -82,11 +82,11 @@ test("fee floor: a tip above the fee cap is clamped to it", () => {
   assert.equal(out.maxPriorityFeePerGas, 20n * GWEI);
 });
 
-test("describeNetworks lists all three networks with exactly one active", () => {
+test("describeNetworks lists all four networks with exactly one active", () => {
   const list = describeNetworks("sepolia");
-  assert.deepEqual(list.map((n) => n.key), ["sepolia", "arc-testnet", "arc"]);
-  assert.deepEqual(list.map((n) => n.active), [true, false, false]);
-  assert.deepEqual(list.map((n) => n.chainId), [11155111, 5042002, 5042]);
+  assert.deepEqual(list.map((n) => n.key), ["sepolia", "arc-testnet", "hedera-testnet", "arc"]);
+  assert.deepEqual(list.map((n) => n.active), [true, false, false, false]);
+  assert.deepEqual(list.map((n) => n.chainId), [11155111, 5042002, 296, 5042]);
 });
 
 test("describeNetworks: Aqua is on Sepolia and Arc mainnet but not on Arc Testnet", () => {
@@ -115,7 +115,7 @@ test("describeNetworks: a configured USDC replaces the default for the active ne
 });
 
 test("only Arc mainnet is real money", () => {
-  assert.deepEqual(describeNetworks("sepolia").map((n) => [n.key, n.real]), [["sepolia", false], ["arc-testnet", false], ["arc", true]]);
+  assert.deepEqual(describeNetworks("sepolia").map((n) => [n.key, n.real]), [["sepolia", false], ["arc-testnet", false], ["hedera-testnet", false], ["arc", true]]);
   assert.equal(resolveNetwork("arc").real, true);
   assert.equal(resolveNetwork("arc-testnet").real, false);
 });
@@ -130,4 +130,16 @@ test("SHOW_APY_ESTIMATES overrides either way", () => {
   assert.equal(showApyEstimates(false, "0"), false);
   assert.equal(showApyEstimates(true, ""), false); // blank means no override
   assert.equal(showApyEstimates(false, "maybe"), true); // anything else is ignored
+});
+
+test("hedera testnet: chain 296, HBAR gas, the HTS USDC facade, no fee floor and a 1000-block log cap", () => {
+  const n = resolveNetwork("hedera-testnet");
+  assert.equal(n.chain.id, 296);
+  assert.equal(n.nativeSymbol, "HBAR");
+  assert.equal(n.real, false);
+  assert.equal(n.minMaxFeePerGas, 0n);
+  assert.equal(n.defaults.usdc, "0x0000000000000000000000000000000000068cda");
+  assert.equal(BigInt(n.defaults.usdc), 429274n); // token 0.0.429274
+  assert.ok(n.logBatchBlocks <= 1000n);
+  assert.ok(n.gas.minBalance > n.gas.topUp / 10, "hbar top-ups are far bigger than eth ones");
 });

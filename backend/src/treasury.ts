@@ -82,6 +82,8 @@ export async function treasuryBalances(chain: Chain = PRIMARY()) {
     address: ops.treasuryAddress ?? null,
     nativeSymbol: config.chains[chain].network.nativeSymbol,
     gasIsUsdc: isGasTokenUsdc(config.chains[chain].network),
+    /// Below this the ops dashboard warns that the treasury is short of gas.
+    gasMin: config.chains[chain].network.gas.treasuryMin,
     native,
     eth: native, // kept for older callers
     usdc,

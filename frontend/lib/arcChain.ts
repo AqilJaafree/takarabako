@@ -1,5 +1,5 @@
 import type { Chain } from "viem";
-import { arc, arcTestnet } from "viem/chains";
+import { arc, arcTestnet, hederaTestnet } from "viem/chains";
 
 export const ARC_CHAIN_ID = 5042;
 
@@ -28,3 +28,9 @@ export function parseChainId(caip: string | undefined | null): number | null {
   const n = Number(String(caip ?? "").split(":").pop());
   return Number.isInteger(n) && n > 0 ? n : null;
 }
+
+/// Hedera's EVM side (JSON-RPC relay). Gas is HBAR; customers sign tkCASH sends here too.
+export const HEDERA_TESTNET: Chain = {
+  ...hederaTestnet,
+  rpcUrls: { default: { http: [process.env.NEXT_PUBLIC_HEDERA_TESTNET_RPC_URL || "https://testnet.hashio.io/api"] } },
+};

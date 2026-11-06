@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Script, console} from "forge-std/Script.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {TakarabakoVault} from "../src/TakarabakoVault.sol";
+import {TakarabakoVaultHedera} from "../src/TakarabakoVaultHedera.sol";
 import {TakarabakoCashReceipt} from "../src/TakarabakoCashReceipt.sol";
 
 /// @notice Deploys one cash chain's pair of contracts, the vault and tkCASH, against
@@ -16,10 +17,18 @@ import {TakarabakoCashReceipt} from "../src/TakarabakoCashReceipt.sol";
 ///   DAILY_LIMIT_USD   per-address daily tkCASH transfer limit, same figure as the backend (default 1000)
 ///   APY_BPS           the vault's advertised APY (default 420 = 4.20%)
 ///   SKIP_TKCASH=1     deploy only the vault (when tkCASH already exists on this chain)
+///   HEDERA=1          deploy the Hedera vault, which associates itself with the USDC token
+///                     (Hedera Token Service) when created
 ///
 /// Arc Testnet (gas is paid in USDC, and sends need maxFeePerGas >= 20 gwei):
 ///   forge script script/DeployCashChain.s.sol --rpc-url https://rpc.testnet.arc.io \
 ///     --broadcast --private-key $TREASURY_PRIVATE_KEY --with-gas-price 25gwei --legacy
+///
+/// Hedera Testnet (chain 296; USDC is HTS token 0.0.429274, EVM address 0x…068cda). Hedera's
+/// system contracts don't exist in forge's local simulation, so skip it:
+///   HEDERA=1 USDC_ADDRESS=0x0000000000000000000000000000000000068cda \
+///   forge script script/DeployCashChain.s.sol --rpc-url https://testnet.hashio.io/api \
+///     --broadcast --private-key $TREASURY_PRIVATE_KEY --skip-simulation --legacy
 contract DeployCashChain is Script {
     address constant ARC_USDC = 0x3600000000000000000000000000000000000000;
 
@@ -35,7 +44,9 @@ contract DeployCashChain is Script {
         vm.startBroadcast();
         address deployer = msg.sender;
 
-        TakarabakoVault vault = new TakarabakoVault(IERC20(usdc), apyBps, deployer);
+        TakarabakoVault vault = vm.envOr("HEDERA", false)
+            ? new TakarabakoVaultHedera(IERC20(usdc), apyBps, deployer)
+            : new TakarabakoVault(IERC20(usdc), apyBps, deployer);
         // The vault pulls USDC from the treasury on depositFor / fundYieldReserve.
         IERC20(usdc).approve(address(vault), type(uint256).max);
 

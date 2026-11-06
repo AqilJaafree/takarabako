@@ -5,7 +5,7 @@ import type {
   BetaToolResultBlockParam,
   BetaToolUseBlock,
 } from "@anthropic-ai/sdk/resources/beta/messages/messages";
-import { config, isCashChain, type CashChainKey } from "./config.js";
+import { CASH_CHAIN_KEYS, config, isCashChain, type CashChainKey } from "./config.js";
 import { POLICY, type ProposalAction } from "./policy.js";
 import { createProposal } from "./proposals.js";
 import { mb, mbError, mbEvents, mbQuery, multibaasReady } from "./multibaas.js";
@@ -41,7 +41,7 @@ const mandateText = MANDATE.map(
   (r) => `- ${r.label}: ${r.autonomous ? (r.dailyLimit !== null ? `on your own up to ${r.dailyLimit} USDC a day` : "on your own") : "always needs a human"}`,
 ).join("\n");
 
-const SYSTEM = `You are the treasury operations agent for Takarabako, a cash-in kiosk network running on two chains: Ethereum Sepolia and Arc Testnet (each has its own vault and tkCASH; USDC moves between them with Circle CCTP). Always say which chain a number is from, and check both when asked about the network as a whole.
+const SYSTEM = `You are the treasury operations agent for Takarabako, a cash-in kiosk network running on three chains: Ethereum Sepolia, Arc Testnet and Hedera Testnet (the EVM side) (each has its own vault and tkCASH; USDC moves between them with Circle CCTP). Always say which chain a number is from, and check both when asked about the network as a whole.
 Customers insert banknotes at a kiosk; the treasury deposits the USD value into a yield vault (mUSDC) and mints tkCASH, a token that is a claim on the physical cash in that kiosk's box.
 
 You answer operators' questions from live data and act when something needs doing. Ground every number in a tool result from this conversation, and say which tool it came from; if the data isn't available, say so rather than estimating.
@@ -49,7 +49,7 @@ You answer operators' questions from live data and act when something needs doin
 You act only through the propose_* tools. Hard limits, enforced in code — a proposal that breaks one is rejected:
 - vault APY between ${POLICY.minApyBps} and ${POLICY.maxApyBps} bps
 - yield-reserve funding at most ${POLICY.maxYieldReserveFundingPerDay} USDC per UTC day
-- float minting at most ${POLICY.maxFloatMintPerDay} mUSDC per UTC day (Sepolia only; Arc's USDC comes from the Circle faucet)
+- float minting at most ${POLICY.maxFloatMintPerDay} mUSDC per UTC day (Sepolia only; Arc's and Hedera's USDC come from the Circle faucet)
 - moving USDC between chains at most ${POLICY.maxRebalancePerDay} USDC per UTC day, and always by a human
 - pausing a kiosk is always allowed; unpausing is for humans only
 
@@ -74,7 +74,7 @@ const obj = (properties: Record<string, unknown>, required: string[] = []) => ({
 const TOOLS: ToolDef[] = [
   { name: "get_vault_state", description: "Vault APY, total liability to depositors, USDC it holds, and reserve coverage (balance ÷ liability), on one chain.", parameters: obj({ chain: { type: "string", enum: ["sepolia", "arc-testnet"] } }, ["chain"]) },
   { name: "get_reserve_status", description: "tkCASH supply vs total kiosk reserve, each kiosk's reserve/active/frozen state, and recent operator attestations, on one chain.", parameters: obj({ chain: { type: "string", enum: ["sepolia", "arc-testnet"] } }, ["chain"]) },
-  { name: "get_treasury_balances", description: "The treasury wallet's gas and USDC float on one chain (on Arc the gas asset is USDC itself, one pool: report the usdc figure only).", parameters: obj({ chain: { type: "string", enum: ["sepolia", "arc-testnet"] } }, ["chain"]) },
+  { name: "get_treasury_balances", description: "The treasury wallet's gas and USDC float on one chain (on Arc the gas asset is USDC itself, one pool; on Hedera gas is HBAR: report the usdc figure only).", parameters: obj({ chain: { type: "string", enum: ["sepolia", "arc-testnet"] } }, ["chain"]) },
   {
     name: "check_cash_integrity",
     description: "Reconciles a kiosk's machine-signed notes, on-chain tkCASH mints and physical counts over the last 7 days, and lists any findings. kioskId empty string = every kiosk.",
@@ -99,17 +99,17 @@ const TOOLS: ToolDef[] = [
   {
     name: "propose_fund_yield_reserve",
     description: "Tops up the vault's yield reserve from the treasury's mUSDC. Executes at once within your mandate, otherwise waits for a human.",
-    parameters: obj({ amount: { type: "number", description: "USDC" }, chain: { type: "string", enum: ["sepolia", "arc-testnet"] }, rationale: { type: "string" } }, ["amount", "chain", "rationale"]),
+    parameters: obj({ amount: { type: "number", description: "USDC" }, chain: { type: "string", enum: [...CASH_CHAIN_KEYS] }, rationale: { type: "string" } }, ["amount", "chain", "rationale"]),
   },
   {
     name: "propose_set_apy",
     description: "Changes the vault's APY. Always waits for a human.",
-    parameters: obj({ bps: { type: "integer" }, chain: { type: "string", enum: ["sepolia", "arc-testnet"] }, rationale: { type: "string" } }, ["bps", "chain", "rationale"]),
+    parameters: obj({ bps: { type: "integer" }, chain: { type: "string", enum: [...CASH_CHAIN_KEYS] }, rationale: { type: "string" } }, ["bps", "chain", "rationale"]),
   },
   {
     name: "propose_pause_kiosk",
     description: "Takes a kiosk out of service (no new cash-ins). Within your mandate: executes at once.",
-    parameters: obj({ kioskId: { type: "string" }, chain: { type: "string", enum: ["sepolia", "arc-testnet"] }, reason: { type: "string" }, rationale: { type: "string" } }, ["kioskId", "chain", "reason", "rationale"]),
+    parameters: obj({ kioskId: { type: "string" }, chain: { type: "string", enum: [...CASH_CHAIN_KEYS] }, reason: { type: "string" }, rationale: { type: "string" } }, ["kioskId", "chain", "reason", "rationale"]),
   },
   {
     name: "propose_rebalance_chains",
@@ -119,7 +119,7 @@ const TOOLS: ToolDef[] = [
   {
     name: "propose_mint_usdc_float",
     description: "Mints mUSDC to the treasury so it can keep fronting deposits. Executes at once within your mandate, otherwise waits for a human.",
-    parameters: obj({ amount: { type: "number", description: "USDC" }, chain: { type: "string", enum: ["sepolia", "arc-testnet"] }, rationale: { type: "string" } }, ["amount", "chain", "rationale"]),
+    parameters: obj({ amount: { type: "number", description: "USDC" }, chain: { type: "string", enum: [...CASH_CHAIN_KEYS] }, rationale: { type: "string" } }, ["amount", "chain", "rationale"]),
   },
 ];
 

@@ -2,7 +2,7 @@
 
 export type Panel<T> = { data: T | null; error: string | null };
 
-export type ChainKey = "sepolia" | "arc-testnet";
+export type ChainKey = "sepolia" | "arc-testnet" | "hedera-testnet";
 /// Which chains a view covers.
 export type ChainFilter = "all" | ChainKey;
 
@@ -42,6 +42,7 @@ export interface TreasuryBalances {
   address: string | null;
   nativeSymbol?: string;
   gasIsUsdc?: boolean;
+  gasMin?: number;
   native?: number;
   eth: number;
   usdc?: number | null;

@@ -87,11 +87,11 @@ export function OpsDashboard({ initial }: { initial: OpsData }) {
       <header className="ops-head">
         <div>
           <div className="brand"><span className="kanji">{BRAND_MARK}</span> Treasury ops</div>
-          <p className="muted small">Proof of reserve, vault health, bridging and the treasury agent across Ethereum Sepolia and Arc Testnet. Sepolia data via Curvegrid MultiBaas; Arc from the chain&apos;s own event log.</p>
+          <p className="muted small">Proof of reserve, vault health, bridging and the treasury agent across Ethereum Sepolia, Arc Testnet and Hedera Testnet. Sepolia data via Curvegrid MultiBaas; Arc from the chain&apos;s own event log.</p>
         </div>
         <div className="row">
           <div className="ops-filter" role="group" aria-label="Chain">
-            {(["all", "sepolia", "arc-testnet"] as const).map((c) => (
+            {(["all", "sepolia", "arc-testnet", "hedera-testnet"] as const).map((c) => (
               <button key={c} aria-pressed={filter === c} onClick={() => pick(c)}>{c === "all" ? "All chains" : chainName(c)}</button>
             ))}
           </div>

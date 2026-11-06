@@ -13,13 +13,15 @@ import { config } from "../src/config.js";
 
 await migrate();
 await registerKiosk({ id: "tokyo-01", signer: "0x00000000000000000000000000000000000000a1", chain: "sepolia", label: "ETHTokyo" });
+await registerKiosk({ id: "hedera-01", signer: "0x00000000000000000000000000000000000000a3", chain: "hedera-testnet", label: "Hedera demo kiosk" });
 await registerKiosk({ id: "arc-01", signer: "0x00000000000000000000000000000000000000a2", chain: "arc-testnet", label: "Arc demo kiosk" });
 const mail = (n: string) => `${n}${String.fromCharCode(64)}example.com`;
 
+const kioskFor = (c: string) => (c === "sepolia" ? "tokyo-01" : c === "arc-testnet" ? "arc-01" : "hedera-01");
 const people = [
   { id: "demo-alice", name: "alice", wallet: "0x000000000000000000000000000000000000d001", cash: [{ chain: "sepolia" as const, usd: 120 }, { chain: "arc-testnet" as const, usd: 60 }] },
-  { id: "demo-bob", name: "bob", wallet: "0x000000000000000000000000000000000000d002", cash: [{ chain: "arc-testnet" as const, usd: 200 }] },
-  { id: "demo-chen", name: "chen", wallet: "0x000000000000000000000000000000000000d003", cash: [{ chain: "sepolia" as const, usd: 45 }] },
+  { id: "demo-bob", name: "bob", wallet: "0x000000000000000000000000000000000000d002", cash: [{ chain: "arc-testnet" as const, usd: 200 }, { chain: "hedera-testnet" as const, usd: 35 }] },
+  { id: "demo-chen", name: "chen", wallet: "0x000000000000000000000000000000000000d003", cash: [{ chain: "sepolia" as const, usd: 45 }, { chain: "hedera-testnet" as const, usd: 80 }] },
 ];
 for (const c of config.enabledChains) await chainOps(c).ensureVaultApproval();
 for (const p of people) {
@@ -32,8 +34,8 @@ for (const p of people) {
     const id = crypto.randomUUID();
     await allowlist(p.wallet, c.chain);
     await chainOps(c.chain).depositOnChain(bound as `0x${string}`, c.usd);
-    await pool.query("insert into deposits (id, privy_user_id, currency, amount, usd_amount, status, chain, machine_name) values ($1, $2, 'USD', $3, $3, 'confirmed', $4, $5)", [id, p.id, c.usd, c.chain, c.chain === "sepolia" ? "tokyo-01" : "arc-01"]);
-    await recordCashIn({ depositId: id, wallet: p.wallet, usdAmount: c.usd, denomination: 20, currency: "USD", chain: c.chain, kioskId: c.chain === "sepolia" ? "tokyo-01" : "arc-01" });
+    await pool.query("insert into deposits (id, privy_user_id, currency, amount, usd_amount, status, chain, machine_name) values ($1, $2, 'USD', $3, $3, 'confirmed', $4, $5)", [id, p.id, c.usd, c.chain, kioskFor(c.chain)]);
+    await recordCashIn({ depositId: id, wallet: p.wallet, usdAmount: c.usd, denomination: 20, currency: "USD", chain: c.chain, kioskId: kioskFor(c.chain) });
   }
 }
 // A counted reserve on Sepolia (matches the chain).

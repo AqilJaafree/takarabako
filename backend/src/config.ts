@@ -1,13 +1,13 @@
 import { NETWORKS, resolveAquaDeployment, resolveNetwork, showApyEstimates, type Network, type NetworkKey } from "./networks.js";
 
-// CHAIN picks the primary network: sepolia (default), arc-testnet or arc (mainnet).
+// CHAIN picks the primary network: sepolia (default), arc-testnet, hedera-testnet or arc (mainnet).
 // The primary chain is where 1inch Aqua yield runs and where the legacy,
 // unprefixed variables (RPC_URL, USDC_ADDRESS, VAULT_ADDRESS, CASH_RECEIPT_ADDRESS)
 // apply. Takarabako itself runs on every chain in ENABLED_CHAINS at once.
 const network = resolveNetwork(process.env.CHAIN);
 
 /// Chains the cash-in flow (vault + tkCASH) can run on.
-export const CASH_CHAIN_KEYS = ["sepolia", "arc-testnet"] as const;
+export const CASH_CHAIN_KEYS = ["sepolia", "arc-testnet", "hedera-testnet"] as const;
 export type CashChainKey = (typeof CASH_CHAIN_KEYS)[number];
 export const isCashChain = (k: string): k is CashChainKey => (CASH_CHAIN_KEYS as readonly string[]).includes(k);
 
@@ -22,10 +22,10 @@ export interface ChainConfig {
   indexFromBlock: string;
 }
 
-/// SEPOLIA_* / ARC_TESTNET_* variables win; the unprefixed ones fill in for the primary chain.
+/// SEPOLIA_* / ARC_TESTNET_* / HEDERA_TESTNET_* variables win; the unprefixed ones fill in for the primary chain.
 function chainConfig(key: CashChainKey): ChainConfig {
   const net = NETWORKS[key as NetworkKey];
-  const prefix = key === "sepolia" ? "SEPOLIA" : "ARC_TESTNET";
+  const prefix = key.toUpperCase().replace(/-/g, "_");
   const legacy = (name: string) => (net.key === network.key ? process.env[name] : undefined);
   const pick = (suffix: string, legacyName: string) => process.env[`${prefix}_${suffix}`] || legacy(legacyName) || "";
   return {
@@ -39,7 +39,11 @@ function chainConfig(key: CashChainKey): ChainConfig {
   };
 }
 
-const chains: Record<CashChainKey, ChainConfig> = { sepolia: chainConfig("sepolia"), "arc-testnet": chainConfig("arc-testnet") };
+const chains: Record<CashChainKey, ChainConfig> = {
+  sepolia: chainConfig("sepolia"),
+  "arc-testnet": chainConfig("arc-testnet"),
+  "hedera-testnet": chainConfig("hedera-testnet"),
+};
 /// The primary chain's resolved settings (prefixed variables win over the unprefixed ones), when it is a cash chain.
 const primaryCfg = isCashChain(network.key) ? chains[network.key] : null;
 const enabledChains = (process.env.ENABLED_CHAINS ?? "sepolia,arc-testnet")

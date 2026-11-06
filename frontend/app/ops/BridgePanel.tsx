@@ -52,7 +52,7 @@ export function BridgePanel({ bridge, token, onChanged }: { bridge: BridgeOvervi
         <h2>Bridge</h2>
         {bridge && <span className={`pill ${bridge.inFlight ? "warn" : "ok"}`}>{bridge.inFlight ? `${bridge.inFlight} in flight · ${usd(bridge.inFlightUsd)}` : "Nothing in flight"}</span>}
       </div>
-      <p className="muted small">USDC moves between Sepolia and Arc Testnet with Circle CCTP V2. Customers bridge from their box; the treasury can rebalance its own float below.</p>
+      <p className="muted small">USDC moves between Sepolia and Arc Testnet with Circle CCTP V2 (Hedera has no CCTP route: top it up from the treasury). Customers bridge from their box; the treasury can rebalance its own float below.</p>
 
       {bridge && bridge.volume.length > 0 && (
         <div className="row" style={{ marginBottom: 10 }}>

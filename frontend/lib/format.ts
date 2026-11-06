@@ -15,7 +15,7 @@ export function shortHex(hex: string, head = 6, tail = 4): string {
   return hex.length <= head + tail + 1 ? hex : `${hex.slice(0, head)}…${hex.slice(-tail)}`;
 }
 
-export { addressUrl, CASH_CHAINS, chainName, NETWORK_NAME, tokenUrl, txUrl } from "./explorer";
+export { addressUrl, BRIDGE_CHAINS, CASH_CHAINS, chainName, NETWORK_NAME, tokenUrl, txUrl } from "./explorer";
 
 export function timeAgo(iso: string): string {
   const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);

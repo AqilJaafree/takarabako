@@ -12,7 +12,15 @@ export const CCTP_TESTNET = {
   messageTransmitter: "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275" as Address,
 } as const;
 
-export const CCTP_DOMAIN: Record<CashChainKey, number> = { sepolia: 0, "arc-testnet": 26 };
+export const CCTP_DOMAIN: Partial<Record<CashChainKey, number>> = { sepolia: 0, "arc-testnet": 26 };
+
+/// Hedera has no CCTP route, so only the chains above can bridge.
+export const cctpSupported = (k: CashChainKey) => CCTP_DOMAIN[k] !== undefined;
+export function cctpDomain(k: CashChainKey): number {
+  const d = CCTP_DOMAIN[k];
+  if (d === undefined) throw new Error(`${k} has no CCTP route`);
+  return d;
+}
 
 /// Standard transfer (finality-based attestation): no fee, takes longer than Fast Transfer.
 export const STANDARD_FINALITY = 2000;

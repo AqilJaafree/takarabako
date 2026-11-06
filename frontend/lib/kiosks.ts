@@ -4,7 +4,7 @@
 
 export interface KioskLocation {
   id: string;
-  chain: "sepolia" | "arc-testnet";
+  chain: "sepolia" | "arc-testnet" | "hedera-testnet";
   name: string;
   lat: number;
   lng: number;
