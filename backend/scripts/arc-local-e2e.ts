@@ -16,7 +16,8 @@ import { indexChainOnce, indexerStatus } from "../src/logIndexer.js";
 import { reserveStatus, treasuryBalances, vaultState } from "../src/treasury.js";
 import { balancesByChain } from "../src/balances.js";
 
-const chain = "arc-testnet" as const;
+// E2E_CHAIN=hedera-testnet runs the same checks against a Hedera stand-in.
+const chain = (process.env.E2E_CHAIN ?? "arc-testnet") as "arc-testnet" | "hedera-testnet";
 const ops = chainOps(chain);
 let failed = 0;
 const check = (ok: boolean, what: string) => {
@@ -58,7 +59,7 @@ check(Math.abs(v.liabilityUsd - 25) < 1e-4 && v.vaultUsdcBalance >= 25, `vault p
 const r = await reserveStatus(chain);
 check(r.configured && r.backed, "reserve panel: backed");
 const t = await treasuryBalances(chain);
-check(t.gasIsUsdc === true && (t.usdc ?? 0) > 0, `treasury panel: gas is USDC, usdc $${t.usdc?.toFixed(2)}`);
+check(t.gasIsUsdc === (chain === "arc-testnet") && (t.usdc ?? 0) > 0, `treasury panel: gas ${t.nativeSymbol}, usdc $${t.usdc?.toFixed(2)}`);
 check((await balancesByChain(user)).some((b) => b.chain === chain && Math.abs(b.balance - 25) < 1e-4), "per-chain balance for the account");
 
 const out = await ops.withdrawAllOnChain(user as `0x${string}`, wallet as `0x${string}`);

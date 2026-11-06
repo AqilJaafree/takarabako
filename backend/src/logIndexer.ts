@@ -17,7 +17,6 @@ import { LABELS, multibaasReady } from "./multibaas.js";
 /// moves forward in bounded batches and saves its place after each one.
 
 const LOOKBACK_BLOCKS = 5_000n;
-const BATCH_BLOCKS = 2_000n;
 const POLL_MS = 15_000;
 
 const vaultEvents = parseAbi([
@@ -89,8 +88,9 @@ async function scan(chain: CashChainKey, label: string, address: string, abi: ty
   const lookback = head > LOOKBACK_BLOCKS ? head - LOOKBACK_BLOCKS : 0n;
   let from: bigint = saved !== null ? saved + 1n : configured ? BigInt(configured) : lookback;
   let stored = 0;
+  const batch = config.chains[chain].network.logBatchBlocks;
   while (from <= head) {
-    const to: bigint = from + BATCH_BLOCKS - 1n < head ? from + BATCH_BLOCKS - 1n : head;
+    const to: bigint = from + batch - 1n < head ? from + batch - 1n : head;
     const logs = await client.getLogs({ address: address as `0x${string}`, events: abi as never, fromBlock: from, toBlock: to });
     for (const log of logs as Array<Log & { eventName?: string; args?: unknown }>) {
       if (!log.eventName) continue;

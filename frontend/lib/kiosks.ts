@@ -4,7 +4,7 @@
 
 export interface KioskLocation {
   id: string;
-  chain: "sepolia" | "arc-testnet";
+  chain: "sepolia" | "arc-testnet" | "hedera-testnet";
   name: string;
   lat: number;
   lng: number;
@@ -18,7 +18,7 @@ export interface KioskLocation {
 
 export const KIOSKS: KioskLocation[] = [
   {
-    id: "tokyo-01",
+    id: "mumbai-01",
     chain: "sepolia",
     name: "Takarabako · ETHGlobal Mumbai",
     lat: 19.0641916,

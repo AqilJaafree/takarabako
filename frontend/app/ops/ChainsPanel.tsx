@@ -25,7 +25,7 @@ function ChainCard({ c, indexer }: { c: ChainSummary; indexer?: IndexerStatus })
   const r = c.reserve.data;
   const t = c.treasury.data;
   const coverage = v?.reserveCoverage;
-  const gasLow = t ? (t.gasIsUsdc ? (t.native ?? 0) < 1 : (t.native ?? t.eth) < 0.05) : false;
+  const gasLow = t ? (t.native ?? t.eth) < (t.gasMin ?? (t.gasIsUsdc ? 1 : 0.05)) : false;
   return (
     <div className="ops-chain">
       <div className="spread">

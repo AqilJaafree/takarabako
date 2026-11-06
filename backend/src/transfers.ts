@@ -88,19 +88,17 @@ export async function confirmTkcashSend(from: Account, txHash: string, chain: Ca
 
 // Customers pay gas for transfers they sign (ETH on Sepolia, USDC on Arc); top
 // their wallet up when low, at most hourly per chain.
-const MIN_GAS = 0.0005;
-const TOP_UP = 0.001;
 const lastTopUp = new Map<string, number>();
 
 export async function ensureGas(account: Account, chain: CashChainKey = config.defaultChain) {
   const ops = chainOps(chain);
   const wei = await ops.publicClient.getBalance({ address: account.privyWallet as Address });
   const balance = Number(wei) / 1e18; // 18 decimals on both: Sepolia ETH, and Arc's native USDC gas view
-  if (balance >= MIN_GAS) return { balance, toppedUp: false, symbol: config.chains[chain].network.nativeSymbol };
+  if (balance >= config.chains[chain].network.gas.minBalance) return { balance, toppedUp: false, symbol: config.chains[chain].network.nativeSymbol };
   const key = `${chain}:${account.privyUserId}`;
   const last = lastTopUp.get(key) ?? 0;
   if (Date.now() - last < 3600_000 || !ops.chainReady) return { balance, toppedUp: false, symbol: config.chains[chain].network.nativeSymbol };
   lastTopUp.set(key, Date.now());
-  const { txHash } = await ops.fundWalletWithEthOnChain(account.privyWallet as Address, TOP_UP);
-  return { balance: balance + TOP_UP, toppedUp: true, txHash, symbol: config.chains[chain].network.nativeSymbol };
+  const { txHash } = await ops.fundWalletWithEthOnChain(account.privyWallet as Address, config.chains[chain].network.gas.topUp);
+  return { balance: balance + config.chains[chain].network.gas.topUp, toppedUp: true, txHash, symbol: config.chains[chain].network.nativeSymbol };
 }

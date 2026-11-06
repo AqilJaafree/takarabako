@@ -21,7 +21,7 @@ Foundry workspace for Takarabako's on-chain pieces (PRD §7.4).
 - `script/Deploy.s.sol` — deploys the mocks and the vault to a testnet, treasury
   self-approves the vault, and mints a demo faucet balance.
 - `script/DeployCashReceipt.s.sol` — deploys tkCASH on its own and
-  registers the first kiosk (`KIOSK_ID`, default `tokyo-01`).
+  registers the first kiosk (`KIOSK_ID`, default `mumbai-01`).
 - `script/DeployCashChain.s.sol` — deploys one chain's vault and tkCASH against
   real USDC (Arc Testnet by default; set `USDC_ADDRESS` for Sepolia), approves
   the vault, registers the kiosk and sets the daily transfer limit.
@@ -44,7 +44,7 @@ Feed the printed `MockUSDC` and `TakarabakoVault` addresses into
 `backend/.env` (`USDC_ADDRESS`, `VAULT_ADDRESS`).
 
 ```bash
-KIOSK_ID=tokyo-01 forge script script/DeployCashReceipt.s.sol --rpc-url <testnet_rpc> --broadcast --private-key <treasury_pk>
+KIOSK_ID=mumbai-01 forge script script/DeployCashReceipt.s.sol --rpc-url <testnet_rpc> --broadcast --private-key <treasury_pk>
 ```
 
 Put the printed tkCASH address in `backend/.env` as `CASH_RECEIPT_ADDRESS`.

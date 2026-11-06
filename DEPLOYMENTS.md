@@ -1,4 +1,4 @@
-# Deployments — Ethereum Sepolia (chain 11155111) and Arc Testnet (chain 5042002)
+# Deployments — Ethereum Sepolia (11155111), Arc Testnet (5042002) and Hedera Testnet (296)
 
 > ENS v2 names and World ID were removed from Takarabako. Accounts are a wallet
 > address plus a label in Postgres, and kiosks are registered device keys. The
@@ -23,6 +23,32 @@ forge script script/DeployCashChain.s.sol --rpc-url https://rpc.testnet.arc.io \
 | `TakarabakoCashReceipt (tkCASH)` | _to deploy_ |
 | CCTP `TokenMessengerV2` (testnet) | `0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA` |
 | CCTP `MessageTransmitterV2` (testnet) | `0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275` |
+
+## Hedera Testnet (chain 296, EVM side)
+
+Not deployed yet. Deploy with your own treasury key (the contracts belong to whoever
+deploys them):
+
+```bash
+cd contracts
+HEDERA=1 USDC_ADDRESS=0x0000000000000000000000000000000000068cda \
+  forge script script/DeployCashChain.s.sol --rpc-url https://testnet.hashio.io/api \
+  --broadcast --private-key $TREASURY_PRIVATE_KEY --skip-simulation --legacy
+```
+
+| | |
+|---|---|
+| USDC | Hedera Token Service token `0.0.429274`, ERC-20 facade `0x0000000000000000000000000000000000068cda` (6 decimals; checked against the testnet mirror node and the relay) |
+| Vault | `TakarabakoVaultHedera`: associates itself with USDC when created (HIP-206), which a contract must do before it can hold an HTS token |
+| Gas | HBAR (the relay shows it with 18 decimals) |
+| RPC | `https://testnet.hashio.io/api` (log queries are capped at 1,000 blocks) |
+| Explorer | https://hashscan.io/testnet |
+| CCTP | none: top the treasury up from Circle's faucet |
+
+| Contract | Address |
+|---|---|
+| TakarabakoVaultHedera | _deploy, then fill in_ |
+| TakarabakoCashReceipt | _deploy, then fill in_ |
 
 CCTP domains: Ethereum Sepolia 0, Arc Testnet 26. The Sepolia vault below uses a
 mock USDC, which CCTP cannot bridge. To bridge from Sepolia, redeploy the vault

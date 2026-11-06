@@ -1,13 +1,13 @@
 /// The site's look, chosen at build time with NEXT_PUBLIC_THEME:
-/// - "tokyo" (default): the red-lacquer treasure box (宝箱) and the currency drum.
+/// - "mumbai" (default): the red-lacquer treasure box (宝箱) and the currency drum.
 /// - "deepavali": purple and gold for Deepavali in Mumbai, with the Taj Mahal,
 ///   diya lamps and fireworks in place of the box.
 /// The colours come from app/theme-deepavali.css (generated from globals.css by
 /// scripts/gen-deepavali-css.mjs), switched on by data-theme on <html>.
 
-export type Theme = "tokyo" | "deepavali";
+export type Theme = "mumbai" | "deepavali";
 
-export const THEME: Theme = process.env.NEXT_PUBLIC_THEME === "deepavali" ? "deepavali" : "tokyo";
+export const THEME: Theme = process.env.NEXT_PUBLIC_THEME === "deepavali" ? "deepavali" : "mumbai";
 export const FESTIVE = THEME === "deepavali";
 
 /// The mark beside "Takarabako": 宝箱 (treasure box), or दीप (lamp) for Deepavali.

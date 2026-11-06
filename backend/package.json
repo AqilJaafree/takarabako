@@ -19,7 +19,8 @@
     "bridge:smoke": "tsx --env-file=.env scripts/bridge-smoke.ts",
     "arc:e2e": "tsx scripts/arc-local-e2e.ts",
     "bridge:e2e": "tsx scripts/bridge-local-e2e.ts",
-    "demo:seed": "tsx scripts/demo-seed.ts"
+    "demo:seed": "tsx scripts/demo-seed.ts",
+    "hedera:e2e": "E2E_CHAIN=hedera-testnet tsx scripts/arc-local-e2e.ts"
   },
   "dependencies": {
     "@1inch/aqua-sdk": "^0.3.4",

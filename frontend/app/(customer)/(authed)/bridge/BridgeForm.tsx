@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { BridgeQuote, BridgeState, BridgeTransfer, ChainKey, Me } from "@/lib/types";
-import { chainName, shortHex, timeAgo, txUrl, usd } from "@/lib/format";
+import { BRIDGE_CHAINS, chainName, shortHex, timeAgo, txUrl, usd } from "@/lib/format";
 
 async function call<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, body === undefined ? { cache: "no-store" } : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -24,7 +24,7 @@ const active = (t: BridgeTransfer) => t.state !== "credited" && t.state !== "fai
 
 export function BridgeForm({ me, initial }: { me: Me; initial: BridgeTransfer[] }) {
   const router = useRouter();
-  const chains = me.balances;
+  const chains = me.balances.filter((b) => BRIDGE_CHAINS.includes(b.chain));
   const [from, setFrom] = useState<ChainKey>(chains[0]?.chain ?? "sepolia");
   const to: ChainKey = chains.find((c) => c.chain !== from)?.chain ?? (from === "sepolia" ? "arc-testnet" : "sepolia");
   const [amount, setAmount] = useState("");
@@ -129,7 +129,7 @@ export function BridgeForm({ me, initial }: { me: Me; initial: BridgeTransfer[] 
         <button className="btn btn-gold btn-block" style={{ marginTop: 14 }} disabled={busy || !quote || !quote.enough || chains.length < 2} onClick={start}>
           {busy ? "Starting…" : value > 0 ? `Move ${usd(value)} to ${chainName(to)}` : "Enter an amount"}
         </button>
-        {chains.length < 2 && <p className="muted small">Only one chain is set up on this deployment, so there is nothing to bridge to.</p>}
+        {chains.length < 2 && <p className="muted small">Bridging needs two of Sepolia and Arc Testnet to be set up (Hedera has no CCTP route).</p>}
       </section>
 
       <section className="card">

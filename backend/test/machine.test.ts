@@ -8,7 +8,7 @@ const { checkMachine, sessionHash, DOMAIN, TYPES } = await import("../src/machin
 const { registerKiosk, setKioskActive } = await import("../src/kiosks.js");
 after(() => pool.end());
 
-const KIOSK = "tokyo-01";
+const KIOSK = "mumbai-01";
 const device = privateKeyToAccount(generatePrivateKey());
 const token = "session-token-abc";
 await registerKiosk({ id: KIOSK, signer: device.address, chain: "arc-testnet" });

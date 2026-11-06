@@ -1,4 +1,4 @@
-import { arc, arcTestnet, sepolia } from "viem/chains";
+import { arc, arcTestnet, hederaTestnet, sepolia } from "viem/chains";
 import type { Chain } from "viem";
 import { aq, sv } from "./aquaSdk.js";
 
@@ -10,8 +10,14 @@ import { aq, sv } from "./aquaSdk.js";
 /// gas is paid in native USDC (18 decimals) while the ERC-20 USDC at
 /// 0x3600…0000 has 6, and the mempool drops transactions whose maxFeePerGas
 /// is under 20 gwei.
+///
+/// Hedera (EVM side, through the JSON-RPC relay): testnet is chain 296, gas is
+/// HBAR shown with 18 decimals (weibars) by the relay, and USDC is Circle's
+/// native Hedera Token Service token 0.0.429274 (6 decimals) reached through
+/// its ERC-20 facade at 0x…068cda (checked against the testnet mirror node and
+/// relay). There is no CCTP route to Hedera.
 
-export type NetworkKey = "sepolia" | "arc-testnet" | "arc";
+export type NetworkKey = "sepolia" | "arc-testnet" | "hedera-testnet" | "arc";
 
 export interface Network {
   key: NetworkKey;
@@ -25,6 +31,12 @@ export interface Network {
   minMaxFeePerGas: bigint;
   /// Real money: a mainnet, as opposed to a testnet with worthless tokens.
   real: boolean;
+  /// Native-token amounts for gas: a customer wallet under `minBalance` is topped up by
+  /// `topUp`; the ops dashboard warns when the treasury drops under `treasuryMin`.
+  gas: { minBalance: number; topUp: number; treasuryMin: number };
+  /// Largest block span one eth_getLogs call may cover (the Hedera relay answers "Exceeded
+  /// maximum block range: 1000" beyond that).
+  logBatchBlocks: bigint;
   /// Token addresses known from the chain's official docs ("" = set in env).
   defaults: { usdc: string; baseToken: string };
 }
@@ -41,6 +53,8 @@ export const NETWORKS: Record<NetworkKey, Network> = {
     explorerUrl: "https://sepolia.etherscan.io",
     minMaxFeePerGas: 0n,
     real: false,
+    gas: { minBalance: 0.0005, topUp: 0.001, treasuryMin: 0.05 },
+    logBatchBlocks: 2_000n,
     // Our own MockUSDC and mETH are deployed here; USDC_ADDRESS comes from env.
     defaults: { usdc: "", baseToken: "0x5A9E9fF59AeBb96C14DFaB7C2a43d0C130ba9282" },
   },
@@ -53,8 +67,26 @@ export const NETWORKS: Record<NetworkKey, Network> = {
     explorerUrl: "https://explorer.testnet.arc.io",
     minMaxFeePerGas: 20n * GWEI,
     real: false,
+    gas: { minBalance: 0.0005, topUp: 0.001, treasuryMin: 1 },
+    logBatchBlocks: 2_000n,
     // USDC (6 decimals as ERC-20) and bridged WETH (18), per the contract-addresses page.
     defaults: { usdc: "0x3600000000000000000000000000000000000000", baseToken: "0x2c4047028a72803939b6fb674D01bC059B5C4961" },
+  },
+  "hedera-testnet": {
+    key: "hedera-testnet",
+    name: "Hedera Testnet",
+    chain: hederaTestnet,
+    defaultRpcUrl: "https://testnet.hashio.io/api",
+    nativeSymbol: "HBAR",
+    explorerUrl: "https://hashscan.io/testnet",
+    // The relay's blocks carry a base fee, so the usual estimate is enough.
+    minMaxFeePerGas: 0n,
+    real: false,
+    // A transaction costs a fraction of an HBAR at the relay's gas price.
+    gas: { minBalance: 0.5, topUp: 1, treasuryMin: 20 },
+    logBatchBlocks: 900n,
+    // Circle USDC (HTS 0.0.429274) through its ERC-20 facade. No Aqua deployment here.
+    defaults: { usdc: "0x0000000000000000000000000000000000068cda", baseToken: "" },
   },
   arc: {
     key: "arc",
@@ -65,6 +97,8 @@ export const NETWORKS: Record<NetworkKey, Network> = {
     explorerUrl: "https://explorer.arc.io",
     minMaxFeePerGas: 20n * GWEI,
     real: true,
+    gas: { minBalance: 0.0005, topUp: 0.001, treasuryMin: 1 },
+    logBatchBlocks: 2_000n,
     // Mainnet token addresses were not verified: set USDC_ADDRESS / METH_ADDRESS.
     defaults: { usdc: "", baseToken: "" },
   },

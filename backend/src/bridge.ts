@@ -4,7 +4,8 @@ import { config, type CashChainKey } from "./config.js";
 import { chainOps } from "./chain.js";
 import { publishUserEvent } from "./events.js";
 import {
-  CCTP_DOMAIN,
+  cctpDomain,
+  cctpSupported,
   CCTP_TESTNET,
   NO_FEE,
   STANDARD_FINALITY,
@@ -65,7 +66,8 @@ export class BridgeError extends Error {
 
 export function validateRoute(from: string, to: string): { from: CashChainKey; to: CashChainKey } {
   const ok = (k: string): k is CashChainKey => (config.enabledChains as readonly string[]).includes(k);
-  if (!ok(from) || !ok(to)) throw new BridgeError("both chains must be enabled Takarabako chains (sepolia, arc-testnet)");
+  if (!ok(from) || !ok(to)) throw new BridgeError("both chains must be enabled Takarabako chains");
+  for (const k of [from, to]) if (!cctpSupported(k)) throw new BridgeError(`${config.chains[k].network.name} has no CCTP route, so USDC can't be bridged to or from it. Top it up from the treasury instead.`);
   if (from === to) throw new BridgeError("pick two different chains");
   for (const k of [from, to]) if (!chainOps(k).chainReady) throw new BridgeError(`${config.chains[k].network.name} isn't configured`);
   return { from, to };
@@ -163,7 +165,7 @@ export async function advanceTransfer(id: string, deps: BridgeDeps = liveDeps): 
           data: encodeFunctionData({
             abi: tokenMessengerAbi,
             functionName: "depositForBurn",
-            args: [amount, CCTP_DOMAIN[t.toChain], addressToBytes32(dst.treasuryAddress), config.chains[t.fromChain].usdcAddress as Address, ZERO_BYTES32, NO_FEE, STANDARD_FINALITY],
+            args: [amount, cctpDomain(t.toChain), addressToBytes32(dst.treasuryAddress), config.chains[t.fromChain].usdcAddress as Address, ZERO_BYTES32, NO_FEE, STANDARD_FINALITY],
           }),
         });
         await save(id, { burn_tx: hash });
@@ -177,7 +179,7 @@ export async function advanceTransfer(id: string, deps: BridgeDeps = liveDeps): 
 
     // 3. Circle signs the burn once the source chain is final.
     if (t.state === "burned") {
-      const a = await deps.fetchAttestation(config.bridge.attestationUrl, CCTP_DOMAIN[t.fromChain], t.burnTx!);
+      const a = await deps.fetchAttestation(config.bridge.attestationUrl, cctpDomain(t.fromChain), t.burnTx!);
       if (!a.ready) return "burned";
       await save(id, { message: a.message, attestation: a.attestation, state: "attested" });
       t = { ...t, state: "attested" };

@@ -4,7 +4,7 @@
 export type RiskTier = "low" | "medium" | "high";
 
 /// The cash chains Takarabako runs on (backend config CASH_CHAIN_KEYS).
-export type ChainKey = "sepolia" | "arc-testnet";
+export type ChainKey = "sepolia" | "arc-testnet" | "hedera-testnet";
 
 export interface Position {
   positionId: string;

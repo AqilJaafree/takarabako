@@ -62,7 +62,7 @@ interface ActionItem {
   detail: string;
 }
 
-const THRESHOLDS = { treasuryGas: { sepolia: 0.05, "arc-testnet": 1 }, reserveCoverage: 1.2 } as const;
+const THRESHOLDS = { reserveCoverage: 1.2 } as const;
 
 dashboardRouter.get("/dashboard/summary", asyncHandler(async (req, res) => {
   const chains = chainsFor(req.query.chain);
@@ -88,7 +88,7 @@ dashboardRouter.get("/dashboard/summary", asyncHandler(async (req, res) => {
       }
       const t = c.treasury.data;
       // On Arc the gas asset is USDC (the same funds as the float), so its one figure is judged once.
-      if (t && t.native < THRESHOLDS.treasuryGas[c.chain])
+      if (t && t.native < config.chains[c.chain].network.gas.treasuryMin)
         items.push({
           severity: "critical",
           title: `Treasury is low on ${c.name} gas (${net.nativeSymbol})`,
