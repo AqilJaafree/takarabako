@@ -1,11 +1,14 @@
 import { createPublicClient, createWalletClient, http, parseAbi, parseUnits, parseEther, formatUnits, type Address } from "viem";
 import { privateKeyToAccount, nonceManager } from "viem/accounts";
-import { sepolia } from "viem/chains";
 import { config } from "./config.js";
+import { applyFeeFloor, type Fees } from "./networks.js";
 
 /// Phase 1 (PRD §7.3/§7.4): real on-chain calls into the deployed
-/// TakarabakoVault + MockUSDC on Ethereum Sepolia, signed by the backend's
-/// treasury key (env-injected, never on the Pi — PRD §10).
+/// TakarabakoVault + USDC on the configured network (CHAIN: Ethereum Sepolia
+/// by default, or Arc), signed by the backend's treasury key (env-injected,
+/// never on the Pi — PRD §10).
+
+const network = config.network;
 
 const vaultAbi = parseAbi([
   "function depositFor(address user, uint256 usdcAmount) returns (uint256 shares)",
@@ -14,6 +17,14 @@ const vaultAbi = parseAbi([
   "function previewValue(address user) view returns (uint256 usdcValue)",
   "function currentApyBps() view returns (uint256)",
 ]);
+
+/// Arc drops transactions whose maxFeePerGas is under its mempool floor
+/// (20 gwei) without any error, so sends on Arc carry at least that. Other
+/// networks get no overrides.
+async function feeOverrides(): Promise<Fees> {
+  if (network.minMaxFeePerGas === 0n) return {};
+  return applyFeeFloor(await publicClient.estimateFeesPerGas(), network.minMaxFeePerGas);
+}
 
 // USDC uses 6 decimals, not the usual 18 — see contracts/src/mocks/MockUSDC.sol.
 const USDC_DECIMALS = 6;
@@ -30,14 +41,14 @@ export const chainReady = Boolean(account && config.usdcAddress && config.vaultA
 export const treasuryAddress = account?.address;
 
 export const publicClient = createPublicClient({
-  chain: sepolia,
+  chain: network.chain,
   transport: http(config.rpcUrl),
 });
 
 const walletClient = account
   ? createWalletClient({
       account,
-      chain: sepolia,
+      chain: network.chain,
       transport: http(config.rpcUrl),
     })
   : undefined;
@@ -82,28 +93,27 @@ export async function signTreasuryTx(tx: {
   gasPrice?: string;
 }): Promise<`0x${string}`> {
   if (!account) throw new Error("chain not configured — set TREASURY_PRIVATE_KEY");
-  const nonce = await nonceManager.consume({ address: account.address, chainId: sepolia.id, client: publicClient });
+  const nonce = await nonceManager.consume({ address: account.address, chainId: network.chain.id, client: publicClient });
   const common = {
-    chainId: sepolia.id,
+    chainId: network.chain.id,
     nonce,
     gas: (BigInt(tx.gas) * 13n) / 10n, // same 30% headroom as our own sends
     to: (tx.to ?? undefined) as Address | undefined,
     value: BigInt(tx.value || 0),
     data: tx.data as `0x${string}`,
   };
-  return tx.gasFeeCap
-    ? account.signTransaction({
-        ...common,
-        type: "eip1559",
-        maxFeePerGas: BigInt(tx.gasFeeCap),
-        maxPriorityFeePerGas: BigInt(tx.gasTipCap ?? 0),
-      })
-    : account.signTransaction({ ...common, type: "legacy", gasPrice: BigInt(tx.gasPrice ?? 0) });
+  const floor = network.minMaxFeePerGas;
+  if (tx.gasFeeCap) {
+    const fees = applyFeeFloor({ maxFeePerGas: BigInt(tx.gasFeeCap), maxPriorityFeePerGas: BigInt(tx.gasTipCap ?? 0) }, floor);
+    return account.signTransaction({ ...common, type: "eip1559", maxFeePerGas: fees.maxFeePerGas!, maxPriorityFeePerGas: fees.maxPriorityFeePerGas! });
+  }
+  const gasPrice = BigInt(tx.gasPrice ?? 0);
+  return account.signTransaction({ ...common, type: "legacy", gasPrice: gasPrice > floor ? gasPrice : floor });
 }
 
 /// After a signed transaction failed to submit, so its nonce isn't burned.
 export function resetTreasuryNonce() {
-  if (account) nonceManager.reset({ address: account.address, chainId: sepolia.id });
+  if (account) nonceManager.reset({ address: account.address, chainId: network.chain.id });
 }
 
 export async function waitForTx(hash: `0x${string}`) {
@@ -134,7 +144,7 @@ export async function sendDepositTx(user: Address, usdAmount: number): Promise<`
   // estimation and inclusion can't push the call out of gas.
   return queueSend(async () => {
     const estimate = await publicClient.estimateContractGas(request);
-    return walletClient.writeContract({ ...request, gas: (estimate * 13n) / 10n });
+    return walletClient.writeContract({ ...request, gas: (estimate * 13n) / 10n, ...(await feeOverrides()) });
   });
 }
 
@@ -176,6 +186,7 @@ export async function withdrawAllOnChain(user: Address, recipient: Address) {
     abi: vaultAbi,
     functionName: "withdrawTo",
     args: [user, recipient, shares],
+    ...(await feeOverrides()),
   });
   await publicClient.waitForTransactionReceipt({ hash });
 
@@ -189,7 +200,7 @@ export async function sendTreasuryTxNoWait(tx: { to: Address; data: `0x${string}
   if (!walletClient) throw new Error("chain not configured — set TREASURY_PRIVATE_KEY");
   return queueSend(async () => {
     const gas = await publicClient.estimateGas({ account: walletClient.account!, to: tx.to, data: tx.data, value: tx.value ?? 0n });
-    return walletClient.sendTransaction({ to: tx.to, data: tx.data, value: tx.value ?? 0n, gas: (gas * 13n) / 10n });
+    return walletClient.sendTransaction({ to: tx.to, data: tx.data, value: tx.value ?? 0n, gas: (gas * 13n) / 10n, ...(await feeOverrides()) });
   });
 }
 
@@ -212,8 +223,8 @@ export async function withdrawUsdOnChain(user: Address, recipient: Address, usdA
   if (wanted > value) throw new Error(`only ${formatUnits(value, USDC_DECIMALS)} USDC in the box`);
   const burn = wanted === value ? shares : (shares * wanted) / value;
   if (burn === 0n) throw new Error("amount too small");
-  const hash = await queueSend(() =>
-    walletClient.writeContract({ address: vaultAddress(), abi: vaultAbi, functionName: "withdrawTo", args: [user, recipient, burn] }),
+  const hash = await queueSend(async () =>
+    walletClient.writeContract({ address: vaultAddress(), abi: vaultAbi, functionName: "withdrawTo", args: [user, recipient, burn], ...(await feeOverrides()) }),
   );
   await waitForTx(hash);
   return { txHash: hash };
@@ -238,7 +249,7 @@ export async function currentApyBpsOnChain(): Promise<number> {
   return Number(bps);
 }
 
-/// Sends real Sepolia ETH from the treasury to a freshly-created Privy
+/// Sends the network's native token (Sepolia ETH; native USDC on Arc) from the treasury to a freshly-created Privy
 /// embedded wallet so the user has gas for anything they do with it
 /// themselves later. Real capital, not a mock token — see privy.ts for
 /// where this is gated to first-time account creation only, not every
@@ -248,6 +259,7 @@ export async function fundWalletWithEthOnChain(recipient: Address, amountEth: nu
   const hash = await walletClient.sendTransaction({
     to: recipient,
     value: parseEther(amountEth.toString()),
+    ...(await feeOverrides()),
   });
   await publicClient.waitForTransactionReceipt({ hash });
   return { txHash: hash };

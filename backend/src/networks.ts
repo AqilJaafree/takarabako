@@ -1,0 +1,125 @@
+import { arc, arcTestnet, sepolia } from "viem/chains";
+import type { Chain } from "viem";
+import { aq, sv } from "./aquaSdk.js";
+
+/// The chains the backend can run on, selected with CHAIN. Pure data and
+/// helpers (no config import), so the choices are unit-tested.
+///
+/// Arc values are from https://docs.arc.io/arc/references/connect-to-arc and
+/// .../contract-addresses: Arc Testnet is chain 5042002, Arc mainnet 5042,
+/// gas is paid in native USDC (18 decimals) while the ERC-20 USDC at
+/// 0x3600…0000 has 6, and the mempool drops transactions whose maxFeePerGas
+/// is under 20 gwei.
+
+export type NetworkKey = "sepolia" | "arc-testnet" | "arc";
+
+export interface Network {
+  key: NetworkKey;
+  name: string;
+  chain: Chain;
+  defaultRpcUrl: string;
+  /// What pays gas on this chain.
+  nativeSymbol: string;
+  explorerUrl: string;
+  /// Mempool minimum for maxFeePerGas (0 = no floor).
+  minMaxFeePerGas: bigint;
+  /// Token addresses known from the chain's official docs ("" = set in env).
+  defaults: { usdc: string; baseToken: string };
+}
+
+const GWEI = 1_000_000_000n;
+
+export const NETWORKS: Record<NetworkKey, Network> = {
+  sepolia: {
+    key: "sepolia",
+    name: "Ethereum Sepolia",
+    chain: sepolia,
+    defaultRpcUrl: "https://ethereum-sepolia-rpc.publicnode.com",
+    nativeSymbol: "ETH",
+    explorerUrl: "https://sepolia.etherscan.io",
+    minMaxFeePerGas: 0n,
+    // Our own MockUSDC and mETH are deployed here; USDC_ADDRESS comes from env.
+    defaults: { usdc: "", baseToken: "0x5A9E9fF59AeBb96C14DFaB7C2a43d0C130ba9282" },
+  },
+  "arc-testnet": {
+    key: "arc-testnet",
+    name: "Arc Testnet",
+    chain: arcTestnet,
+    defaultRpcUrl: "https://rpc.testnet.arc.io",
+    nativeSymbol: "USDC",
+    explorerUrl: "https://explorer.testnet.arc.io",
+    minMaxFeePerGas: 20n * GWEI,
+    // USDC (6 decimals as ERC-20) and bridged WETH (18), per the contract-addresses page.
+    defaults: { usdc: "0x3600000000000000000000000000000000000000", baseToken: "0x2c4047028a72803939b6fb674D01bC059B5C4961" },
+  },
+  arc: {
+    key: "arc",
+    name: "Arc",
+    chain: arc,
+    defaultRpcUrl: "https://rpc.mainnet.arc.io",
+    nativeSymbol: "USDC",
+    explorerUrl: "https://explorer.arc.io",
+    minMaxFeePerGas: 20n * GWEI,
+    // Mainnet token addresses were not verified: set USDC_ADDRESS / METH_ADDRESS.
+    defaults: { usdc: "", baseToken: "" },
+  },
+};
+
+export function resolveNetwork(key: string | undefined): Network {
+  const k = (key?.trim() || "sepolia") as NetworkKey;
+  const n = NETWORKS[k];
+  if (!n) throw new Error(`unknown CHAIN "${key}" — use one of: ${Object.keys(NETWORKS).join(", ")}`);
+  return n;
+}
+
+/// ---- 1inch Aqua deployments -------------------------------------------------
+
+/// Sepolia is not in the SDK's per-chain maps. The Aqua registry is at the
+/// shared address; the SwapVM router there is the earlier deployment.
+const SEPOLIA_AQUA = { aqua: "0x1111113ccf1426a8e30e2bff5e005d929bf6a90a", router: "0x1111113db0e0ef9d0e3a50d5f094a3a57a26c0de" };
+
+export interface AquaDeployment {
+  aqua: string;
+  router: string;
+  /// Where the addresses came from: an env override, the SDK's per-chain
+  /// maps, or the built-in Sepolia pair.
+  origin: "env" | "sdk" | "sepolia";
+}
+
+const fromSdk = (map: Record<number, { toString(): string }> | undefined, chainId: number): string | undefined => {
+  const v = map?.[chainId];
+  return v ? v.toString().toLowerCase() : undefined;
+};
+
+/// Aqua registry + SwapVM router for a chain: env overrides first, then the
+/// official SDK's address maps (@1inch/aqua-sdk AQUA_CONTRACT_ADDRESSES and
+/// @1inch/swap-vm-sdk AQUA_SWAP_VM_CONTRACT_ADDRESSES). null = not available.
+export function resolveAquaDeployment(chainId: number, env: { aqua?: string; router?: string } = {}): AquaDeployment | null {
+  const sdkAqua = fromSdk(aq.AQUA_CONTRACT_ADDRESSES as never, chainId);
+  const sdkRouter = fromSdk(sv.AQUA_SWAP_VM_CONTRACT_ADDRESSES as never, chainId);
+  const legacy = chainId === sepolia.id ? SEPOLIA_AQUA : undefined;
+
+  const aqua = env.aqua?.trim() || sdkAqua || legacy?.aqua;
+  const router = env.router?.trim() || sdkRouter || legacy?.router;
+  if (!aqua || !router) return null;
+
+  const overridden = Boolean(env.aqua?.trim() || env.router?.trim());
+  const origin = overridden ? "env" : sdkAqua && sdkRouter ? "sdk" : "sepolia";
+  return { aqua, router, origin };
+}
+
+/// ---- fees -------------------------------------------------------------------
+
+export interface Fees {
+  maxFeePerGas?: bigint;
+  maxPriorityFeePerGas?: bigint;
+}
+
+/// Raises maxFeePerGas to the network's mempool floor (Arc silently drops
+/// anything under 20 gwei) and keeps the tip within it. No floor = no change.
+export function applyFeeFloor(fees: Fees, floor: bigint): Fees {
+  if (floor === 0n) return fees;
+  const max = fees.maxFeePerGas !== undefined && fees.maxFeePerGas > floor ? fees.maxFeePerGas : floor;
+  const tip = fees.maxPriorityFeePerGas ?? 0n;
+  return { maxFeePerGas: max, maxPriorityFeePerGas: tip > max ? max : tip };
+}
