@@ -1,4 +1,5 @@
 import PDFDocument from "pdfkit";
+import { config } from "./config.js";
 import type { Receipt } from "./history.js";
 
 /// The deposit receipt as a PDF: a paper-receipt layout in the app's
@@ -75,7 +76,7 @@ export function receiptPdf(r: Receipt, account: { email: string; ensName: string
     }
 
     doc.fillColor(MUTED).font("Helvetica").fontSize(7.5).text(
-      "Each credited note is an Ethereum Sepolia transaction; check it on sepolia.etherscan.io with the tx shown above.",
+      `Each credited note is an ${config.network.name} transaction; check it on ${new URL(config.network.explorerUrl).host} with the tx shown above.`,
       28,
       y + 10,
       { width: W, align: "center" },

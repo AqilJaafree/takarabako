@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test --test-concurrency=1 test/*.test.ts",
     "services": "node scripts/dev-services.mjs",
+    "chain:check": "tsx --env-file=.env scripts/chain-check.ts",
+    "aqua:smoke": "tsx --env-file=.env scripts/aqua-smoke.ts",
     "mb:setup": "tsx --env-file=.env scripts/multibaas-setup.ts",
     "ens:setup": "tsx --env-file=.env scripts/ens-setup.ts",
     "ens:migrate": "tsx --env-file=.env scripts/ens-migrate.ts",

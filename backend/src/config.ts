@@ -1,8 +1,18 @@
+import { resolveAquaDeployment, resolveNetwork } from "./networks.js";
+
+// CHAIN picks the network: sepolia (default), arc-testnet or arc (mainnet).
+const network = resolveNetwork(process.env.CHAIN);
+const aquaDeployment = resolveAquaDeployment(network.chain.id, {
+  aqua: process.env.AQUA_ADDRESS,
+  router: process.env.AQUA_ROUTER_ADDRESS,
+});
+
 export const config = {
   port: Number(process.env.PORT ?? 4000),
-  rpcUrl: process.env.RPC_URL ?? "https://ethereum-sepolia-rpc.publicnode.com",
+  network,
+  rpcUrl: process.env.RPC_URL || network.defaultRpcUrl,
   treasuryPrivateKey: process.env.TREASURY_PRIVATE_KEY ?? "",
-  usdcAddress: process.env.USDC_ADDRESS ?? "",
+  usdcAddress: process.env.USDC_ADDRESS || network.defaults.usdc,
   vaultAddress: process.env.VAULT_ADDRESS ?? "",
   // PRD §7.8 (revised) — Privy replaces World ID Selfie Check: email in,
   // real embedded wallet + a stable user id out, no phone/QR/bridge needed.
@@ -96,13 +106,17 @@ export const config = {
   // signed by a kiosk whose ENS name resolves to the signer; "optional"
   // credits them but marks them unverified.
   machineSignature: (process.env.MACHINE_SIGNATURE === "required" ? "required" : "optional") as "required" | "optional",
-  // 1inch Aqua yield (aqua.ts). Aqua and its SwapVM router are deployed on
-  // Sepolia at the same addresses as mainnet (the router at its previous
-  // address; the SDK doesn't list Sepolia). mETH is our mock ETH.
+  // 1inch Aqua yield (aqua.ts). Addresses come from the official SDKs' per-chain
+  // maps (networks.ts), or AQUA_ADDRESS / AQUA_ROUTER_ADDRESS. Aqua is not
+  // deployed on Arc Testnet, so `deployed` is false there unless you set both.
+  // On Sepolia the registry is shared and the router is the earlier deployment.
+  // The base token is our mock mETH on Sepolia and bridged WETH on Arc Testnet.
   aqua: {
-    address: process.env.AQUA_ADDRESS ?? "0x1111113ccf1426a8e30e2bff5e005d929bf6a90a",
-    router: process.env.AQUA_ROUTER_ADDRESS ?? "0x1111113db0e0ef9d0e3a50d5f094a3a57a26c0de",
-    methAddress: process.env.METH_ADDRESS ?? "0x5A9E9fF59AeBb96C14DFaB7C2a43d0C130ba9282",
+    deployed: Boolean(aquaDeployment),
+    origin: aquaDeployment?.origin ?? null,
+    address: aquaDeployment?.aqua ?? "",
+    router: aquaDeployment?.router ?? "",
+    methAddress: process.env.METH_ADDRESS || network.defaults.baseToken,
     // Demo market maker (aquaSimulator.ts): trades against open strategies
     // so they earn fees and move through their ranges on a quiet testnet.
     simEnabled: process.env.AQUA_SIM === "1",

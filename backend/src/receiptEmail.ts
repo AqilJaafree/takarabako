@@ -24,7 +24,7 @@ export function receiptHtml(r: Receipt, ensName: string | null): string {
       const right =
         n.status === "confirmed"
           ? `<span style="color:#2e7d4f;font-weight:bold">${money(n.usdAmount ?? 0)} ✓</span>${
-              n.txHash ? `<br><a href="https://sepolia.etherscan.io/tx/${n.txHash}" style="color:#9a6a2a;font-size:11px;text-decoration:none">${n.txHash.slice(0, 10)}…${n.txHash.slice(-6)} ↗</a>` : ""
+              n.txHash ? `<br><a href="${config.network.explorerUrl}/tx/${n.txHash}" style="color:#9a6a2a;font-size:11px;text-decoration:none">${n.txHash.slice(0, 10)}…${n.txHash.slice(-6)} ↗</a>` : ""
             }`
           : n.status === "failed"
             ? `<span style="color:#8f1e18">not credited — please contact us</span>`
