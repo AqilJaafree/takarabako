@@ -15,27 +15,41 @@ const { Interaction } = createRequire(import.meta.url)("@1inch/sdk-core") as typ
 const MANAGER = "0x00000000000000000000000000000000c0ffee02" as Address;
 // CHAIN=sepolia builds the fixtures for the Sepolia pair (our mock mETH and MockUSDC) and the
 // older Sepolia router; the default is Arc mainnet.
+// CHAIN=arc-eurc builds them for Arc's EURC/USDC stable pair: EURC takes the "base" slot, priced in USDC
+// (the EUR/USD rate), with a narrow range and a 5 bps fee.
 const SEPOLIA = process.env.CHAIN === "sepolia";
+const EURC = process.env.CHAIN === "arc-eurc";
 const AQUA = "0x1111113ccf1426a8e30e2bff5e005d929bf6a90a" as Address;
 const ROUTER = (SEPOLIA ? "0x1111113db0e0ef9d0e3a50d5f094a3a57a26c0de" : "0x111111338c5091e8440b67b168bae16a668ac0de") as Address;
-const PAIR = SEPOLIA
+const PAIR = EURC
+  ? {
+      eth: { address: "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1", decimals: 6n },
+      usdc: ARC_PAIR.usdc,
+    }
+  : SEPOLIA
   ? {
       eth: { address: "0x5A9E9fF59AeBb96C14DFaB7C2a43d0C130ba9282", decimals: 18n },
       usdc: { address: "0x6cc5f175810e61A56508049f0527BC75EB7e77e4", decimals: 6n },
     }
   : ARC_PAIR;
 const RPC = SEPOLIA ? "https://ethereum-sepolia-rpc.publicnode.com" : "https://rpc.mainnet.arc.io";
-const SPOT = 2200;
+const SPOT = EURC ? 1.1165 : 2200;
 const none = { eth: 0n, usdc: 0n };
 
-// Fixed salts keep the output (and so the committed fixtures) reproducible.
+// Fixed salts keep the output (and so the committed fixtures) reproducible. A strategy's salt mixes
+// Math.random with the clock (selfCustody.ts buildSelfOrder), so both are pinned.
 let salt = 1000n;
 const realRandom = Math.random;
+const realNow = Date.now;
 Math.random = () => Number(salt++) / 2 ** 48;
+Date.now = () => 0;
 
-const { bins, feeBps } = selfBins("curve", SPOT, 1800, 2900);
+const sel = selfBins("curve", SPOT, EURC ? 1.1 : 1800, EURC ? 1.135 : 2900);
+const bins = sel.bins;
+const feeBps = EURC ? 5 : sel.feeBps;
 const plan = planSelfOpen({ maker: MANAGER, amountUsd: 50, bins, feeBps, spot: SPOT, pair: PAIR, aqua: AQUA, router: ROUTER, allowance: none, owed: none });
 Math.random = realRandom;
+Date.now = realNow;
 
 const call = new sv.SwapVMContract(new sv.Address(ROUTER));
 const swap = (idx: number, tokenIn: string, tokenOut: string, amount: bigint) =>
@@ -104,7 +118,7 @@ plan.strategies.forEach((s, i) => lines.push(`        a[${i}] = ${s.usdc};`));
 lines.push("    }", "");
 // 0.5 USDC in against the middle strategy, and 0.0001 WETH in against it.
 lines.push(`    function swapUsdcForWeth() internal pure returns (bytes memory) {\n        return ${hex(swap(2, PAIR.usdc.address, PAIR.eth.address, 500_000n))};\n    }`);
-lines.push(`    function swapWethForUsdc() internal pure returns (bytes memory) {\n        return ${hex(swap(2, PAIR.eth.address, PAIR.usdc.address, 100_000_000_000_000n))};\n    }`);
+lines.push(`    function swapWethForUsdc() internal pure returns (bytes memory) {\n        return ${hex(swap(2, PAIR.eth.address, PAIR.usdc.address, EURC ? 400_000n : 100_000_000_000_000n))};\n    }`);
 lines.push(`    function hostileStrategy() internal pure returns (bytes memory) {\n        return ${hex(hostile)};\n    }`);
 lines.push(`    function hostileSwap() internal pure returns (bytes memory) {\n        return ${hex(hostileSwap)};\n    }`);
 for (const [name, v] of [["hook", evil]] as const) {
