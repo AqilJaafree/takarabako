@@ -1,7 +1,8 @@
-import { encodeFunctionData, parseAbi, type Address } from "viem";
+import { encodeFunctionData, formatUnits, parseAbi, parseUnits, type Address } from "viem";
 import { config } from "./config.js";
 import { looksLikeRpcLag, retryOnLag } from "./retry.js";
 import { allowanceAction } from "./allowances.js";
+import { backingShortfall, feedsAgree, GuardError, parseKrakenEthUsd, type Amounts } from "./guards.js";
 import { floorMicros, PAYOUT_PENDING, payoutStep } from "./closeFlow.js";
 import { pool } from "./db.js";
 import { aq, sv } from "./aquaSdk.js";
@@ -73,6 +74,7 @@ const aquaAbi = parseAbi(["function rawBalances(address maker, address app, byte
 const erc20Abi = parseAbi([
   "function approve(address,uint256) returns (bool)",
   "function allowance(address,address) view returns (uint256)",
+  "function balanceOf(address) view returns (uint256)",
 ]);
 
 // ---- ETH price (Coinbase public API) --------------------------------------
@@ -88,11 +90,18 @@ export interface Candle {
   c: number;
 }
 
-/// Live ETH/USD, cached 30s. mETH is priced off real ETH. If the feed fails,
-/// the last price is used (stale beats nothing for a display), unless the
-/// caller sets `maxStaleMs`: opening and closing a position move money at this
-/// price, so they refuse one older than that instead of paying out at it.
-export async function ethUsd(opts: { maxStaleMs?: number } = {}): Promise<number> {
+/// Live ETH/USD from Coinbase, cached 30s. mETH is priced off real ETH. If the
+/// feed fails, the last price is used (stale beats nothing for a display),
+/// unless the caller sets `maxStaleMs`. With `verify`, the price is also
+/// checked against a second feed (Kraken) and refused if they disagree: opening
+/// and closing a position move money at this price, so they set both.
+export async function ethUsd(opts: { maxStaleMs?: number; verify?: boolean } = {}): Promise<number> {
+  const price = await coinbasePrice(opts);
+  if (opts.verify) await checkAgainstSecondFeed(price);
+  return price;
+}
+
+async function coinbasePrice(opts: { maxStaleMs?: number }): Promise<number> {
   if (spotCache && Date.now() - spotCache.at < 30_000) return spotCache.price;
   try {
     const res = await fetch("https://api.coinbase.com/v2/prices/ETH-USD/spot", { signal: AbortSignal.timeout(5000) });
@@ -107,8 +116,50 @@ export async function ethUsd(opts: { maxStaleMs?: number } = {}): Promise<number
   }
 }
 
-/// How old a price may be when a position is opened or closed.
+let secondCache: { at: number; price: number } | null = null;
+let secondWarnedAt = 0;
+
+async function krakenPrice(): Promise<number | null> {
+  if (secondCache && Date.now() - secondCache.at < 30_000) return secondCache.price;
+  try {
+    const res = await fetch("https://api.kraken.com/0/public/Ticker?pair=ETHUSD", { signal: AbortSignal.timeout(5000) });
+    const price = parseKrakenEthUsd(await res.json());
+    secondCache = { at: Date.now(), price };
+    return price;
+  } catch {
+    return null;
+  }
+}
+
+/// Refuses to go on if the second feed disagrees with the first. If the second
+/// feed is simply unreachable the check cannot be made, so it carries on with
+/// the first alone (and says so, at most every ten minutes) rather than
+/// stopping every customer's withdrawal over a monitoring outage.
+async function checkAgainstSecondFeed(price: number) {
+  const other = await krakenPrice();
+  if (other === null) {
+    if (Date.now() - secondWarnedAt > 10 * 60_000) {
+      secondWarnedAt = Date.now();
+      console.warn("[price] the second price feed (Kraken) is unreachable: moving money at Coinbase's price alone");
+    }
+    return;
+  }
+  if (!feedsAgree(price, other)) {
+    throw new GuardError(`the ETH price feeds disagree (Coinbase $${price.toFixed(2)}, Kraken $${other.toFixed(2)}): not moving money until they agree`);
+  }
+}
+
+/// For tests: forget the cached prices.
+export function _resetPriceCaches() {
+  spotCache = null;
+  secondCache = null;
+  secondWarnedAt = 0;
+}
+
+/// How old a price may be when a position is opened or closed, and that it is
+/// checked against the second feed.
 export const MONEY_PRICE_MAX_AGE_MS = 5 * 60_000;
+const MONEY_PRICE = { maxStaleMs: MONEY_PRICE_MAX_AGE_MS, verify: true } as const;
 
 /// Hourly ETH/USD candles for the last week (the advanced chart), cached 5 min.
 export async function ethCandles(): Promise<Candle[]> {
@@ -195,6 +246,32 @@ async function owedBalances(): Promise<{ eth: bigint; usdc: bigint; complete: bo
     }
   }
   return { eth, usdc, complete };
+}
+
+/// Refuses to open a position the treasury could not pay out. Aqua only records
+/// virtual balances; the tokens stay in the treasury wallet and are pulled when
+/// a swap fills, so the wallet balance is the real limit. Counts every open
+/// strategy plus the one about to be shipped, and the USD about to arrive from
+/// the customer's vault. If some balance cannot be read the check cannot be
+/// made and is skipped (and logged). `owedNow` is for tests and scripts.
+export async function assertBacked(extra: Amounts, incoming: Amounts, owedNow?: Amounts & { complete: boolean }) {
+  const owed = owedNow ?? (await owedBalances());
+  if (!owed.complete) {
+    console.warn("[aqua] could not read every open strategy's balance: skipping the token cover check");
+    return;
+  }
+  const [eth, usdc] = await Promise.all(
+    [PAIR.eth.address, PAIR.usdc.address].map((token) =>
+      publicClient.readContract({ address: token as Address, abi: erc20Abi, functionName: "balanceOf", args: [treasuryAddress!] }),
+    ),
+  );
+  const short = backingShortfall({ eth, usdc }, owed, extra, incoming);
+  if (short.eth === 0n && short.usdc === 0n) return;
+  const missing = [
+    short.eth > 0n ? `${formatUnits(short.eth, Number(PAIR.eth.decimals))} ETH` : null,
+    short.usdc > 0n ? `${formatUnits(short.usdc, Number(PAIR.usdc.decimals))} USDC` : null,
+  ].filter(Boolean);
+  throw new GuardError(`the treasury does not hold enough tokens to back this position (short by ${missing.join(" and ")}): try again later`);
 }
 
 let approvalLock: Promise<unknown> = Promise.resolve();
@@ -335,7 +412,7 @@ export function planPosition(req: Pick<OpenRequest, "mode" | "shape" | "priceMin
 
 export async function openPosition(req: OpenRequest): Promise<PositionRow> {
   if (!aquaReady || !treasuryAddress) throw new Error(aquaUnavailableReason() ?? "cannot open an Aqua position");
-  const spot = await ethUsd({ maxStaleMs: MONEY_PRICE_MAX_AGE_MS });
+  const spot = await ethUsd(MONEY_PRICE);
   const plan = planPosition(req, spot);
   // Aqua may pull what these strategies can pay out: make sure it is allowed to,
   // and no more than that, before any of them is shipped.
@@ -347,6 +424,7 @@ export async function openPosition(req: OpenRequest): Promise<PositionRow> {
     extra.eth += a.eth;
     extra.usdc += a.usdc;
   }
+  await assertBacked(extra, { eth: 0n, usdc: parseUnits(req.amount.toFixed(6), 6) });
   await ensureApprovals(extra);
 
   // Take the amount out of the customer's vault first; it funds the strategies.
@@ -458,7 +536,7 @@ export async function openPositions(): Promise<PositionRow[]> {
 /// display (viewPosition), a failed read must not count as "worth nothing",
 /// because the result is what the customer is paid.
 export async function liveValueStrict(p: PositionRow): Promise<number> {
-  const spot = await ethUsd({ maxStaleMs: MONEY_PRICE_MAX_AGE_MS });
+  const spot = await ethUsd(MONEY_PRICE);
   const bals = await Promise.all(p.strategies.map((s) => retryOnLag(() => strategyBalances(s.hash))));
   // Aqua keeps a shipped strategy's balances until it is docked, so all-zero
   // means the read was wrong (or it was already docked): never pay out on it.
