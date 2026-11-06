@@ -84,3 +84,32 @@
 @media (prefers-reduced-motion: reduce) {
   .crest-flame { animation: none; }
 }
+
+/* The box lid (components/BoxTransition.tsx): royal blue lacquer with a
+   gold-foil paisley (public/paisley.svg), in place of the generated purple. */
+[data-theme="deepavali"] .box-tx-lid {
+  background:
+    radial-gradient(120% 90% at 30% 10%, rgba(200, 215, 255, 0.16), transparent 55%),
+    url("/paisley.svg") 0 0 / clamp(200px, 26vw, 300px) auto,
+    linear-gradient(180deg, #1a2890 0%, #2336b6 60%, #172485 100%);
+}
+[data-theme="deepavali"] .box-tx-body {
+  background:
+    radial-gradient(100% 70% at 70% 100%, rgba(180, 200, 255, 0.1), transparent 60%),
+    linear-gradient(180deg, transparent, rgba(8, 12, 50, 0.45)),
+    url("/paisley.svg") 0 0 / clamp(200px, 26vw, 300px) auto,
+    linear-gradient(180deg, #1c2a95 0%, #0f1858 100%);
+}
+/* a plain band behind the दीप mark so it reads over the pattern */
+[data-theme="deepavali"] .box-tx-mon {
+  font-family: var(--font-devanagari), serif;
+  font-weight: 400;
+  color: #fbe3a8;
+  text-shadow: 0 2px 0 rgba(10, 14, 60, 0.7), 0 0 24px rgba(255, 210, 120, 0.35);
+  padding: 0.05em 0.45em 0.2em;
+  border-radius: 999px;
+  background: radial-gradient(closest-side, #1d2c9e 70%, transparent);
+}
+[data-theme="deepavali"] .box-tx-clasp span {
+  color: #18237a;
+}
