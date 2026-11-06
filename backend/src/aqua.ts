@@ -1,5 +1,6 @@
 import { parseAbi, type Address } from "viem";
 import { config } from "./config.js";
+import { retryOnLag } from "./retry.js";
 import { pool } from "./db.js";
 import { aq, sv } from "./aquaSdk.js";
 import {
@@ -318,7 +319,9 @@ export async function dockAll(strategies: StoredStrategy[]) {
       strategyHash: new aq.HexString(s.hash),
       tokens: [new aq.Address(PAIR.eth.address), new aq.Address(PAIR.usdc.address)],
     });
-    hashes.push(await sendTreasuryTxNoWait(asTx(tx)));
+    // Gas estimation can reach an RPC node that has not seen the strategy's
+    // ship (or an earlier swap) yet and revert; the same call works moments later.
+    hashes.push(await retryOnLag(() => sendTreasuryTxNoWait(asTx(tx))));
   }
   await Promise.all(hashes.map((h) => waitForTx(h)));
 }

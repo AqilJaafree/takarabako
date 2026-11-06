@@ -24,6 +24,7 @@ import {
   strategyBalances,
   verifyAquaOnChain,
 } from "../src/aqua.js";
+import { retryOnLag } from "../src/retry.js";
 import { publicClient, sendTreasuryTx, treasuryAddress, treasuryEthBalance, waitForTx } from "../src/chain.js";
 
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -125,14 +126,10 @@ try {
   const args = { order, amount, takerTraits: sv.TakerTraits.default(), tokenIn: new sv.Address(PAIR.usdc.address), tokenOut: new sv.Address(PAIR.eth.address) };
   const q = call.quote(args);
   // A node a block behind has not seen the ship yet and reverts: retry.
-  let res: Awaited<ReturnType<typeof publicClient.call>> | undefined;
-  for (let i = 0; i < 8 && !res; i++) {
-    res = await publicClient.call({ account: treasuryAddress, to: q.to.toString() as Address, data: q.data.toString() as `0x${string}` }).catch(async () => {
-      await sleep(2_000);
-      return undefined;
-    });
-  }
-  if (!res) throw new Error("the router would not quote the shipped strategy after 8 tries");
+  const res = await retryOnLag(
+    () => publicClient.call({ account: treasuryAddress, to: q.to.toString() as Address, data: q.data.toString() as `0x${string}` }),
+    { tries: 8, delayMs: 2_000 },
+  );
   const [amountIn, amountOut] = decodeFunctionResult({ abi: sv.ABI.SWAP_VM_ABI, functionName: "quote", data: res.data! }) as readonly bigint[];
   console.log(`  quote: ${formatUnits(amountIn!, 6)} USDC → ${formatUnits(amountOut!, 18)} base token`);
   const s = call.swap(args);
@@ -154,16 +151,7 @@ try {
   }
 } finally {
   step("dock the strategies (returns them to the treasury)");
-  for (let i = 1; ; i++) {
-    try {
-      await dockAll(strategies);
-      break;
-    } catch (err) {
-      // gas estimation can land on a node that has not seen the ship yet
-      if (i >= 6) throw err;
-      await sleep(3_000);
-    }
-  }
+  await dockAll(strategies); // retries around RPC lag itself
   for (const [i, s] of strategies.entries()) {
     const end = await settled(s.hash, (b) => b.eth === 0n && b.usdc === 0n);
     console.log(`  ${i + 1}. after dock: base ${end.eth} · USDC ${end.usdc}`);
