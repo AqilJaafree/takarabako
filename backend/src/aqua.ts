@@ -349,7 +349,7 @@ export async function viewPosition(p: PositionRow, spot: number): Promise<Positi
   const value = open ? bins.reduce((s, b) => s + b.valueUsd, 0) : p.closeValue;
   return {
     ...rest,
-    label: p.mode === "advanced" ? `Advanced · ${p.shape === "bidask" ? "Bid-Ask" : p.shape === "curve" ? "Curve" : "Spot"}` : TIERS[p.mode].label,
+    label: p.mode === "advanced" ? `Advanced · ${p.shape === "bidask" ? "Bid-Ask" : p.shape === "curve" ? "Curve" : p.shape === "hybrid" ? "Hybrid" : "Spot"}` : TIERS[p.mode].label,
     valueUsd: value,
     pnlUsd: value === null ? null : value - p.amountUsd,
     inRange: !open ? null : p.priceMin === null || p.priceMax === null ? true : spot >= p.priceMin && spot <= p.priceMax,

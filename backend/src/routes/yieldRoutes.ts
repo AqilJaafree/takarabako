@@ -34,7 +34,7 @@ yieldRouter.get("/yield/market", asyncHandler(async (_req, res) => {
 
 const Advanced = z.object({
   amount: z.number().positive(),
-  shape: z.enum(["spot", "curve", "bidask"]),
+  shape: z.enum(["spot", "curve", "bidask", "hybrid"]),
   priceMin: z.number().positive(),
   priceMax: z.number().positive(),
 });

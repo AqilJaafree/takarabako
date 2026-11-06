@@ -6,7 +6,7 @@ import { sv } from "./aquaSdk.js";
 /// bin needs so its SwapVM strategy starts at the market price.
 
 export type Tier = "low" | "medium" | "high";
-export type Shape = "full" | "spot" | "curve" | "bidask";
+export type Shape = "full" | "spot" | "curve" | "bidask" | "hybrid";
 
 export interface TierPlan {
   tier: Tier;
@@ -51,6 +51,9 @@ export const ADVANCED = {
   minFractionOfSpot: 0.1, // −90%
   maxMultipleOfSpot: 4, // +300%
   bins: 5,
+  // Hybrid: a tight core around the price plus the whole range as a tail.
+  hybridCoreHalfWidth: 0.08, // core is ±8% of the current price
+  hybridCoreWeight: 0.7, // share of the position in the core
   feeBps: 30,
   apyEstBps: 1200,
 } as const;
@@ -67,9 +70,23 @@ export interface Bin {
 ///   spot   — one even range
 ///   curve  — more liquidity near the current price, tapering away from it
 ///   bidask — more liquidity far from the current price (buy low / sell high)
+///   hybrid — a tight core around the price (most of the money, most of the
+///            fees) plus the whole range as a tail, so the position keeps
+///            earning when the price leaves the core
 export function binsFor(shape: Exclude<Shape, "full">, min: number, max: number, spot: number, n: number = ADVANCED.bins): Bin[] {
   if (!(min > 0 && max > min)) throw new Error("price range must have 0 < min < max");
   if (shape === "spot") return [{ min, max, weight: 1 }];
+
+  if (shape === "hybrid") {
+    const lo = Math.max(min, spot * (1 - ADVANCED.hybridCoreHalfWidth));
+    const hi = Math.min(max, spot * (1 + ADVANCED.hybridCoreHalfWidth));
+    // A range that sits away from the price has no core to add: one even bin.
+    if (!(hi > lo)) return [{ min, max, weight: 1 }];
+    return [
+      { min: lo, max: hi, weight: ADVANCED.hybridCoreWeight },
+      { min, max, weight: 1 - ADVANCED.hybridCoreWeight },
+    ];
+  }
 
   // Equal widths in log-price, so each bin covers the same % move.
   const ratio = Math.pow(max / min, 1 / n);

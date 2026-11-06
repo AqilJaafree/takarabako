@@ -64,3 +64,33 @@ test("tiers get narrower as risk rises", () => {
   assert.equal(TIERS.low.rangePct, null);
   assert.ok(TIERS.medium.rangePct! > TIERS.high.rangePct!);
 });
+
+test("hybrid is a ±8% core holding 70% of the money plus the whole range as a tail", () => {
+  const bins = binsFor("hybrid", 1000, 4000, 2000);
+  assert.equal(bins.length, 2);
+  close(bins[0]!.min, 1840, 1e-6);
+  close(bins[0]!.max, 2160, 1e-6);
+  close(bins[0]!.weight, 0.7, 1e-9);
+  assert.deepEqual([bins[1]!.min, bins[1]!.max], [1000, 4000]);
+  close(bins[1]!.weight, 0.3, 1e-9);
+});
+
+test("hybrid clips its core to the range, and has none when the range is away from the price", () => {
+  const clipped = binsFor("hybrid", 1900, 4000, 2000);
+  close(clipped[0]!.min, 1900, 1e-6); // the range's own floor, not 1840
+  close(clipped[0]!.max, 2160, 1e-6);
+  assert.deepEqual(binsFor("hybrid", 3000, 4000, 2000), [{ min: 3000, max: 4000, weight: 1 }]);
+  assert.deepEqual(binsFor("hybrid", 1000, 1500, 2000), [{ min: 1000, max: 1500, weight: 1 }]);
+});
+
+test("a hybrid position is worth what was put in, and both bins hold both tokens around the price", () => {
+  const spot = 2000;
+  const bins = binsFor("hybrid", 1000, 4000, spot);
+  let total = 0;
+  for (const b of bins) {
+    const { eth, usdc } = allocate(1000 * b.weight, b, spot, PAIR);
+    assert.ok(eth > 0n && usdc > 0n, "a range around the price holds both tokens");
+    total += valueUsd(eth, usdc, spot, PAIR);
+  }
+  close(total, 1000, 0.5);
+});
