@@ -10,12 +10,14 @@
 //
 // The treasury pays the gas and needs the pair tokens (mETH + MockUSDC on
 // Sepolia). Shows nothing on a chain where Aqua is not deployed.
-import { decodeFunctionResult, encodeFunctionData, formatUnits, maxUint256, parseAbi, type Address } from "viem";
+import { decodeFunctionResult, formatUnits, parseAbi, type Address } from "viem";
 import { config } from "../src/config.js";
+import { allocate } from "../src/aquaMath.js";
 import { sv } from "../src/aquaSdk.js";
 import {
   aquaUnavailableReason,
   dockAll,
+  ensureAllowance,
   ensureApprovals,
   ethUsd,
   PAIR,
@@ -39,7 +41,6 @@ const net = config.network;
 const erc20 = parseAbi([
   "function balanceOf(address) view returns (uint256)",
   "function allowance(address,address) view returns (uint256)",
-  "function approve(address,uint256) returns (bool)",
 ]);
 const tx = (hash: string) => `${net.explorerUrl}/tx/${hash}`;
 const step = (s: string) => console.log(`\n▸ ${s}`);
@@ -94,15 +95,26 @@ plan.bins.forEach((b, i) =>
   console.log(`    ${i + 1}. ${b ? `$${b.min.toFixed(0)} – $${b.max.toFixed(0)}` : "full range"} · ${((b?.weight ?? 1) * 100).toFixed(0)}% of the money`),
 );
 
-step("approve Aqua and the router to pull the pair tokens");
-await ensureApprovals();
-for (const token of [PAIR.eth.address, PAIR.usdc.address] as Address[]) {
-  const allowance = await publicClient.readContract({ address: token, abi: erc20, functionName: "allowance", args: [treasuryAddress!, config.aqua.router as Address] });
-  if (allowance < 10n ** 40n) {
-    await sendTreasuryTx({ to: token, data: encodeFunctionData({ abi: erc20, functionName: "approve", args: [config.aqua.router as Address, maxUint256] }) });
-  }
+step("size the allowances (Aqua pays out of the treasury wallet, the router pulls what it pays in)");
+// What this position can pay out, as openPosition works it out.
+const extra = { eth: 0n, usdc: 0n };
+for (const b of plan.bins) {
+  const a = allocate(usd * (b?.weight ?? 1), b, spot, PAIR);
+  extra.eth += a.eth;
+  extra.usdc += a.usdc;
 }
-console.log("  ok");
+// No database here, so other positions' needs are unknown: this only raises, never lowers.
+const changed = await ensureApprovals(extra);
+const swapIn = 100_000n; // the 0.10 USDC swapped below: the treasury is the taker, so the router pulls it
+const routerChange = await ensureAllowance(PAIR.usdc.address as Address, config.aqua.router as Address, swapIn, false);
+const show = (v: bigint) => (v > 10n ** 30n ? "unlimited" : v.toString());
+console.log(changed.length || routerChange ? "  raised: " + [...changed.map((c) => `${c.token.slice(0, 8)}… ${show(c.from)} → ${show(c.to)}`), ...(routerChange ? [`router→USDC ${show(routerChange.from)} → ${show(routerChange.to)}`] : [])].join("; ") : "  already large enough");
+const [aBase, aUsdc, rUsdc] = await Promise.all([
+  publicClient.readContract({ address: PAIR.eth.address as Address, abi: erc20, functionName: "allowance", args: [treasuryAddress!, config.aqua.address as Address] }),
+  publicClient.readContract({ address: PAIR.usdc.address as Address, abi: erc20, functionName: "allowance", args: [treasuryAddress!, config.aqua.address as Address] }),
+  publicClient.readContract({ address: PAIR.usdc.address as Address, abi: erc20, functionName: "allowance", args: [treasuryAddress!, config.aqua.router as Address] }),
+]);
+console.log(`  now: Aqua→base ${show(aBase)} · Aqua→USDC ${show(aUsdc)} · router→USDC ${show(rUsdc)}`);
 
 step("ship the strategies (SwapVM concentrate / XYC programs via the Aqua SDK)");
 const strategies = [];
