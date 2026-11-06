@@ -20,11 +20,15 @@ async function api<T>(path: string, body?: unknown): Promise<T> {
   return json as T;
 }
 
+/// Prices near $1 (a stable pair) need four decimals to tell a rate from the market; ETH-sized prices need two.
+const price4 = (n: number) => (n < 10 ? 4 : 2);
 const num = (n: number, digits: number) => n.toLocaleString("en-US", { maximumFractionDigits: digits });
 
 export function DashOut({
   network,
   base,
+  pairKey,
+  symbols,
   address,
   held,
   wallets,
@@ -32,6 +36,9 @@ export function DashOut({
   disabled,
 }: {
   network: NetworkInfo;
+  /// The pair whose base token is sold (a chain can offer several), and what its tokens are called.
+  pairKey?: string;
+  symbols?: { base: string; quote: string };
   /// /api/self/<network>
   base: string;
   address: string;
@@ -45,7 +52,7 @@ export function DashOut({
 }) {
   const [reload, setReload] = useState(0);
   // The quote is keyed to the wallet and balance it was fetched for, so a stale one is never shown.
-  const key = `${address}|${held}|${reload}`;
+  const key = `${address}|${pairKey ?? ""}|${held}|${reload}`;
   const [result, setResult] = useState<{ key: string; quote?: DashOutQuote; error?: string } | null>(null);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
@@ -55,17 +62,17 @@ export function DashOut({
   useEffect(() => {
     if (held <= 0) return;
     let cancelled = false;
-    api<DashOutQuote>(`${base}/dashout?address=${encodeURIComponent(address)}`)
+    api<DashOutQuote>(`${base}/dashout?address=${encodeURIComponent(address)}${pairKey ? `&pair=${encodeURIComponent(pairKey)}` : ""}`)
       .then((quote) => !cancelled && setResult({ key, quote }))
       .catch((e) => !cancelled && setResult({ key, error: e instanceof Error ? e.message : "could not get a quote" }));
     return () => {
       cancelled = true;
     };
-  }, [key, held, base, address]);
+  }, [key, held, base, address, pairKey]);
 
   if (held <= 0 && !done) return null;
   const quote = result?.key === key ? result.quote : undefined;
-  const sym = quote?.symbols ?? (network.key === "sepolia" ? { base: "mETH", quote: "mUSDC" } : { base: "WETH", quote: "USDC" });
+  const sym = quote?.symbols ?? symbols ?? (network.key === "sepolia" ? { base: "mETH", quote: "mUSDC" } : { base: "WETH", quote: "USDC" });
   const busy = progress !== "";
 
   async function dash() {
@@ -76,7 +83,7 @@ export function DashOut({
     if (!ok) return;
     try {
       setProgress("Finding the best strategies and preparing the swap…");
-      const prepared = await api<DashOutPrepared>(`${base}/dashout/prepare`, { wallet: address });
+      const prepared = await api<DashOutPrepared>(`${base}/dashout/prepare`, { wallet: address, ...(pairKey ? { pair: pairKey } : {}) });
       for (const [i, s] of prepared.steps.entries()) {
         setProgress(`Signing ${i + 1} of ${prepared.steps.length}. ${s.description}`);
         await wallets.sign({ to: s.to, data: s.data, chainId: s.chainId, maxFeePerGas: s.maxFeePerGas, maxPriorityFeePerGas: s.maxPriorityFeePerGas }, address, s.description);
@@ -105,7 +112,7 @@ export function DashOut({
         <dl className="net-facts">
           <div><dt>You would sell</dt><dd>{num(quote.amountIn, 6)} {sym.base}</dd></div>
           <div><dt>You would get about</dt><dd>{num(quote.amountOut, 2)} {sym.quote}</dd></div>
-          <div><dt>Price</dt><dd>{quote.rate !== null ? usd(quote.rate) : "–"} per {sym.base}{quote.marketRate !== null ? ` · market ${usd(quote.marketRate)}` : ""}{quote.discountPct !== null ? ` · ${quote.discountPct >= 0 ? `${num(quote.discountPct, 1)}% below` : `${num(-quote.discountPct, 1)}% above`}` : ""}</dd></div>
+          <div><dt>Price</dt><dd>{quote.rate !== null ? usd(quote.rate, price4(quote.rate)) : "–"} per {sym.base}{quote.marketRate !== null ? ` · market ${usd(quote.marketRate, price4(quote.marketRate))}` : ""}{quote.discountPct !== null ? ` · ${quote.discountPct >= 0 ? `${num(quote.discountPct, 1)}% below` : `${num(-quote.discountPct, 1)}% above`}` : ""}</dd></div>
           {quote.unfilled > 0 && <div><dt>Cannot be sold now</dt><dd>{num(quote.unfilled, 6)} {sym.base}</dd></div>}
         </dl>
       )}

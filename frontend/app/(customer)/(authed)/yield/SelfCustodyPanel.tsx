@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { NetworkInfo } from "@/lib/networks";
 import type { Market, Preview, PreviewBin } from "@/lib/types";
-import type { SelfPosition, SelfPrepared, SelfShape, SelfStep, SelfWallet } from "@/lib/selfCustody";
+import type { DashOutPrepared, SelfMarket, SelfPosition, SelfPrepared, SelfShape, SelfStep, SelfWallet } from "@/lib/selfCustody";
 import { shortHex, usd } from "@/lib/format";
 import { useArcWallets, type ArcWalletsApi } from "@/lib/useArcWallets";
 import { ConfirmRealMoney } from "./RealMoney";
@@ -28,6 +28,13 @@ const PRESETS: Array<{ id: string; name: string; hint: string; shape: SelfShape;
   { id: "hybrid", name: "Hybrid", hint: "A tight core near today's price plus the whole range as a safety net", shape: "hybrid", lo: 0.5, hi: 2 },
 ];
 
+/// A stable pair (EURC/USDC) trades within a few percent of its price, so its strategies are narrow.
+const STABLE_PRESETS: Array<{ id: string; name: string; hint: string; shape: SelfShape; lo?: number; hi?: number }> = [
+  { id: "tight", name: "Tight ±0.5%", hint: "The most fees while the price stays put, and nothing once it leaves", shape: "spot", lo: 0.995, hi: 1.005 },
+  { id: "balanced", name: "Balanced ±1.5%", hint: "A tight core around the price with room to drift", shape: "curve", lo: 0.985, hi: 1.015 },
+  { id: "wide", name: "Wide ±5%", hint: "Stays in range through bigger moves, earning less per dollar", shape: "spot", lo: 0.95, hi: 1.05 },
+];
+
 const SHAPES: Array<{ id: SelfShape; name: string; hint: string }> = [
   { id: "spot", name: "Spot", hint: "Even across the range" },
   { id: "curve", name: "Curve", hint: "Most near today's price" },
@@ -39,12 +46,12 @@ const SHAPE_NAME = Object.fromEntries(SHAPES.map((s) => [s.id, s.name])) as Reco
 
 const RISKS_CONTRACT = [
   "While the position is open your tokens are held by the Takarabako position contract, together with other people's positions, not by your wallet. The contract has no owner, admin or upgrade and only you can close your position, but it is new software that has not been professionally audited, and a flaw in it or in 1inch Aqua could lose funds.",
-  "The position's value follows ETH's price and can fall below what you put in. Earnings are trading fees, which depend on how much people trade. None is promised, and this is not insured or guaranteed.",
+  "The position's value follows the pair's price and can fall below what you put in. Earnings are trading fees, which depend on how much people trade. None is promised, and this is not insured or guaranteed.",
   "You sign every transaction yourself and pay network fees. Closing sends everything the position holds back to your wallet in one transaction.",
 ];
 
 const RISKS = [
-  "Your tokens stay in your own wallet. 1inch Aqua pays traders out of them, up to the amounts you approve, so the position's value follows ETH's price and can fall below what you put in.",
+  "Your tokens stay in your own wallet. 1inch Aqua pays traders out of them, up to the amounts you approve, so the position's value follows the pair's price and can fall below what you put in.",
   "Earnings are trading fees, which depend on how much people trade. None is promised, and this is not insured or guaranteed.",
   "Aqua is smart-contract software, which carries smart-contract risk. You sign every transaction yourself and pay network fees in USDC.",
   "Closing stops the position earning and releases the approval it used; what remains is already in your wallet.",
@@ -66,11 +73,70 @@ export function SelfCustodyPanel({ network, market }: { network: NetworkInfo; ma
   return <SelfCustodyView network={network} market={market} wallets={wallets} />;
 }
 
-/// The panel with its wallets passed in, so it can be exercised without Privy.
+/// A market for a non-default pair, in the shape the panel already uses (its tiers are ETH's, so none).
+const toMarket = (m: SelfMarket): Market => ({ spot: m.spot, candles: m.candles, tiers: [], advanced: { minPrice: m.advanced.minPrice, maxPrice: m.advanced.maxPrice, feeBps: m.advanced.feeBps, apyEstBps: 0, bins: m.advanced.bins } });
+
+/// The panel with its wallets passed in, so it can be exercised without Privy. A chain can offer several
+/// pairs (a base token against USDC, the token every position exits to): the customer picks one, and each
+/// pair is its own view, so its range, shape and preview start fresh.
 export function SelfCustodyView({ network, market, wallets }: { network: NetworkInfo; market: Market; wallets: ArcWalletsApi }) {
+  const pairs = network.selfPairs ?? [];
+  const [picked, setPicked] = useState<string | null>(null);
+  const current = pairs.find((p) => p.key === picked) ?? pairs[0];
+  const isDefault = !current || current.key === pairs[0]?.key;
+  const [pairMarket, setPairMarket] = useState<{ key: string; data?: SelfMarket; error?: string } | null>(null);
+  const currentKey = current?.key;
+  useEffect(() => {
+    if (isDefault || !currentKey) return;
+    let cancelled = false;
+    api<SelfMarket>(`/api/self/${network.key}/market?pair=${encodeURIComponent(currentKey)}`)
+      .then((data) => !cancelled && setPairMarket({ key: currentKey, data }))
+      .catch((e) => !cancelled && setPairMarket({ key: currentKey, error: e instanceof Error ? e.message : "could not load this pair's price" }));
+    return () => {
+      cancelled = true;
+    };
+  }, [isDefault, currentKey, network.key]);
+  const loaded = pairMarket?.key === currentKey ? pairMarket : null;
+  const pairView = isDefault ? market : loaded?.data ? toMarket(loaded.data) : null;
+  const names = current?.symbols ?? (network.key === "sepolia" ? { base: "mETH", quote: "mUSDC" } : { base: "WETH", quote: "USDC" });
+
+  return (
+    <>
+      {pairs.length > 1 && (
+        <div className="self-shape" style={{ marginBottom: 10 }}>
+          <span className="label">Pair</span>
+          <div className="row" style={{ gap: 6, flexWrap: "wrap" }} role="radiogroup" aria-label="Pair">
+            {pairs.map((p) => (
+              <button key={p.key} type="button" role="radio" aria-checked={p.key === current?.key} className={`chip btn btn-ghost small${p.key === current?.key ? " is-on" : ""}`} onClick={() => setPicked(p.key)}>
+                {p.symbols.base}/{p.symbols.quote}
+                {p.stable ? " · stable" : ""}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {pairView ? (
+        <PairView key={current?.key ?? "default"} network={network} market={pairView} wallets={wallets} pair={{ key: isDefault ? undefined : current?.key, symbols: names, stable: Boolean(current?.stable) }} />
+      ) : loaded?.error ? (
+        <div className="notice error">{loaded.error}</div>
+      ) : (
+        <p className="muted small">Loading the {names.base}/{names.quote} price…</p>
+      )}
+    </>
+  );
+}
+
+/// One pair's panel: wallet, strategies, chart, positions and Dash out.
+function PairView({ network, market, wallets, pair }: { network: NetworkInfo; market: Market; wallets: ArcWalletsApi; pair: { key: string | undefined; symbols: { base: string; quote: string }; stable: boolean } }) {
   const [chosen, setChosen] = useState<string | null>(null);
   // /api/self/arc or /api/self/sepolia: the backend serves the same flow per chain.
   const base = `/api/self/${network.key}`;
+  // which pair the wallet and the new position are for (none: the chain's default)
+  const pairQ = pair.key ? `&pair=${encodeURIComponent(pair.key)}` : "";
+  const presets = pair.stable ? STABLE_PRESETS : PRESETS;
+  // a pair priced near $1 (EURC) needs decimals in its prices: whole dollars would read "$1 and $1"
+  const pd = pair.stable ? 4 : 0;
+  const startPreset = presets.find((p) => p.id === (pair.stable ? "balanced" : "hybrid"))!;
   // Where a position manager is deployed, the tokens sit in that contract while a position is open.
   const viaContract = Boolean(network.selfManager);
   // The chart's coordinates come from floating-point maths that can differ in the last digits between the server and
@@ -89,10 +155,10 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
   const limits = useMemo(() => ({ lo: market.advanced.minPrice, hi: market.advanced.maxPrice }), [market.advanced.minPrice, market.advanced.maxPrice]);
 
   // What the chart draws: a strategy to start from, then whatever the customer changes.
-  const [presetId, setPresetId] = useState("hybrid"); // "custom" once the range or shape is edited
-  const [basePreset, setBasePreset] = useState("hybrid");
-  const [shape, setShape] = useState<SelfShape>("hybrid");
-  const [range, setRange] = useState({ min: spot * 0.5, max: spot * 2 });
+  const [presetId, setPresetId] = useState(startPreset.id); // "custom" once the range or shape is edited
+  const [basePreset, setBasePreset] = useState(startPreset.id);
+  const [shape, setShape] = useState<SelfShape>(startPreset.shape);
+  const [range, setRange] = useState({ min: spot * (startPreset.lo ?? 0.5), max: spot * (startPreset.hi ?? 2) });
   const [amount, setAmount] = useState(25);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewError, setPreviewError] = useState("");
@@ -106,15 +172,17 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
   const [switching, setSwitching] = useState(false);
   const [switchError, setSwitchError] = useState("");
   const [confirming, setConfirming] = useState<null | ((ok: boolean) => void)>(null);
+  // An instant exit being confirmed: the position, and the answer to the dialog.
+  const [exitFor, setExitFor] = useState<null | { p: SelfPosition; resolve: (ok: boolean) => void }>(null);
   const [copied, setCopied] = useState(false);
   // An open that was signed and sent but not yet confirmed by the backend: the tokens may already be in the position.
   const [unrecorded, setUnrecorded] = useState<null | { positionId: string; hashes: string[] }>(null);
   const busy = progress !== "";
   const walletData = wallet && wallet.forAddress === address ? wallet.data : null;
-  const sym = walletData?.symbols ?? (network.key === "sepolia" ? { base: "mETH", quote: "mUSDC" } : { base: "WETH", quote: "USDC" });
+  const sym = walletData?.symbols ?? pair.symbols;
 
   function choosePreset(id: string) {
-    const p = PRESETS.find((x) => x.id === id)!;
+    const p = presets.find((x) => x.id === id)!;
     setPresetId(id);
     setBasePreset(id);
     setShape(p.shape);
@@ -142,7 +210,7 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
     if (full) return;
     const id = ++seq.current;
     const t = setTimeout(() => {
-      api<Preview>("/api/yield/preview", { amount: amount >= 5 ? amount : 100, shape, priceMin: range.min, priceMax: range.max })
+      api<Preview>(`${base}/preview`, { ...(pair.key ? { pair: pair.key } : {}), amount: amount >= 5 ? amount : 100, shape, priceMin: range.min, priceMax: range.max })
         .then((p) => {
           if (id !== seq.current) return;
           setPreview(p);
@@ -151,7 +219,7 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
         .catch((e) => id === seq.current && setPreviewError(e instanceof Error ? e.message : "could not draw the liquidity"));
     }, 250);
     return () => clearTimeout(t);
-  }, [full, shape, range.min, range.max, amount]);
+  }, [full, shape, range.min, range.max, amount, base, pair.key]);
   const bins = full ? fullBins : (preview?.bins ?? []);
   const totals = bins.reduce((s, b) => ({ eth: s.eth + b.eth, usdc: s.usdc + b.usdc }), { eth: 0, usdc: 0 });
   const ethShare = totals.eth * spot + totals.usdc > 0 ? ((totals.eth * spot) / (totals.eth * spot + totals.usdc)) * 100 : 0;
@@ -190,18 +258,18 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
 
   const loadWallet = useCallback(async (a: string) => {
     try {
-      setWallet({ forAddress: a, data: await api<SelfWallet>(`${base}/wallet?address=${encodeURIComponent(a)}`) });
+      setWallet({ forAddress: a, data: await api<SelfWallet>(`${base}/wallet?address=${encodeURIComponent(a)}${pairQ}`) });
       setLoadError("");
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "could not load your wallet");
     }
-  }, [base]);
+  }, [base, pairQ]);
 
   // First loads (and again when another wallet is picked); loadWallet / loadPositions refresh after opening or closing.
   useEffect(() => {
     if (!address) return;
     let cancelled = false;
-    api<SelfWallet>(`${base}/wallet?address=${encodeURIComponent(address)}`)
+    api<SelfWallet>(`${base}/wallet?address=${encodeURIComponent(address)}${pairQ}`)
       .then((data) => {
         if (cancelled) return;
         setWallet({ forAddress: address, data });
@@ -211,7 +279,7 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
     return () => {
       cancelled = true;
     };
-  }, [address, base]);
+  }, [address, base, pairQ]);
   useEffect(() => {
     let cancelled = false;
     api<{ positions: SelfPosition[] }>(`${base}/positions`)
@@ -232,7 +300,7 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
     return hashes;
   }
 
-  const label = full ? "Full range" : `${SHAPE_NAME[shape]} ${usd(range.min, 0)} – ${usd(range.max, 0)}`;
+  const label = full ? "Full range" : `${SHAPE_NAME[shape]} ${usd(range.min, pd)} – ${usd(range.max, pd)}`;
 
   /// Asks the backend to check the signed transactions on chain and open the position. Safe to repeat.
   async function finishOpen(positionId: string, hashes: string[]) {
@@ -265,7 +333,7 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
     let hashes: string[];
     try {
       setProgress("Checking your wallet and preparing the transactions…");
-      prepared = await api<SelfPrepared>(`${base}/prepare`, { shape, ...(full ? {} : { priceMin: range.min, priceMax: range.max }), amount, wallet: address });
+      prepared = await api<SelfPrepared>(`${base}/prepare`, { ...(pair.key ? { pair: pair.key } : {}), shape, ...(full ? {} : { priceMin: range.min, priceMax: range.max }), amount, wallet: address });
       hashes = await signAll(prepared.steps, address, "Opening");
     } catch (e) {
       setProgress("");
@@ -294,6 +362,46 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
       setError(e instanceof Error ? e.message : "something went wrong");
     } finally {
       setProgress("");
+    }
+  }
+
+  /// Instant exit to the quote token: closes the position, then sells the base token it handed back for USDC
+  /// (Dash out). They are two steps in order, not one transaction: what the close pays is only known once it
+  /// has happened, and the sale is sized from it. If no fair price is available the position is still closed
+  /// and the customer keeps the base token, which Dash out can sell later.
+  async function exitToQuote(p: SelfPosition) {
+    setError("");
+    setDone("");
+    const sy = p.symbols ?? pair.symbols;
+    const ok = await new Promise<boolean>((resolve) => setExitFor({ p, resolve }));
+    setExitFor(null);
+    if (!ok) return;
+    try {
+      setProgress("Preparing the transactions to close it…");
+      const prepared = await api<SelfPrepared>(`${base}/positions/${p.id}/close/prepare`, {});
+      const hashes = await signAll(prepared.steps, p.wallet, "Closing");
+      setProgress(`Waiting for ${network.name} to confirm, and checking Aqua…`);
+      await api(`${base}/positions/${p.id}/close/record`, { txHashes: hashes });
+      await Promise.all([address ? loadWallet(address) : Promise.resolve(), loadPositions()]);
+    } catch (e) {
+      setProgress("");
+      setError(`${e instanceof Error ? e.message : "something went wrong"}. The position was not closed unless a closing transaction was confirmed in your wallet, so nothing was sold.`);
+      return;
+    }
+    // Closed. Now sell what it handed back: the position's base token, never more than the wallet holds.
+    try {
+      setProgress(`Closed. Finding the best price for your ${sy.base}…`);
+      const dash = await api<DashOutPrepared>(`${base}/dashout/prepare`, { wallet: p.wallet, ...(p.pair ? { pair: p.pair } : {}), amount: p.weth.toFixed(18) });
+      for (const [i, st] of dash.steps.entries()) {
+        setProgress(`Selling ${sy.base}: signing ${i + 1} of ${dash.steps.length}. ${st.description}`);
+        await wallets.sign({ to: st.to, data: st.data, chainId: st.chainId, maxFeePerGas: st.maxFeePerGas, maxPriorityFeePerGas: st.maxPriorityFeePerGas }, p.wallet, st.description);
+      }
+      setDone(`Exited to ${sy.quote}: the position is closed and ${num(dash.quote.amountIn, 6)} ${sy.base} was sold for about ${num(dash.quote.amountOut, 2)} ${sy.quote} (at least ${num(dash.minOut, 2)} guaranteed).`);
+    } catch (e) {
+      setDone(`The position is closed and everything it held is in your wallet. Selling the ${sy.base} for ${sy.quote} did not happen: ${e instanceof Error ? e.message : "something went wrong"}. You can try Dash out again below.`);
+    } finally {
+      setProgress("");
+      if (address) await loadWallet(address);
     }
   }
 
@@ -367,11 +475,13 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
         {empty && <span className="muted small">Send {sym.quote} and {sym.base} on {network.name} to this address first, plus {walletData?.gasSymbol ?? "USDC"} for network fees.</span>}
       </p>
 
-      {address && walletData && <DashOut network={network} base={base} address={address} held={walletData.weth} wallets={wallets} onDone={() => loadWallet(address)} disabled={busy} />}
+      {address && walletData && (walletData.pairs ?? [{ pair: pair.key ?? "", symbols: pair.symbols, base: walletData.weth, stable: pair.stable }]).filter((x) => x.base > 0).map((x) => (
+        <DashOut key={x.pair} network={network} base={base} pairKey={x.pair || undefined} symbols={x.symbols} address={address} held={x.base} wallets={wallets} onDone={() => loadWallet(address)} disabled={busy} />
+      ))}
 
       <h3>Pick a strategy, then shape it</h3>
       <div className="self-modes" role="radiogroup" aria-label="Strategy">
-        {PRESETS.map((p) => (
+        {presets.map((p) => (
           <button key={p.id} type="button" role="radio" aria-checked={presetId === p.id} className={presetId === p.id ? "is-on" : ""} onClick={() => choosePreset(p.id)} disabled={busy}>
             <b>{p.name}</b>
             <span className="muted small">{p.hint}</span>
@@ -390,6 +500,8 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
             bins={bins}
             onChange={changeRange}
             locked={full}
+            symbols={sym}
+            priceDigits={pair.stable ? 4 : 0}
           />
         ) : (
           <div style={{ height: 356 }} aria-hidden="true" />
@@ -399,7 +511,7 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
             ? previewError
             : full
               ? `Full range spreads your liquidity over every price, half in ${sym.base} and half in ${sym.quote}.`
-              : `Your liquidity sits between ${usd(range.min, 0)} and ${usd(range.max, 0)}. Below today's price it holds ${sym.quote}, above it ${sym.base}.`}
+              : `Your liquidity sits between ${usd(range.min, pd)} and ${usd(range.max, pd)}. Below today's price it holds ${sym.quote}, above it ${sym.base}.`}
           {" "}
           {bins.length > 0 && `At today's price that is ${num(100 - ethShare, 0)}% ${sym.quote} and ${num(ethShare, 0)}% ${sym.base}.`}
         </p>
@@ -415,7 +527,7 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
           ))}
           {presetId === "custom" && (
             <button type="button" className="link-btn" onClick={() => choosePreset(basePreset)} disabled={busy}>
-              Reset to {PRESETS.find((p) => p.id === basePreset)?.name}
+              Reset to {presets.find((p) => p.id === basePreset)?.name}
             </button>
           )}
         </div>
@@ -461,8 +573,8 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
                     </p>
                   )}
                   <p className="muted small" style={{ margin: "4px 0" }}>
-                    {p.valueUsd === null ? "Value unavailable right now" : `${usd(p.valueUsd)} now`} · put in {usd(p.amountUsd, 0)} · {num(p.weth, 6)} {sym.base} + {num(p.usdc, 2)} {sym.quote} {p.manager ? "held by the position contract in Aqua" : "held in Aqua"}
-                    {p.priceMin !== null && p.priceMax !== null ? ` · ${usd(p.priceMin, 0)} – ${usd(p.priceMax, 0)}` : " · full range"} · wallet {short(p.wallet)}
+                    {p.valueUsd === null ? "Value unavailable right now" : `${usd(p.valueUsd)} now`} · put in {usd(p.amountUsd, 0)} · {num(p.weth, 6)} {(p.symbols ?? sym).base} + {num(p.usdc, 2)} {(p.symbols ?? sym).quote} {p.manager ? "held by the position contract in Aqua" : "held in Aqua"}
+                    {p.priceMin !== null && p.priceMax !== null ? ` · ${usd(p.priceMin, p.priceMax < 10 ? 4 : 0)} – ${usd(p.priceMax, p.priceMax < 10 ? 4 : 0)}` : " · full range"} · wallet {short(p.wallet)}
                   </p>
                   <p className="small" style={{ margin: "0 0 8px" }}>
                     {(p.openTxs ?? []).map((h) => (
@@ -470,12 +582,32 @@ export function SelfCustodyView({ network, market, wallets }: { network: Network
                     ))}
                   </p>
                   <button type="button" className="btn btn-ghost small" disabled={busy || !signer} onClick={() => close(p)}>{p.partial ? "Close the live part" : "Close position"}</button>
+                  {!p.partial && p.weth > 0 && (
+                    <button type="button" className="btn btn-gold small" style={{ marginLeft: 8 }} disabled={busy || !signer} onClick={() => exitToQuote(p)} title={`Close it and sell the ${(p.symbols ?? pair.symbols).base} for ${(p.symbols ?? pair.symbols).quote}`}>
+                      Exit to {(p.symbols ?? pair.symbols).quote}
+                    </button>
+                  )}
                   {!signer && <span className="muted small"> Connect wallet {short(p.wallet)} to close it.</span>}
                 </li>
               );
             })}
           </ul>
         </>
+      )}
+
+      {exitFor && (
+        <ConfirmRealMoney
+          title={`Exit to ${(exitFor.p.symbols ?? pair.symbols).quote}?`}
+          confirmLabel="Confirm and sign"
+          summary={`Close your ${SHAPE_NAME[exitFor.p.mode] ?? exitFor.p.mode} position (${usd(exitFor.p.valueUsd ?? exitFor.p.amountUsd)}) and sell the ${(exitFor.p.symbols ?? pair.symbols).base} it holds (${num(exitFor.p.weth, 6)}) for ${(exitFor.p.symbols ?? pair.symbols).quote}, from ${short(exitFor.p.wallet)}`}
+          network={network.name}
+          risks={[
+            "This is two steps, signed one after the other: first the position closes and everything it holds comes back to your wallet, then the base token is sold. Closing cannot be undone.",
+            `The ${(exitFor.p.symbols ?? pair.symbols).base} is sold to other people's open Aqua strategies, not to a market, so the price can sit below the market. It is only sold if the price is within what this app allows; if it is not, the position is still closed and you keep the ${(exitFor.p.symbols ?? pair.symbols).base}.`,
+            "Each swap carries a minimum payout and fails rather than paying less. You pay network fees for every transaction, and Aqua is smart-contract software with smart-contract risk.",
+          ]}
+          onResult={exitFor.resolve}
+        />
       )}
 
       {confirming && (

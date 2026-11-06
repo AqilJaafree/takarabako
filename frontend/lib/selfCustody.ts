@@ -6,6 +6,9 @@ export type SelfShape = "full" | "spot" | "curve" | "bidask" | "hybrid";
 export type SelfMode = SelfShape;
 
 export interface SelfWallet {
+  /// The pair these balances are for, and the base token the wallet holds in every pair on the chain.
+  pair?: string;
+  pairs?: Array<{ pair: string; symbols: { base: string; quote: string }; base: number; stable: boolean }>;
   address: string;
   usdc: number;
   weth: number;
@@ -38,6 +41,9 @@ export interface SelfPrepared {
 
 export interface SelfPosition {
   id: string;
+  /// Which pair it is in, and what its tokens are called.
+  pair?: string;
+  symbols?: { base: string; quote: string };
   /// The wallet that owns the position: the one that has to sign to close it.
   wallet: string;
   /// The position manager contract holding the tokens, or null when the wallet itself does.
@@ -61,6 +67,7 @@ export interface SelfPosition {
 
 /// GET /self/:net/dashout — what selling the wallet's leftover base token for USDC through Aqua would get now.
 export interface DashOutQuote {
+  pair?: string;
   symbols: { base: string; quote: string };
   /// The wallet's base-token balance, and how much of it would be sold.
   balance: number;
@@ -85,4 +92,14 @@ export interface DashOutPrepared {
   quote: DashOutQuote;
   /// The least USDC the swaps will accept: the quote less the slippage allowance.
   minOut: number;
+}
+
+/// GET /self/:net/market?pair= — the pair's checked price, the range limits and (where there is a feed) candles.
+export interface SelfMarket {
+  pair: string;
+  symbols: { base: string; quote: string };
+  stable: boolean;
+  spot: number;
+  candles: Array<{ t: number; o: number; h: number; l: number; c: number }>;
+  advanced: { minPrice: number; maxPrice: number; feeBps: number; bins: number };
 }

@@ -26,6 +26,9 @@ export interface NetworkInfo {
   selfCustody?: boolean;
   /// A position manager contract is deployed here: one transaction opens a position and one closes it.
   selfManager?: boolean;
+  /// The pairs offered here (a base token against USDC, the quote token every position exits to), the
+  /// first being the default, and whether a position manager is deployed for each.
+  selfPairs?: Array<{ key: string; symbols: { base: string; quote: string }; stable: boolean; manager: boolean }>;
 }
 
 export interface NetworksResponse {
