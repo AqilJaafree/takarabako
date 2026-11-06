@@ -2,7 +2,7 @@ import { Router } from "express";
 import { config } from "../config.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { describeNetworks } from "../networks.js";
-import { selfNetEnabled } from "../selfChain.js";
+import { selfNetEnabled, selfPairsInfo } from "../selfChain.js";
 import { isNetworkKey, networkStatus } from "../networkStatus.js";
 
 /// The networks the web app can look at. Read-only and public: it only
@@ -24,6 +24,8 @@ networkRouter.get("/networks", (_req, res) => {
       // The customer can sign positions with their own wallet here (selfPositions.ts).
       selfCustody: selfNetEnabled(n.key) && Boolean(n.aqua),
       // One transaction opens a position (a position manager is deployed here) instead of one per strategy.
+      // The pairs offered for self-custody here (a base token against USDC), and whether each has a manager.
+      selfPairs: selfNetEnabled(n.key) ? selfPairsInfo(n.key) : [],
       selfManager: Boolean(n.key === "arc" ? config.selfCustody.arcManager : n.key === "sepolia" ? config.selfCustody.sepoliaManager : ""),
     })),
   });

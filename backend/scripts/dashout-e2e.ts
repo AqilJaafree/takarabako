@@ -4,7 +4,7 @@
 // closes the LP position. Needs SELF_CUSTODY_SEPOLIA=1 and SELF_MANAGER_SEPOLIA.
 //
 //   npx tsx --env-file=.env scripts/dashout-e2e.ts
-process.env.DASH_OUT_MAX_DISCOUNT_PCT = "30"; // the LP's ranges sit below the market; the real default is 3
+process.env.DASH_OUT_MAX_DISCOUNT_PCT = "60"; // the LP's ranges sit well below the market and how far depends on its shape; the real default is 3
 const { migrate, pool } = await import("../src/db.js");
 const { insertAccount } = await import("../src/accounts.js");
 const { ethUsd } = await import("../src/aqua.js");

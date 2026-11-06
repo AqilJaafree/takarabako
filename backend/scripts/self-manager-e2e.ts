@@ -41,7 +41,7 @@ try {
   console.log(`  ${net.symbols.base} ${w.weth}, ${net.symbols.quote} ${w.usdc}, ${net.symbols.gas} ${w.gasNative}, allowance to manager: ${w.allowance.eth}/${w.allowance.usdc}`);
 
   const spot = await ethUsd();
-  const req = { shape: "curve" as const, priceMin: spot * 0.75, priceMax: spot * 1.25, amount: 25 };
+  const req = { shape: "curve" as const, priceMin: spot * 0.75, priceMax: spot * 1.25, amount: 15 };
 
   step("prepare: the transactions the wallet would be asked to sign");
   const prepared = await prepareOpen(net, account, req);

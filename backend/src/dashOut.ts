@@ -1,7 +1,6 @@
 import { decodeFunctionResult, formatUnits, parseAbi, type Address, type Hex } from "viem";
 import { config } from "./config.js";
 import { pool } from "./db.js";
-import { ethUsd, MONEY_PRICE_MAX_AGE_MS } from "./aqua.js";
 import { sv } from "./aquaSdk.js";
 import { GuardError } from "./guards.js";
 import { retryOnLag } from "./retry.js";
@@ -9,8 +8,10 @@ import { selfClient, type SelfNet } from "./selfChain.js";
 import type { Step } from "./selfCustody.js";
 import { encodeFunctionData } from "viem";
 
-/// Dash out: sell the base token a customer is left holding (WETH on Arc, mETH on Sepolia), for example
-/// after closing a position that traded into it, for USDC, through 1inch Aqua's own taker side.
+/// Dash out: sell the base token a customer is left holding (WETH or EURC on Arc, mETH on Sepolia), for
+/// example after closing a position that traded into it, for USDC (the quote token every pair exits to),
+/// through 1inch Aqua's own taker side. It works for any pair: it trades only against strategies in the
+/// same pair and compares the price with that pair's own market price.
 ///
 /// The SwapVM router does not route: a swap names the one strategy to trade against. So this finds the
 /// strategies other positions have open on the chain, asks the router what each would pay (quote is a
@@ -87,13 +88,14 @@ export async function planFills(quote: Quoter, candidates: Candidate[], amount: 
   return { fills, filled: amount - left, out: fills.reduce((s, f) => s + f.amountOut, 0n) };
 }
 
-/// The strategies open on this chain that hold USDC, from the database: customers' self-custody
-/// positions, and (on the chain this backend runs on) the treasury's.
+/// The strategies open in this pair on this chain that hold USDC, from the database: customers'
+/// self-custody positions, and (for the chain's default pair, on the chain this backend runs on) the
+/// treasury's.
 async function loadCandidates(net: SelfNet, taker: string): Promise<Candidate[]> {
   const rows: Array<{ owner: string | null; strategies: Array<{ order: string; hash: string }> }> = [];
-  const self = await pool.query("select wallet as owner, strategies from self_positions where chain_id = $1 and status = 'open'", [net.chainId]);
+  const self = await pool.query("select wallet as owner, strategies from self_positions where chain_id = $1 and coalesce(pair, $2) = $3 and status = 'open'", [net.chainId, net.pairKeys[0], net.pairKey]);
   rows.push(...self.rows);
-  if (net.chainId === config.network.chain.id) {
+  if (net.chainId === config.network.chain.id && net.pairKey === net.pairKeys[0]) {
     const treasury = await pool.query("select null::text as owner, strategies from aqua_positions where status = 'open'");
     rows.push(...treasury.rows);
   }
@@ -180,7 +182,7 @@ export async function dashOutQuote(net: SelfNet, wallet: string, amount?: bigint
   const { fills, filled, out } = await planFills(routerQuoter(net, wallet as Address), candidates, want);
   if (fills.length === 0) return empty(`no open strategy on ${net.name} will take ${net.symbols.base} at this size`);
 
-  const market = await ethUsd({ maxStaleMs: MONEY_PRICE_MAX_AGE_MS, verify: true }).catch(() => null);
+  const market = await net.spot().catch(() => null);
   const rate = (Number(out) / Number(unit(net.pair.usdc.decimals))) / (Number(filled) / Number(unit(net.pair.eth.decimals)));
   const discountPct = market ? ((market - rate) / market) * 100 : null;
   let allowed = true;

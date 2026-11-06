@@ -2,14 +2,13 @@ import { formatUnits, parseAbi, parseEventLogs, type Address, type Hex } from "v
 import type { Account } from "./accounts.js";
 import { config } from "./config.js";
 import { pool } from "./db.js";
-import { ethUsd, MONEY_PRICE_MAX_AGE_MS } from "./aqua.js";
 import { selfBins, type SelfShape } from "./selfShapes.js";
 import { valueUsd } from "./aquaMath.js";
 import { GuardError } from "./guards.js";
 import { applyFeeFloor } from "./networks.js";
 import { retryOnLag } from "./retry.js";
 import { matchesPrepared, managerAbi, planManagerClose, planManagerOpen, planSelfClose, planSelfOpen, type Amounts, type SelfStrategy, type Step } from "./selfCustody.js";
-import { selfClient, type SelfNet } from "./selfChain.js";
+import { selfClient, withPair, type SelfNet } from "./selfChain.js";
 
 /// Self-custody Aqua positions: prepare what the customer's wallet signs, check on chain that it
 /// did, and read the position's live value. The backend never holds a key for this: it builds
@@ -38,6 +37,8 @@ export interface SelfRow {
   privyUserId: string;
   wallet: string;
   chainId: number;
+  /// Which pair it is in (null: the chain's default pair, which is every position made before pairs existed).
+  pair: string | null;
   /// The AquaPositionManager that holds this position, or null when the wallet itself is the maker.
   manager: string | null;
   /// The position's id inside the manager (known once it is open).
@@ -59,7 +60,7 @@ export interface SelfRow {
   closedAt: Date | null;
 }
 
-const COLUMNS = `id, privy_user_id as "privyUserId", wallet, chain_id as "chainId", manager, manager_position_id::text as "managerPositionId",
+const COLUMNS = `id, privy_user_id as "privyUserId", wallet, chain_id as "chainId", pair, manager, manager_position_id::text as "managerPositionId",
   mode, amount_usd::float as "amountUsd",
   spot_open::float as "spotOpen", fee_bps as "feeBps", price_min::float as "priceMin", price_max::float as "priceMax",
   strategies, steps, status, open_txs as "openTxs", close_txs as "closeTxs", created_at as "createdAt", opened_at as "openedAt", closed_at as "closedAt"`;
@@ -96,7 +97,8 @@ async function strategyBalances(net: SelfNet, maker: string, hash: string): Prom
 
 /// What this wallet's own open strategies could pay out right now (wallet-as-maker positions only).
 async function owedBy(net: SelfNet, wallet: string): Promise<Amounts> {
-  const { rows } = await pool.query("select strategies from self_positions where wallet = $1 and chain_id = $2 and manager is null and status = 'open'", [wallet, net.chainId]);
+  // only this pair's strategies: another pair's balances are other tokens and do not count against this allowance
+  const { rows } = await pool.query("select strategies from self_positions where wallet = $1 and chain_id = $2 and coalesce(pair, $3) = $4 and manager is null and status = 'open'", [wallet, net.chainId, net.pairKeys[0], net.pairKey]);
   let eth = 0n;
   let usdc = 0n;
   for (const r of rows as Array<{ strategies: SelfStrategy[] }>) {
@@ -136,7 +138,7 @@ export async function prepareOpen(net: SelfNet, account: Account, req: { shape: 
   if (!(req.amount > 0) || req.amount < 5) throw Object.assign(new Error("the amount must be at least $5"), { status: 422 });
   if (req.amount > config.selfCustody.maxUsd) throw Object.assign(new Error(`positions are capped at $${config.selfCustody.maxUsd} for now`), { status: 422 });
 
-  const spot = await ethUsd({ maxStaleMs: MONEY_PRICE_MAX_AGE_MS, verify: true });
+  const spot = await net.spot(); // the pair's checked price: two sources that must agree
   let plan: ReturnType<typeof selfBins>;
   try {
     plan = selfBins(req.shape, spot, req.priceMin, req.priceMax);
@@ -149,9 +151,10 @@ export async function prepareOpen(net: SelfNet, account: Account, req: { shape: 
   const wallet = (req.wallet ?? account.privyWallet).toLowerCase();
   const state = await walletState(net, wallet);
   const { aqua, router } = deployment(net);
+  const feeBps = net.feeBps ?? plan.feeBps; // a stable pair ships a lower fee than the advanced default
   const built = net.manager
-    ? planManagerOpen({ wallet: wallet as Address, manager: net.manager, amountUsd: req.amount, bins: plan.bins, feeBps: plan.feeBps, spot, pair: net.pair, allowance: state.allowance, symbols: net.symbols })
-    : planSelfOpen({ maker: wallet as Address, amountUsd: req.amount, bins: plan.bins, feeBps: plan.feeBps, spot, pair: net.pair, aqua, router, allowance: state.allowance, owed: state.owed });
+    ? planManagerOpen({ wallet: wallet as Address, manager: net.manager, amountUsd: req.amount, bins: plan.bins, feeBps, spot, pair: net.pair, allowance: state.allowance, symbols: net.symbols })
+    : planSelfOpen({ maker: wallet as Address, amountUsd: req.amount, bins: plan.bins, feeBps, spot, pair: net.pair, aqua, router, allowance: state.allowance, owed: state.owed });
 
   const short: string[] = [];
   if (state.usdc < built.need.usdc) short.push(`${fmtUnits(built.need.usdc, 6n)} ${net.symbols.quote} (it holds ${fmtUnits(state.usdc, 6n)})`);
@@ -162,9 +165,9 @@ export async function prepareOpen(net: SelfNet, account: Account, req: { shape: 
   const id = crypto.randomUUID();
   const range = built.strategies.filter((s) => s.min !== null);
   await pool.query(
-    `insert into self_positions (id, privy_user_id, wallet, chain_id, manager, mode, amount_usd, spot_open, fee_bps, price_min, price_max, strategies, steps)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-    [id, account.privyUserId, wallet, net.chainId, net.manager, req.shape, req.amount, spot, plan.feeBps, range.length ? Math.min(...range.map((s) => s.min!)) : null, range.length ? Math.max(...range.map((s) => s.max!)) : null, JSON.stringify(built.strategies), JSON.stringify(built.steps)],
+    `insert into self_positions (id, privy_user_id, wallet, chain_id, pair, manager, mode, amount_usd, spot_open, fee_bps, price_min, price_max, strategies, steps)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+    [id, account.privyUserId, wallet, net.chainId, net.pairKey, net.manager, req.shape, req.amount, spot, feeBps, range.length ? Math.min(...range.map((s) => s.min!)) : null, range.length ? Math.max(...range.map((s) => s.max!)) : null, JSON.stringify(built.strategies), JSON.stringify(built.steps)],
   );
   return {
     positionId: id,
@@ -224,6 +227,7 @@ async function ownRow(net: SelfNet, privyUserId: string, id: string): Promise<Se
 
 export async function recordOpen(net: SelfNet, account: Account, id: string, hashes: string[]) {
   const row = await ownRow(net, account.privyUserId, id);
+  net = withPair(net, row.pair); // the position's own pair: its tokens, names and price
   if (row.status === "open") return viewSelf(net, row);
   if (row.status !== "pending") throw Object.assign(new Error("this position is already closed"), { status: 409 });
   if (!row.steps) throw new GuardError("this position has no prepared transactions to check");
@@ -260,6 +264,7 @@ const isPartial = (row: SelfRow) => row.status === "pending" && row.manager === 
 
 export async function prepareClose(net: SelfNet, account: Account, id: string) {
   const row = await ownRow(net, account.privyUserId, id);
+  net = withPair(net, row.pair);
   if (isPartial(row)) {
     const live = await liveStrategies(net, row);
     if (live.length === 0) throw Object.assign(new Error("nothing from this position is open on chain, so there is nothing to close"), { status: 409 });
@@ -285,6 +290,7 @@ async function signedDocks(net: SelfNet, row: SelfRow, hashes: string[]): Promis
 
 export async function recordClose(net: SelfNet, account: Account, id: string, hashes: string[]) {
   const row = await ownRow(net, account.privyUserId, id);
+  net = withPair(net, row.pair);
   if (row.status === "closed") return viewSelf(net, row);
   const partial = isPartial(row);
   if (row.status !== "open" && !partial) throw Object.assign(new Error("this position is not open"), { status: 409 });
@@ -301,8 +307,8 @@ export async function listSelf(net: SelfNet, privyUserId: string) {
     `select ${COLUMNS} from self_positions where privy_user_id = $1 and chain_id = $2 and status in ('open', 'closed', 'pending') order by created_at desc limit 20`,
     [privyUserId, net.chainId],
   );
-  const spot = await ethUsd().catch(() => null);
-  const views = await Promise.all((rows as SelfRow[]).map((r) => viewSelf(net, r, spot)));
+  // every pair on the chain, each valued with its own pair's price
+  const views = await Promise.all((rows as SelfRow[]).map((r) => viewSelf(withPair(net, r.pair), r)));
   // A pending row is a prepared position that was never confirmed: only show it if signing got partway,
   // that is, if some of it is live in Aqua, so it can be closed.
   return views.filter((v) => v.status !== "pending" || v.weth > 0 || v.usdc > 0);
@@ -310,7 +316,7 @@ export async function listSelf(net: SelfNet, privyUserId: string) {
 
 /// A position with its live balances, valued at today's price (display only).
 export async function viewSelf(net: SelfNet, row: SelfRow, spotIn?: number | null) {
-  const spot = spotIn === undefined ? await ethUsd().catch(() => null) : spotIn;
+  const spot = spotIn === undefined ? await net.spot().catch(() => null) : spotIn;
   let eth = 0n;
   let usdc = 0n;
   let readable = row.status === "open" || isPartial(row);
@@ -327,6 +333,9 @@ export async function viewSelf(net: SelfNet, row: SelfRow, spotIn?: number | nul
   }
   return {
     id: row.id,
+    /// Which pair this position is in, and what its tokens are called (a customer exits it to the quote token).
+    pair: net.pairKey,
+    symbols: { base: net.symbols.base, quote: net.symbols.quote },
     wallet: row.wallet,
     /// The contract holding the tokens while the position is open, or null when the wallet itself does.
     manager: row.manager,
@@ -346,4 +355,16 @@ export async function viewSelf(net: SelfNet, row: SelfRow, spotIn?: number | nul
     closeTxs: row.closeTxs,
     createdAt: row.createdAt,
   };
+}
+
+/// The wallet's balance of each pair's base token on the chain (for a Dash out card per pair that holds any).
+export async function pairBalances(net: SelfNet, wallet: string) {
+  const c = selfClient(net);
+  return Promise.all(
+    net.pairKeys.map(async (key) => {
+      const n = withPair(net, key);
+      const bal = await c.readContract({ address: n.pair.eth.address as Address, abi: erc20, functionName: "balanceOf", args: [wallet as Address] });
+      return { pair: key, symbols: { base: n.symbols.base, quote: n.symbols.quote }, base: Number(formatUnits(bal, Number(n.pair.eth.decimals))), stable: n.stable };
+    }),
+  );
 }
