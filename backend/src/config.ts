@@ -1,4 +1,4 @@
-import { resolveAquaDeployment, resolveNetwork } from "./networks.js";
+import { resolveAquaDeployment, resolveNetwork, showApyEstimates } from "./networks.js";
 
 // CHAIN picks the network: sepolia (default), arc-testnet or arc (mainnet).
 const network = resolveNetwork(process.env.CHAIN);
@@ -10,6 +10,8 @@ const aquaDeployment = resolveAquaDeployment(network.chain.id, {
 export const config = {
   port: Number(process.env.PORT ?? 4000),
   network,
+  // Whether the yield page shows APY estimates (hidden on a real-money network).
+  showApyEstimates: showApyEstimates(network.real, process.env.SHOW_APY_ESTIMATES),
   rpcUrl: process.env.RPC_URL || network.defaultRpcUrl,
   treasuryPrivateKey: process.env.TREASURY_PRIVATE_KEY ?? "",
   usdcAddress: process.env.USDC_ADDRESS || network.defaults.usdc,

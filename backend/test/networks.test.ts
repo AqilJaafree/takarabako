@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyFeeFloor, describeNetworks, resolveAquaDeployment, resolveNetwork } from "../src/networks.js";
+import { applyFeeFloor, describeNetworks, resolveAquaDeployment, resolveNetwork, showApyEstimates } from "../src/networks.js";
 
 const GWEI = 1_000_000_000n;
 
@@ -112,4 +112,22 @@ test("describeNetworks: a configured USDC replaces the default for the active ne
   const byKey = Object.fromEntries(describeNetworks("sepolia", { usdc }).map((n) => [n.key, n]));
   assert.equal(byKey.sepolia!.usdc, usdc);
   assert.equal(byKey["arc-testnet"]!.usdc, "0x3600000000000000000000000000000000000000");
+});
+
+test("only Arc mainnet is real money", () => {
+  assert.deepEqual(describeNetworks("sepolia").map((n) => [n.key, n.real]), [["sepolia", false], ["arc-testnet", false], ["arc", true]]);
+  assert.equal(resolveNetwork("arc").real, true);
+  assert.equal(resolveNetwork("arc-testnet").real, false);
+});
+
+test("APY estimates show on testnets and are hidden where money is real", () => {
+  assert.equal(showApyEstimates(false), true);
+  assert.equal(showApyEstimates(true), false);
+});
+
+test("SHOW_APY_ESTIMATES overrides either way", () => {
+  assert.equal(showApyEstimates(true, "1"), true);
+  assert.equal(showApyEstimates(false, "0"), false);
+  assert.equal(showApyEstimates(true, ""), false); // blank means no override
+  assert.equal(showApyEstimates(false, "maybe"), true); // anything else is ignored
 });

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { findByPrivyUserId } from "../accounts.js";
 import { requireSession } from "../sessions.js";
 import { asyncHandler } from "../asyncHandler.js";
+import { config } from "../config.js";
 import { getTiersInfo } from "../agent.js";
 import { ethCandles, ethUsd, listPositions, PAIR, planPosition, viewPosition } from "../aqua.js";
 import { ADVANCED, allocate } from "../aquaMath.js";
@@ -29,6 +30,10 @@ yieldRouter.get("/yield/market", asyncHandler(async (_req, res) => {
       bins: ADVANCED.bins,
     },
     pair: { eth: PAIR.eth.address, usdc: PAIR.usdc.address },
+    // Real money at stake: the page hides the APY guesses and asks for a confirmation.
+    showEstimates: config.showApyEstimates,
+    realMoney: config.network.real,
+    network: { key: config.network.key, name: config.network.name, explorerUrl: config.network.explorerUrl },
   });
 }));
 

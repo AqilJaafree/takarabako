@@ -38,6 +38,12 @@ export function getTiersInfo(spot: number | null): TierInfo[] {
   }));
 }
 
+/// Where return estimates are hidden (real money), the model is not given them
+/// and is told not to quote any, so a sentence cannot promise what the page won't.
+const rationaleSystem = () =>
+  config.showApyEstimates ? RATIONALE_SYSTEM : `${RATIONALE_SYSTEM} Do not mention APY, yield, returns or earnings figures at all: say only how the range behaves.`;
+const tiersForPrompt = (spot: number) => getTiersInfo(spot).map((t) => (config.showApyEstimates ? t : { ...t, apyBps: undefined }));
+
 const anthropic = !llmReady && config.agent.apiKey ? new Anthropic({ apiKey: config.agent.apiKey }) : null;
 
 const RATIONALE_SYSTEM =
@@ -54,10 +60,10 @@ const DEFAULT_RATIONALE: Record<Tier, string> = {
 };
 
 export async function tierRationale(tier: Tier, amount: number, spot: number): Promise<string> {
-  const prompt = `Tier: ${tier}. Amount: $${amount}. ETH price now: $${spot.toFixed(0)}. Strategies:\n${JSON.stringify(getTiersInfo(spot), null, 2)}`;
+  const prompt = `Tier: ${tier}. Amount: $${amount}. ETH price now: $${spot.toFixed(0)}. Strategies:\n${JSON.stringify(tiersForPrompt(spot), null, 2)}`;
   if (llmReady) {
     try {
-      return (await complete(RATIONALE_SYSTEM, prompt, 1200)) || DEFAULT_RATIONALE[tier];
+      return (await complete(rationaleSystem(), prompt, 1200)) || DEFAULT_RATIONALE[tier];
     } catch (err) {
       console.error("[agent] rationale failed, using the default:", err instanceof Error ? err.message : err);
       return DEFAULT_RATIONALE[tier];
@@ -68,7 +74,7 @@ export async function tierRationale(tier: Tier, amount: number, spot: number): P
     const response = await anthropic.messages.create({
       model: config.agent.model,
       max_tokens: 300,
-      system: RATIONALE_SYSTEM,
+      system: rationaleSystem(),
       messages: [{ role: "user", content: prompt }],
     });
     const text = response.content.find((b): b is Anthropic.TextBlock => b.type === "text")?.text.trim();

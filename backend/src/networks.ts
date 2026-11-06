@@ -23,6 +23,8 @@ export interface Network {
   explorerUrl: string;
   /// Mempool minimum for maxFeePerGas (0 = no floor).
   minMaxFeePerGas: bigint;
+  /// Real money: a mainnet, as opposed to a testnet with worthless tokens.
+  real: boolean;
   /// Token addresses known from the chain's official docs ("" = set in env).
   defaults: { usdc: string; baseToken: string };
 }
@@ -38,6 +40,7 @@ export const NETWORKS: Record<NetworkKey, Network> = {
     nativeSymbol: "ETH",
     explorerUrl: "https://sepolia.etherscan.io",
     minMaxFeePerGas: 0n,
+    real: false,
     // Our own MockUSDC and mETH are deployed here; USDC_ADDRESS comes from env.
     defaults: { usdc: "", baseToken: "0x5A9E9fF59AeBb96C14DFaB7C2a43d0C130ba9282" },
   },
@@ -49,6 +52,7 @@ export const NETWORKS: Record<NetworkKey, Network> = {
     nativeSymbol: "USDC",
     explorerUrl: "https://explorer.testnet.arc.io",
     minMaxFeePerGas: 20n * GWEI,
+    real: false,
     // USDC (6 decimals as ERC-20) and bridged WETH (18), per the contract-addresses page.
     defaults: { usdc: "0x3600000000000000000000000000000000000000", baseToken: "0x2c4047028a72803939b6fb674D01bC059B5C4961" },
   },
@@ -60,6 +64,7 @@ export const NETWORKS: Record<NetworkKey, Network> = {
     nativeSymbol: "USDC",
     explorerUrl: "https://explorer.arc.io",
     minMaxFeePerGas: 20n * GWEI,
+    real: true,
     // Mainnet token addresses were not verified: set USDC_ADDRESS / METH_ADDRESS.
     defaults: { usdc: "", baseToken: "" },
   },
@@ -133,6 +138,7 @@ export interface NetworkInfo {
   nativeSymbol: string;
   explorerUrl: string;
   feeFloorGwei: number;
+  real: boolean;
   /// Token addresses known from the chain's docs ("" = not set up yet).
   usdc: string;
   baseToken: string;
@@ -158,10 +164,23 @@ export function describeNetworks(
       nativeSymbol: n.nativeSymbol,
       explorerUrl: n.explorerUrl,
       feeFloorGwei: Number(n.minMaxFeePerGas) / 1e9,
+      real: n.real,
       usdc: (active && env.usdc) || n.defaults.usdc,
       baseToken: (active && env.baseToken) || n.defaults.baseToken,
       aqua: resolveAquaDeployment(n.chain.id, active ? { aqua: env.aqua, router: env.router } : {}),
       active,
     };
   });
+}
+
+/// ---- what the yield page may show ------------------------------------------------
+
+/// The yield tiers' APY figures are rough guesses from range width, fine as
+/// a demo on a testnet and not something to show a customer whose real money
+/// is at stake. They are hidden on a real-money network unless SHOW_APY_ESTIMATES=1
+/// turns them back on (or =0 hides them on a testnet too).
+export function showApyEstimates(real: boolean, override?: string): boolean {
+  if (override === "1") return true;
+  if (override === "0") return false;
+  return !real;
 }
