@@ -1,22 +1,39 @@
 // End-to-end smoke test of the 1inch Aqua path on the configured network,
 // using the same code the backend uses (aqua.ts) and the official SDKs:
-// ship a small full-range strategy, read its balances from Aqua, quote and
-// make one tiny swap through the SwapVM router, then dock it.
+// plan a position, ship its strategies, read their balances from Aqua, quote
+// and make one tiny swap through the SwapVM router, then dock them.
 //
-//   cd backend && CHAIN=sepolia npm run aqua:smoke              # read-only: balances + readiness
-//   cd backend && CHAIN=sepolia npm run aqua:smoke -- --send    # sends ~6 transactions from the treasury
+//   cd backend && CHAIN=sepolia npm run aqua:smoke                           # read-only: balances + readiness
+//   cd backend && CHAIN=sepolia npm run aqua:smoke -- --send                 # a full-range strategy
+//   cd backend && CHAIN=sepolia npm run aqua:smoke -- --send --shape=hybrid  # core + full-range tail
 //   cd backend && CHAIN=sepolia npm run aqua:smoke -- --send --usd=5
 //
 // The treasury pays the gas and needs the pair tokens (mETH + MockUSDC on
-// Sepolia). It shows nothing on a chain where Aqua is not deployed.
+// Sepolia). Shows nothing on a chain where Aqua is not deployed.
 import { decodeFunctionResult, encodeFunctionData, formatUnits, maxUint256, parseAbi, type Address } from "viem";
 import { config } from "../src/config.js";
 import { sv } from "../src/aquaSdk.js";
-import { aquaReady, aquaUnavailableReason, dockAll, ensureApprovals, ethUsd, PAIR, shipBin, strategyBalances, verifyAquaOnChain } from "../src/aqua.js";
+import {
+  aquaUnavailableReason,
+  dockAll,
+  ensureApprovals,
+  ethUsd,
+  PAIR,
+  planPosition,
+  shipBin,
+  strategyBalances,
+  verifyAquaOnChain,
+} from "../src/aqua.js";
 import { publicClient, sendTreasuryTx, treasuryAddress, treasuryEthBalance, waitForTx } from "../src/chain.js";
 
+const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const send = process.argv.includes("--send");
-const usd = Number(process.argv.find((a) => a.startsWith("--usd="))?.slice(6) ?? 2);
+const usd = Number(arg("usd") ?? 2);
+const shape = arg("shape") ?? "full";
+if (shape !== "full" && shape !== "hybrid") {
+  console.error(`--shape must be full or hybrid, got "${shape}"`);
+  process.exit(2);
+}
 const net = config.network;
 const erc20 = parseAbi([
   "function balanceOf(address) view returns (uint256)",
@@ -25,6 +42,8 @@ const erc20 = parseAbi([
 ]);
 const tx = (hash: string) => `${net.explorerUrl}/tx/${hash}`;
 const step = (s: string) => console.log(`\n▸ ${s}`);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const fmt = (b: { eth: bigint; usdc: bigint }) => `base ${formatUnits(b.eth, 18)} · USDC ${formatUnits(b.usdc, 6)}`;
 
 // Public RPCs sit behind load balancers, so a read right after a confirmed
 // transaction can come from a node a block behind. Re-read until the state
@@ -33,7 +52,7 @@ type Bals = { eth: bigint; usdc: bigint };
 async function settled(hash: string, until: (b: Bals) => boolean): Promise<Bals> {
   let b = await strategyBalances(hash);
   for (let i = 1; i < 8 && !until(b); i++) {
-    await new Promise((r) => setTimeout(r, 2_000));
+    await sleep(2_000);
     b = await strategyBalances(hash);
   }
   return b;
@@ -63,7 +82,16 @@ if (!send) {
 }
 
 const spot = await ethUsd();
-console.log(`  ETH/USD ${spot.toFixed(2)} · position size $${usd}`);
+// The same planner the app uses: Steady (one full-range bin), or an advanced
+// hybrid over -50%…+100% of today's price.
+const plan =
+  shape === "hybrid"
+    ? planPosition({ mode: "advanced", shape: "hybrid", priceMin: spot * 0.5, priceMax: spot * 2 }, spot)
+    : planPosition({ mode: "low" }, spot);
+console.log(`  ETH/USD ${spot.toFixed(2)} · $${usd} as ${shape}: ${plan.bins.length} strategies`);
+plan.bins.forEach((b, i) =>
+  console.log(`    ${i + 1}. ${b ? `$${b.min.toFixed(0)} – $${b.max.toFixed(0)}` : "full range"} · ${((b?.weight ?? 1) * 100).toFixed(0)}% of the money`),
+);
 
 step("approve Aqua and the router to pull the pair tokens");
 await ensureApprovals();
@@ -75,20 +103,23 @@ for (const token of [PAIR.eth.address, PAIR.usdc.address] as Address[]) {
 }
 console.log("  ok");
 
-step("ship a full-range strategy (AquaXYCAmmStrategy via the Aqua SDK)");
-const strategy = await shipBin(null, usd, spot, 30);
-await waitForTx(strategy.shipTx as `0x${string}`);
-console.log(`  hash ${strategy.hash}\n  ${tx(strategy.shipTx)}`);
+step("ship the strategies (SwapVM concentrate / XYC programs via the Aqua SDK)");
+const strategies = [];
+for (const b of plan.bins) strategies.push(await shipBin(b, usd * (b?.weight ?? 1), spot, plan.feeBps));
+await Promise.all(strategies.map((s) => waitForTx(s.shipTx as `0x${string}`)));
+strategies.forEach((s, i) => console.log(`  ${i + 1}. ${s.hash}\n     ${tx(s.shipTx)}`));
 
 let ok = false;
 try {
-  step("read the virtual balances Aqua holds for it");
-  const before = await settled(strategy.hash, (b) => b.eth > 0n && b.usdc > 0n) // a full-range strategy starts with both tokens;
-  console.log(`  base ${formatUnits(before.eth, 18)} · USDC ${formatUnits(before.usdc, 6)}`);
-  if (before.eth === 0n || before.usdc === 0n) throw new Error("Aqua does not report both token balances for the strategy");
+  step("read the virtual balances Aqua holds for each");
+  // A range around the price starts with both tokens.
+  const before = await Promise.all(strategies.map((s) => settled(s.hash, (b) => b.eth > 0n && b.usdc > 0n)));
+  before.forEach((b, i) => console.log(`  ${i + 1}. ${fmt(b)}`));
+  if (before.some((b) => b.eth === 0n || b.usdc === 0n)) throw new Error("Aqua does not report both token balances for every strategy");
 
-  step("quote and swap $0.10 of USDC into the base token through the SwapVM router");
-  const order = sv.Order.decode(new sv.HexString(strategy.order));
+  step("quote and swap $0.10 of USDC into the base token against strategy 1");
+  const target = strategies[0]!;
+  const order = sv.Order.decode(new sv.HexString(target.order));
   const amount = 100_000n; // 0.10 USDC (6 decimals)
   const call = new sv.SwapVMContract(new sv.Address(config.aqua.router));
   const args = { order, amount, takerTraits: sv.TakerTraits.default(), tokenIn: new sv.Address(PAIR.usdc.address), tokenOut: new sv.Address(PAIR.eth.address) };
@@ -97,7 +128,7 @@ try {
   let res: Awaited<ReturnType<typeof publicClient.call>> | undefined;
   for (let i = 0; i < 8 && !res; i++) {
     res = await publicClient.call({ account: treasuryAddress, to: q.to.toString() as Address, data: q.data.toString() as `0x${string}` }).catch(async () => {
-      await new Promise((r) => setTimeout(r, 2_000));
+      await sleep(2_000);
       return undefined;
     });
   }
@@ -108,26 +139,37 @@ try {
   const swapHash = await sendTreasuryTx({ to: s.to.toString() as Address, data: s.data.toString() as `0x${string}` });
   console.log(`  ${tx(swapHash)}`);
 
-  const after = await settled(strategy.hash, (b) => b.usdc > before.usdc && b.eth < before.eth);
-  console.log(`  balances now: base ${formatUnits(after.eth, 18)} · USDC ${formatUnits(after.usdc, 6)}`);
-  ok = after.usdc > before.usdc && after.eth < before.eth;
-  console.log(ok ? "  ✓ the swap moved the strategy's balances the right way (USDC up, base token down)" : "  ✗ balances did not move as expected");
+  const after = await settled(target.hash, (b) => b.usdc > before[0]!.usdc && b.eth < before[0]!.eth);
+  console.log(`  strategy 1 now: ${fmt(after)}`);
+  const moved = after.usdc > before[0]!.usdc && after.eth < before[0]!.eth;
+  console.log(moved ? "  ✓ the swap moved strategy 1 the right way (USDC up, base token down)" : "  ✗ strategy 1 did not move as expected");
+  ok = moved;
+
+  // Every strategy is its own isolated pool in Aqua: swapping one must not touch the others.
+  for (let i = 1; i < strategies.length; i++) {
+    const other = await strategyBalances(strategies[i]!.hash);
+    const same = other.eth === before[i]!.eth && other.usdc === before[i]!.usdc;
+    console.log(`  ${same ? "✓" : "✗"} strategy ${i + 1} untouched (${fmt(other)})`);
+    ok = ok && same;
+  }
 } finally {
-  step("dock the strategy (returns it to the treasury)");
+  step("dock the strategies (returns them to the treasury)");
   for (let i = 1; ; i++) {
     try {
-      await dockAll([strategy]);
+      await dockAll(strategies);
       break;
     } catch (err) {
       // gas estimation can land on a node that has not seen the ship yet
       if (i >= 6) throw err;
-      await new Promise((r) => setTimeout(r, 3_000));
+      await sleep(3_000);
     }
   }
-  const end = await settled(strategy.hash, (b) => b.eth === 0n && b.usdc === 0n);
-  console.log(`  balances after dock: base ${end.eth} · USDC ${end.usdc}`);
-  if (end.eth !== 0n || end.usdc !== 0n) ok = false;
+  for (const [i, s] of strategies.entries()) {
+    const end = await settled(s.hash, (b) => b.eth === 0n && b.usdc === 0n);
+    console.log(`  ${i + 1}. after dock: base ${end.eth} · USDC ${end.usdc}`);
+    if (end.eth !== 0n || end.usdc !== 0n) ok = false;
+  }
 }
 
-console.log(ok ? "\n✓ Aqua ship → quote → swap → dock works on " + net.name : "\n✗ smoke test failed");
+console.log(ok ? `\n✓ Aqua ship → quote → swap → dock works on ${net.name} (${shape}, ${strategies.length} strategies)` : "\n✗ smoke test failed");
 process.exit(ok ? 0 : 1);
