@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { decodeFunctionData, parseAbi, type Address } from "viem";
 import { sv } from "../src/aquaSdk.js";
 import { binsFor } from "../src/aquaMath.js";
-import { ARC_PAIR, buildSelfOrder, matchesPrepared, planSelfClose, planSelfOpen } from "../src/selfCustody.js";
+import { ARC_PAIR, buildSelfOrder, managerAbi, matchesPrepared, planManagerClose, planManagerOpen, planSelfClose, planSelfOpen } from "../src/selfCustody.js";
 
 const MAKER = "0x00000000000000000000000000000000c0ffee01" as Address;
 const AQUA = "0x1111113ccf1426a8e30e2bff5e005d929bf6a90a" as Address;
@@ -137,4 +137,73 @@ test("matching ignores the case of addresses and data", () => {
   const { steps } = open();
   const sent = steps.map((s) => tx(s.to.toUpperCase().replace("0X", "0x"), s.data.toUpperCase().replace("0X", "0x"), MAKER.toUpperCase().replace("0X", "0x") as Address));
   assert.equal(matchesPrepared(MAKER, steps, sent), true);
+});
+
+// ---- through the position manager -------------------------------------------------------------
+
+const MANAGER = "0x3864873b1d4353e08ec4a3a496871fab244c6590" as Address;
+const viaManager = (over: Partial<Parameters<typeof planManagerOpen>[0]> = {}) =>
+  planManagerOpen({ wallet: MAKER, manager: MANAGER, amountUsd: 100, bins: hybrid(), feeBps: 30, spot: SPOT, pair: ARC_PAIR, allowance: none, ...over });
+
+test("with a manager, the strategies belong to the manager, not the wallet", () => {
+  const { strategies } = viaManager();
+  assert.ok(strategies.length > 1);
+  for (const s of strategies) assert.equal(sv.Order.decode(new sv.HexString(s.order)).maker.toString().toLowerCase(), MANAGER);
+});
+
+test("with a manager, a position is up to two approvals then ONE open for every strategy", () => {
+  const { steps, strategies } = viaManager();
+  assert.equal(steps.length, 3); // approve WETH, approve USDC, open
+  const open = steps[steps.length - 1]!;
+  assert.equal(open.to.toLowerCase(), MANAGER);
+  const call = decodeFunctionData({ abi: managerAbi, data: open.data });
+  assert.equal(call.functionName, "open");
+  const [orders, weth, usdc] = call.args as readonly [readonly string[], readonly bigint[], readonly bigint[]];
+  assert.deepEqual([...orders], strategies.map((s) => s.order));
+  assert.deepEqual([...weth], strategies.map((s) => BigInt(s.eth)));
+  assert.deepEqual([...usdc], strategies.map((s) => BigInt(s.usdc)));
+});
+
+test("manager approvals go to the manager, for exactly what the position takes", () => {
+  const { steps, need } = viaManager();
+  const approvals = steps.slice(0, -1).map((s) => ({ to: s.to.toLowerCase(), args: decodeFunctionData({ abi: erc, data: s.data }).args as readonly [Address, bigint] }));
+  for (const a of approvals) assert.equal(a.args[0].toLowerCase(), MANAGER);
+  assert.deepEqual(approvals.map((a) => a.args[1]).sort(), [need.eth, need.usdc].sort());
+  assert.ok(approvals.every((a) => a.args[1] !== 2n ** 256n - 1n), "never unlimited");
+});
+
+test("an allowance that already covers the position asks for no approval, only the open", () => {
+  const { need } = viaManager();
+  const { steps } = viaManager({ allowance: need });
+  assert.equal(steps.length, 1);
+  assert.equal(steps[0]!.to.toLowerCase(), MANAGER);
+});
+
+test("a short allowance on one token only asks for that token", () => {
+  const { need } = viaManager();
+  const { steps } = viaManager({ allowance: { eth: need.eth, usdc: 0n } });
+  assert.equal(steps.length, 2);
+  assert.equal(steps[0]!.to.toLowerCase(), ARC_PAIR.usdc.address.toLowerCase());
+});
+
+test("a range above the price holds only WETH, so only WETH is approved", () => {
+  const { steps } = viaManager({ bins: binsFor("spot", SPOT * 1.1, SPOT * 1.5, SPOT) });
+  assert.equal(steps.length, 2);
+  assert.equal(steps[0]!.to.toLowerCase(), ARC_PAIR.eth.address.toLowerCase());
+});
+
+test("closing through the manager is one close of its position id, to the manager", () => {
+  const steps = planManagerClose(MANAGER, 7n);
+  assert.equal(steps.length, 1);
+  assert.equal(steps[0]!.to.toLowerCase(), MANAGER);
+  const call = decodeFunctionData({ abi: managerAbi, data: steps[0]!.data });
+  assert.equal(call.functionName, "close");
+  assert.deepEqual([...call.args!], [7n]);
+});
+
+test("the manager's transactions match only when sent from the wallet", () => {
+  const { steps } = viaManager();
+  const sent = steps.map((s) => ({ to: s.to, input: s.data, from: MAKER }));
+  assert.ok(matchesPrepared(MAKER, steps, sent));
+  assert.ok(!matchesPrepared(MAKER, steps, sent.map((t) => ({ ...t, from: "0x00000000000000000000000000000000000000aa" }))));
 });

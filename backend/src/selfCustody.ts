@@ -74,13 +74,8 @@ export interface OpenInput {
 
 const fmt = (v: bigint, decimals: bigint, digits: number) => (Number(v) / 10 ** Number(decimals)).toLocaleString("en-US", { maximumFractionDigits: digits });
 
-/// The strategies for a new position and the transactions that open it: first
-/// any approval Aqua is short of, then one ship per strategy. Aqua pulls the
-/// token a swap pays out from the wallet, so its allowance has to cover what the
-/// position (and the wallet's other positions) could pay out; an approval is
-/// only asked for when the current one falls short, and then for twice the need
-/// (allowances.ts), so ordinary growth does not need another signature.
-export function planSelfOpen(i: OpenInput): { strategies: SelfStrategy[]; steps: Step[]; need: Amounts } {
+/// The strategies for a position, each owned by `i.maker`, sized from the amount and split by weight.
+function buildStrategies(i: Pick<OpenInput, "maker" | "amountUsd" | "bins" | "feeBps" | "spot" | "pair">): { strategies: SelfStrategy[]; need: Amounts } {
   const strategies: SelfStrategy[] = [];
   const need: Amounts = { eth: 0n, usdc: 0n };
   for (const bin of i.bins) {
@@ -100,6 +95,17 @@ export function planSelfOpen(i: OpenInput): { strategies: SelfStrategy[]; steps:
     need.eth += eth;
     need.usdc += usdc;
   }
+  return { strategies, need };
+}
+
+/// The strategies for a new position and the transactions that open it: first
+/// any approval Aqua is short of, then one ship per strategy. Aqua pulls the
+/// token a swap pays out from the wallet, so its allowance has to cover what the
+/// position (and the wallet's other positions) could pay out; an approval is
+/// only asked for when the current one falls short, and then for twice the need
+/// (allowances.ts), so ordinary growth does not need another signature.
+export function planSelfOpen(i: OpenInput): { strategies: SelfStrategy[]; steps: Step[]; need: Amounts } {
+  const { strategies, need } = buildStrategies(i);
 
   const steps: Step[] = [];
   for (const [symbol, token, current, total, decimals] of [
@@ -169,4 +175,74 @@ export function matchesPrepared(wallet: string, steps: Array<{ to: string; data:
     used.add(i);
   }
   return true;
+}
+
+// ---- through the position manager --------------------------------------------------------------
+// On a chain that has an AquaPositionManager (contracts/src/AquaPositionManager.sol) the customer
+// signs one `open` instead of an approval and a `ship` per strategy, and one `close` instead of a
+// `dock` per strategy. The manager is the Aqua maker, so the strategies are built with it as the
+// maker, and the tokens move into it when the position opens.
+
+export const managerAbi = parseAbi([
+  "function open(bytes[] strategies, uint256[] wethAmounts, uint256[] usdcAmounts) returns (uint256)",
+  "function close(uint256 id)",
+  "function positionOf(uint256 id) view returns (address owner, bool closed, bytes32[] hashes)",
+  "event Opened(uint256 indexed id, address indexed owner, bytes32[] hashes, uint256 weth, uint256 usdc)",
+]);
+
+export interface ManagerOpenInput {
+  /// The customer's wallet: it pays in and owns the position.
+  wallet: Address;
+  manager: Address;
+  amountUsd: number;
+  bins: Array<Bin | null>;
+  feeBps: number;
+  spot: number;
+  pair: PairTokens;
+  /// What the wallet has already approved the manager for, per token.
+  allowance: Amounts;
+  /// Token names for the wallet's confirmation sheet.
+  symbols?: { base: string; quote: string };
+}
+
+/// The transactions that open a position through the manager: an approval for exactly what this
+/// position takes, for each token the manager is short of, then one `open`. The approval is exact
+/// (not padded) because the manager pulls the tokens once, at open.
+export function planManagerOpen(i: ManagerOpenInput): { strategies: SelfStrategy[]; steps: Step[]; need: Amounts } {
+  const { strategies, need } = buildStrategies({ maker: i.manager, amountUsd: i.amountUsd, bins: i.bins, feeBps: i.feeBps, spot: i.spot, pair: i.pair });
+  const base = i.symbols?.base ?? "WETH";
+  const quote = i.symbols?.quote ?? "USDC";
+  const steps: Step[] = [];
+  for (const [symbol, token, current, total, decimals] of [
+    [base, i.pair.eth.address, i.allowance.eth, need.eth, i.pair.eth.decimals],
+    [quote, i.pair.usdc.address, i.allowance.usdc, need.usdc, i.pair.usdc.decimals],
+  ] as Array<[string, string, bigint, bigint, bigint]>) {
+    if (total === 0n || current >= total) continue;
+    steps.push({
+      to: token as Address,
+      data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [i.manager, total] }),
+      description: `Let the Takarabako position contract take ${fmt(total, decimals, symbol === base ? 6 : 2)} ${symbol} from your wallet, for this position only.`,
+    });
+  }
+  steps.push({
+    to: i.manager,
+    data: encodeFunctionData({
+      abi: managerAbi,
+      functionName: "open",
+      args: [strategies.map((s) => s.order as Hex), strategies.map((s) => BigInt(s.eth)), strategies.map((s) => BigInt(s.usdc))],
+    }),
+    description: `Open your position (${strategies.length} ${strategies.length === 1 ? "strategy" : "strategies"}) on 1inch Aqua in one transaction`,
+  });
+  return { strategies, steps, need };
+}
+
+/// The one transaction that closes a manager position and returns everything it holds to the owner.
+export function planManagerClose(manager: Address, positionId: bigint): Step[] {
+  return [
+    {
+      to: manager,
+      data: encodeFunctionData({ abi: managerAbi, functionName: "close", args: [positionId] }),
+      description: "Close your position and send everything it holds back to your wallet",
+    },
+  ];
 }

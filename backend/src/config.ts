@@ -14,6 +14,12 @@ export const config = {
   // their own wallet. Real money, so off unless SELF_CUSTODY_ARC=1, and capped per position.
   selfCustody: {
     arcEnabled: process.env.SELF_CUSTODY_ARC === "1",
+    // The same flow on Sepolia, for testing it with worthless tokens. Only when this backend runs on Sepolia.
+    sepoliaEnabled: process.env.SELF_CUSTODY_SEPOLIA === "1",
+    // AquaPositionManager per chain (contracts/src/AquaPositionManager.sol). With one, a position
+    // opens and closes in a single transaction; without, the wallet signs a ship / dock per strategy.
+    arcManager: process.env.SELF_MANAGER_ARC ?? "",
+    sepoliaManager: process.env.SELF_MANAGER_SEPOLIA ?? "",
     maxUsd: Number(process.env.SELF_CUSTODY_MAX_USD ?? 100),
     arcRpcUrl: process.env.ARC_RPC_URL || NETWORKS.arc.defaultRpcUrl,
   },

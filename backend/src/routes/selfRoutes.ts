@@ -6,10 +6,12 @@ import { asyncHandler } from "../asyncHandler.js";
 import { config } from "../config.js";
 import { requireSession } from "../sessions.js";
 import { listSelf, prepareClose, prepareOpen, recordClose, recordOpen, walletState } from "../selfPositions.js";
+import { selfNet } from "../selfChain.js";
 import { SELF_SHAPES, type SelfShape } from "../selfShapes.js";
 
-/// Self-custody positions on Arc mainnet: the customer's own wallet signs. Real
-/// money, so every route answers 404 unless SELF_CUSTODY_ARC=1 (selfPositions.ts).
+/// Self-custody positions: the customer's own wallet signs. /self/arc/* is Arc mainnet (real money,
+/// 404 unless SELF_CUSTODY_ARC=1) and /self/sepolia/* is the same flow on Sepolia with worthless
+/// tokens (404 unless SELF_CUSTODY_SEPOLIA=1). See selfChain.ts and selfPositions.ts.
 export const selfRouter = Router();
 
 const hashes = z.array(z.string().regex(/^0x[0-9a-fA-F]{64}$/)).min(1).max(8);
@@ -30,46 +32,53 @@ async function account(res: import("express").Response) {
   return a;
 }
 
-/// GET /self/arc/wallet — what the customer's wallet holds on Arc.
-selfRouter.get("/self/arc/wallet", requireSession("full"), asyncHandler(async (req, res) => {
+/// GET /self/:net/wallet — what the customer's wallet holds on Arc.
+selfRouter.get("/self/:net/wallet", requireSession("full"), asyncHandler(async (req, res) => {
+  const net = selfNet(String(req.params.net));
   // ?address= picks another wallet the customer connected (MetaMask, say); default is their Takarabako wallet.
   const asked = address.safeParse(req.query.address);
   if (req.query.address !== undefined && !asked.success) return void res.status(400).json({ error: "not a wallet address" });
-  const s = await walletState((asked.success ? asked.data : (await account(res)).privyWallet).toLowerCase());
+  const s = await walletState(net, (asked.success ? asked.data : (await account(res)).privyWallet).toLowerCase());
   res.json({
     address: s.address,
     usdc: Number(formatUnits(s.usdc, 6)),
     weth: Number(formatUnits(s.weth, 18)),
-    gasUsdc: Number(formatUnits(s.gasUsdc, 6)),
+    /// The native coin for network fees, and its name on this chain (USDC on Arc, ETH on Sepolia).
+    gas: Number(formatUnits(s.gasNative, 18)),
+    gasSymbol: net.symbols.gas,
+    gasUsdc: Number(formatUnits(s.gasNative, 18)),
+    symbols: net.symbols,
+    /// "contract": a position manager holds the tokens while it is open; "wallet": they stay in the wallet.
+    custody: net.manager ? "contract" : "wallet",
     maxUsd: config.selfCustody.maxUsd,
   });
 }));
 
-/// POST /self/arc/prepare { shape, priceMin, priceMax, amount } — the transactions to sign to open a position.
-selfRouter.post("/self/arc/prepare", requireSession("full"), asyncHandler(async (req, res) => {
+/// POST /self/:net/prepare { shape, priceMin, priceMax, amount } — the transactions to sign to open a position.
+selfRouter.post("/self/:net/prepare", requireSession("full"), asyncHandler(async (req, res) => {
   const body = Open.safeParse(req.body);
   if (!body.success) return void res.status(400).json({ error: body.error.flatten() });
-  res.json(await prepareOpen(await account(res), body.data));
+  res.json(await prepareOpen(selfNet(String(req.params.net)), await account(res), body.data));
 }));
 
-/// POST /self/arc/record { positionId, txHashes } — after signing: checks them on chain and opens the position.
-selfRouter.post("/self/arc/record", requireSession("full"), asyncHandler(async (req, res) => {
+/// POST /self/:net/record { positionId, txHashes } — after signing: checks them on chain and opens the position.
+selfRouter.post("/self/:net/record", requireSession("full"), asyncHandler(async (req, res) => {
   const body = Record.safeParse(req.body);
   if (!body.success) return void res.status(400).json({ error: body.error.flatten() });
-  res.json(await recordOpen(await account(res), body.data.positionId, body.data.txHashes));
+  res.json(await recordOpen(selfNet(String(req.params.net)), await account(res), body.data.positionId, body.data.txHashes));
 }));
 
-/// GET /self/arc/positions — the customer's self-custody positions, valued live.
-selfRouter.get("/self/arc/positions", requireSession("full"), asyncHandler(async (_req, res) => {
-  res.json({ positions: await listSelf(res.locals.session.privyUserId) });
+/// GET /self/:net/positions — the customer's self-custody positions, valued live.
+selfRouter.get("/self/:net/positions", requireSession("full"), asyncHandler(async (req, res) => {
+  res.json({ positions: await listSelf(selfNet(String(req.params.net)), res.locals.session.privyUserId) });
 }));
 
-selfRouter.post("/self/arc/positions/:id/close/prepare", requireSession("full"), asyncHandler(async (req, res) => {
-  res.json(await prepareClose(await account(res), String(req.params.id)));
+selfRouter.post("/self/:net/positions/:id/close/prepare", requireSession("full"), asyncHandler(async (req, res) => {
+  res.json(await prepareClose(selfNet(String(req.params.net)), await account(res), String(req.params.id)));
 }));
 
-selfRouter.post("/self/arc/positions/:id/close/record", requireSession("full"), asyncHandler(async (req, res) => {
+selfRouter.post("/self/:net/positions/:id/close/record", requireSession("full"), asyncHandler(async (req, res) => {
   const body = RecordClose.safeParse(req.body);
   if (!body.success) return void res.status(400).json({ error: body.error.flatten() });
-  res.json(await recordClose(await account(res), String(req.params.id), body.data.txHashes));
+  res.json(await recordClose(selfNet(String(req.params.net)), await account(res), String(req.params.id), body.data.txHashes));
 }));
