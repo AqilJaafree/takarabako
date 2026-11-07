@@ -7,34 +7,44 @@
 
 ## Arc Testnet
 
-Not deployed yet. Deploy with your own treasury key (the contracts are owned by
-whoever deploys them), then record the addresses here and in `backend/.env`:
+Deployed 2026-11-07, owned by the treasury `0x9205DcCC081D896edeAB423d88665660d61d5bfE`, with
+`APY_BPS` 0 (the vault promises no yield it has no reserve for):
 
 ```bash
 cd contracts
-forge script script/DeployCashChain.s.sol --rpc-url https://rpc.testnet.arc.io \
+KIOSK_ID=mumbai-01 APY_BPS=0 forge script script/DeployCashChain.s.sol --rpc-url https://rpc.testnet.arc.io \
   --broadcast --private-key $TREASURY_PRIVATE_KEY --with-gas-price 25gwei --legacy
 ```
 
 | Contract | Address |
 |---|---|
 | USDC (Circle, 6 decimals as an ERC-20) | `0x3600000000000000000000000000000000000000` |
-| `TakarabakoVault` | _to deploy_ |
-| `TakarabakoCashReceipt (tkCASH)` | _to deploy_ |
+| `TakarabakoVault` | `0x6cc5f175810e61A56508049f0527BC75EB7e77e4` |
+| `TakarabakoCashReceipt (tkCASH)` | `0x071436DC66a7C86a7c12Bc7E337A05fb46908c38` |
 | CCTP `TokenMessengerV2` (testnet) | `0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA` |
 | CCTP `MessageTransmitterV2` (testnet) | `0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275` |
 
 ## Hedera Testnet (chain 296, EVM side)
 
-Not deployed yet. Deploy with your own treasury key (the contracts belong to whoever
-deploys them):
+Deployed 2026-11-07 with `forge create`, owned by the treasury `0x9205DcCC081D896edeAB423d88665660d61d5bfE`.
+`APY_BPS` is 0: the vault promises no yield it has no reserve for.
+
+`forge script` with `HEDERA=1` does not work, even with `--skip-simulation`: forge still runs the
+script locally first and crashes on the Hedera Token Service contract at `0x167`. Deploy directly:
 
 ```bash
 cd contracts
-HEDERA=1 USDC_ADDRESS=0x0000000000000000000000000000000000068cda \
-  forge script script/DeployCashChain.s.sol --rpc-url https://testnet.hashio.io/api \
-  --broadcast --private-key $TREASURY_PRIVATE_KEY --skip-simulation --legacy
+R=https://testnet.hashio.io/api; O=<treasury address>
+forge create src/TakarabakoVaultHedera.sol:TakarabakoVaultHedera --rpc-url $R --private-key $TREASURY_PRIVATE_KEY \
+  --legacy --broadcast --constructor-args 0x0000000000000000000000000000000000068cda 0 $O
+forge create src/TakarabakoCashReceipt.sol:TakarabakoCashReceipt --rpc-url $R --private-key $TREASURY_PRIVATE_KEY \
+  --legacy --broadcast --constructor-args $O
+cast send <tkCASH> 'setKiosk(bytes32,bool)' $(cast format-bytes32-string mumbai-01) true --rpc-url $R --private-key $TREASURY_PRIVATE_KEY --legacy
+cast send <tkCASH> 'setDailyTransferLimit(uint256)' 1000000000 --rpc-url $R --private-key $TREASURY_PRIVATE_KEY --legacy
 ```
+
+The treasury account has to receive USDC once (Circle's faucet) before it can approve the vault.
+The backend only sets that approval at startup, so restart it after funding a new treasury.
 
 | | |
 |---|---|
@@ -47,8 +57,11 @@ HEDERA=1 USDC_ADDRESS=0x0000000000000000000000000000000000068cda \
 
 | Contract | Address |
 |---|---|
-| TakarabakoVaultHedera | _deploy, then fill in_ |
-| TakarabakoCashReceipt | _deploy, then fill in_ |
+| TakarabakoVaultHedera | [`0x6cc5f175810e61A56508049f0527BC75EB7e77e4`](https://hashscan.io/testnet/contract/0x6cc5f175810e61A56508049f0527BC75EB7e77e4) |
+| TakarabakoCashReceipt (tkCASH) | [`0x9c57968055d77d765e4EF1E4F138e9089295eD04`](https://hashscan.io/testnet/contract/0x9c57968055d77d765e4EF1E4F138e9089295eD04) |
+
+These match unrelated contracts on Sepolia and Arc mainnet because the same deployer used the same
+nonce. Always check which chain an address is on.
 
 CCTP domains: Ethereum Sepolia 0, Arc Testnet 26. The Sepolia vault below uses a
 mock USDC, which CCTP cannot bridge. To bridge from Sepolia, redeploy the vault
