@@ -53,6 +53,13 @@ import urllib.request
 
 SERIAL_DEV = "/dev/serial0"
 
+# Coin input: an ESP32-S3 counts the JY-616 coin module's pulses and prints
+# "COIN <pulses>" per coin over USB (device-agent/esp32/coin_counter). This
+# listener credits them through the same bridge as notes.
+COIN_DEV = "/dev/ttyACM0"
+SEN_PER_PULSE = 10  # this unit: 10 sen = 1 pulse, 20 sen = 2, 50 sen = 5
+COIN_RETRY_S = 3.0
+
 # ICT protocol bytes.
 POWER_UP = 0x80
 POWER_UP_2 = 0x8F
@@ -229,13 +236,85 @@ def run_serial(dev, bridge):
         acceptor.on_tick()
 
 
+def open_coin_serial(dev):
+    fd = os.open(dev, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+    attrs = termios.tcgetattr(fd)
+    attrs[0] = 0
+    attrs[1] = 0
+    # No HUPCL, so opening and closing the port doesn't reset the ESP32.
+    attrs[2] = termios.CS8 | termios.CREAD | termios.CLOCAL
+    attrs[3] = 0
+    attrs[4] = attrs[5] = termios.B115200
+    attrs[6][termios.VMIN] = 0
+    attrs[6][termios.VTIME] = 0
+    termios.tcsetattr(fd, termios.TCSANOW, attrs)
+    termios.tcflush(fd, termios.TCIOFLUSH)
+    return fd
+
+
+def credit_coin(bridge, pulses):
+    ringgit = pulses * SEN_PER_PULSE / 100
+    if not bridge.session_active:
+        # A coin can't be handed back once it is in the box; it is only logged.
+        log(f"RM{ringgit:.2f} coin inserted with nobody logged in, NOT credited")
+        return
+    log(f"{pulses} pulse(s) -> RM{ringgit:.2f} coin")
+    bridge.deposit(ringgit)
+
+
+def handle_coin_line(bridge, line):
+    parts = line.strip().split()
+    if len(parts) == 2 and parts[0] == "COIN" and parts[1].isdigit() and int(parts[1]) > 0:
+        # Off the read loop so a slow backend never delays the next line.
+        threading.Thread(target=credit_coin, args=(bridge, int(parts[1])), daemon=True).start()
+    elif line.strip() and line.strip() != "READY":
+        log(f"esp32: {line.strip()}")
+
+
+def run_coins(dev, bridge):
+    """Reads the ESP32 forever. If it is unplugged, keeps retrying; the note
+    acceptor keeps working either way."""
+    warned = False
+    while True:
+        try:
+            fd = open_coin_serial(dev)
+        except OSError as e:
+            if not warned:
+                log(f"coin counter {dev} not available ({e.strerror}), retrying")
+                warned = True
+            time.sleep(COIN_RETRY_S)
+            continue
+        warned = False
+        log(f"coin counter listening on {dev} at 115200")
+        buf = b""
+        try:
+            while True:
+                ready, _, _ = select.select([fd], [], [], 1.0)
+                if not ready:
+                    continue
+                data = os.read(fd, 256)
+                if not data:
+                    break
+                buf += data
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    handle_coin_line(bridge, line.decode(errors="replace"))
+        except OSError as e:
+            log(f"coin counter lost ({e.strerror}), retrying")
+        finally:
+            os.close(fd)
+        time.sleep(COIN_RETRY_S)
+
+
 def run_simulate(bridge):
-    log("SIMULATE mode: type a ringgit value (1, 5, 10, 20, 50, 100) or x for a rejected note")
+    log("SIMULATE mode: type a ringgit value (1, 5, 10, 20, 50, 100), c10/c20/c50 for a coin in sen, or x for a rejected note")
     for line in sys.stdin:
         line = line.strip().lower()
         if line == "x":
             bridge.rejected("note not recognised")
             log("simulated rejection sent")
+        elif line.startswith("c") and line[1:].isdigit() and int(line[1:]) % SEN_PER_PULSE == 0:
+            credit_coin(bridge, int(line[1:]) // SEN_PER_PULSE)
         elif line.isdigit() and int(line) in NOTE_VALUES_MYR.values():
             if bridge.session_active:
                 bridge.deposit(int(line))
@@ -254,11 +333,15 @@ if __name__ == "__main__":
         help="device-agent kiosk server that bridges to the backend (default: http://localhost:8080)",
     )
     parser.add_argument("--dev", default=SERIAL_DEV, help=f"serial device (default: {SERIAL_DEV})")
+    parser.add_argument("--coin-dev", default=COIN_DEV, help=f"ESP32 coin counter serial device (default: {COIN_DEV})")
+    parser.add_argument("--no-coins", action="store_true", help="don't listen for the coin counter")
     parser.add_argument("--simulate", action="store_true", help="run without the acceptor attached")
     args = parser.parse_args()
 
     bridge = Bridge(args.bridge_url)
     threading.Thread(target=bridge.poll_session_forever, daemon=True).start()
+    if not args.simulate and not args.no_coins:
+        threading.Thread(target=run_coins, args=(args.coin_dev, bridge), daemon=True).start()
     try:
         if args.simulate:
             time.sleep(SESSION_POLL_S)  # let the first session check land
