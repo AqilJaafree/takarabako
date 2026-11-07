@@ -57,6 +57,7 @@ export const ADVANCED = {
   // A Hybrid the customer builds: this share spread evenly, the rest in a few shaped bins.
   hybridSpotWeight: 0.5,
   hybridShapedBins: 3,
+  hybridShapedFloor: 0.2, // the lightest shaped bin's weight against the heaviest: 5:1
   feeBps: 30,
   apyEstBps: 1200,
 } as const;
@@ -82,6 +83,21 @@ function assertSide(side: HybridOptions["side"], min: number, max: number, spot:
   if (side === "quote" && max > spot) throw new Error(`holding only the quote token needs a price range below today's price ($${spot.toFixed(2)}): move the upper price down`);
 }
 
+/// Re-weights a Hybrid's few shaped bins by how far each sits from the price, nearest to furthest, so its
+/// shape shows beside the even half: the gentle weights of a plain Curve or Bid-Ask would nearly vanish there.
+function steepen(bins: Bin[], mix: HybridOptions["mix"], spot: number): Bin[] {
+  const away = bins.map((b) => Math.abs(Math.log(Math.sqrt(b.min * b.max) / spot)));
+  const near = Math.min(...away);
+  const far = Math.max(...away);
+  const floor = ADVANCED.hybridShapedFloor;
+  const raw = away.map((d) => {
+    const t = far > near ? (d - near) / (far - near) : 0; // 0 nearest the price, 1 furthest
+    return mix === "curve" ? 1 - (1 - floor) * t : floor + (1 - floor) * t;
+  });
+  const total = raw.reduce((s, w) => s + w, 0);
+  return bins.map((b, i) => ({ ...b, weight: raw[i]! / total }));
+}
+
 /// Splits [min, max] into bins for a liquidity shape. Each bin becomes one
 /// SwapVM concentrated-liquidity strategy, which holds its liquidity evenly
 /// across its own range; weighting the bins draws the shape.
@@ -99,7 +115,7 @@ export function binsFor(shape: Exclude<Shape, "full">, min: number, max: number,
 
   if (hybrid) {
     assertSide(hybrid.side, min, max, spot);
-    const shaped = binsFor(hybrid.mix, min, max, spot, ADVANCED.hybridShapedBins);
+    const shaped = steepen(binsFor(hybrid.mix, min, max, spot, ADVANCED.hybridShapedBins), hybrid.mix, spot);
     const spotWeight = ADVANCED.hybridSpotWeight;
     return [{ min, max, weight: spotWeight }, ...shaped.map((b) => ({ ...b, weight: b.weight * (1 - spotWeight) }))];
   }

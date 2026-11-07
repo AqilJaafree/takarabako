@@ -95,6 +95,36 @@ test("a hybrid position is worth what was put in, and both bins hold both tokens
   close(total, 1000, 0.5);
 });
 
+const shaped = (bins: Array<{ weight: number }>) => bins.slice(1).map((b) => b.weight);
+
+test("a customer-built Hybrid weights its shaped half 5:1, leaving half the money in Spot", () => {
+  const curve = binsFor("hybrid", 1600, 2500, 2000, undefined, { mix: "curve", side: "both" });
+  const [low, mid, high] = shaped(curve) as [number, number, number];
+  close(curve[0]!.weight, 0.5, 1e-9);
+  close(low + mid + high, 0.5, 1e-9);
+  close(mid / low, 5, 1e-9);
+  close(mid / high, 5, 1e-9);
+
+  const bidask = binsFor("hybrid", 1600, 2500, 2000, undefined, { mix: "bidask", side: "both" });
+  const [bLow, bMid, bHigh] = shaped(bidask) as [number, number, number];
+  close(bLow / bMid, 5, 1e-9);
+  close(bHigh / bMid, 5, 1e-9);
+});
+
+test("a customer-built Hybrid's shape runs from the price outwards when the range is one-sided", () => {
+  const above = shaped(binsFor("hybrid", 2020, 2400, 2000, undefined, { mix: "curve", side: "base" }));
+  assert.ok(above[0]! > above[1]! && above[1]! > above[2]!, "curve: most nearest the price");
+  close(above[0]! / above[2]!, 5, 1e-9);
+  const below = shaped(binsFor("hybrid", 1600, 1980, 2000, undefined, { mix: "bidask", side: "quote" }));
+  assert.ok(below[0]! > below[1]! && below[1]! > below[2]!, "bid-ask: most furthest from the price");
+  close(below[0]! / below[2]!, 5, 1e-9);
+});
+
+test("plain Curve and Bid-Ask keep their gentler weights", () => {
+  const w = binsFor("curve", 1000, 4000, 2000).map((b) => b.weight);
+  assert.ok(Math.max(...w) / Math.min(...w) < 5);
+});
+
 test("a base token's amount follows its own decimals", () => {
   assert.equal(baseAmount(1_500_000_000_000_000_000n, PAIR), 1.5);
   const eurc = { ...PAIR, eth: { address: PAIR.eth.address, decimals: 6n } };

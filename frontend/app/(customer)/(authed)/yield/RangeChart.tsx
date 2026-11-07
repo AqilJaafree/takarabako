@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Candle, PreviewBin } from "@/lib/types";
 import { usd } from "@/lib/format";
+import { liquidityProfile } from "@/lib/liquidityProfile";
 
 /// The advanced range picker: a week of ETH/USD (hourly closes) on a log price axis (so a
 /// −90% range and the week's wiggle fit together), the chosen range as a
 /// band with two draggable price lines, the current price, and a side
-/// histogram of how the liquidity would be split (USDC below the price,
+/// profile of how deep the liquidity would be at each price (USDC below the price,
 /// ETH above). Colours are the chart tokens in globals.css (.range-chart).
 
 const H = 330;
@@ -148,7 +149,8 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange, lo
     setHoverIdx(Math.round(((px - PAD.left) / plotW) * (candles.length - 1)));
   }
 
-  const maxBinUsd = Math.max(0.0001, ...bins.map((b) => b.usd));
+  const profile = useMemo(() => liquidityProfile(bins, spot), [bins, spot]);
+  const maxDepth = Math.max(0, ...profile.map((s) => s.depth)) || 1;
   const histX = PAD.left + plotW + 14;
   const ticks = niceTicks(domain.lo, domain.hi, 5, priceDigits);
   const dayTicks = candles
@@ -156,7 +158,7 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange, lo
     .filter(({ d, i }) => d.getHours() === 0 && i > 3 && i < candles.length - 3);
 
   const hc = hoverIdx !== null ? candles[hoverIdx] : null;
-  const hb = hoverBin !== null ? bins[hoverBin] : null;
+  const hb = hoverBin !== null ? profile[hoverBin] : null;
 
   return (
     <div className="range-chart" ref={wrapRef}>
@@ -216,14 +218,10 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange, lo
           {candles.length > 0 && <circle cx={x(candles.length - 1)} cy={y(spot)} r={4} className="rc-dot" />}
         </g>
 
-        {/* liquidity histogram */}
-        {bins.map((b, i) => {
-          if (b.min === null || b.max === null) return null;
-          const top = y(b.max);
-          const h = Math.max(3, y(b.min) - top - 2);
-          const wAll = (b.usd / maxBinUsd) * HIST_W;
-          const usdcW = b.usd > 0 ? (b.usdc / b.usd) * wAll : 0;
-          const ethW = Math.max(0, wAll - usdcW - (usdcW > 0 && wAll - usdcW > 0 ? 2 : 0));
+        {/* liquidity profile: wider means deeper, USDC below the price and ETH above it */}
+        {profile.map((s, i) => {
+          const top = y(s.max);
+          const h = Math.max(2, y(s.min) - top - 1);
           return (
             <g
               key={i}
@@ -231,9 +229,8 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange, lo
               onPointerLeave={() => setHoverBin(null)}
               className={hoverBin === i ? "rc-bin is-hover" : "rc-bin"}
             >
-              <rect x={histX} y={top + 1} width={HIST_W} height={h} fill="transparent" />
-              {usdcW > 0 && <rect x={histX} y={top + 1} width={usdcW} height={h} rx={3} className="rc-usdc" />}
-              {ethW > 0 && <rect x={histX + usdcW + (usdcW > 0 ? 2 : 0)} y={top + 1} width={ethW} height={h} rx={3} className="rc-eth" />}
+              <rect x={histX} y={top} width={HIST_W} height={h} fill="transparent" />
+              <rect x={histX} y={top} width={Math.max(2, (s.depth / maxDepth) * HIST_W)} height={h} rx={2} className={s.side === "usdc" ? "rc-usdc" : "rc-eth"} />
             </g>
           );
         })}
@@ -286,7 +283,7 @@ export function RangeChart({ candles, spot, min, max, limits, bins, onChange, lo
           <span>{new Date(hc.t * 1000).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" })}</span>
         </div>
       )}
-      {hb && hb.min !== null && hb.max !== null && (
+      {hb && (
         <div className="rc-tip" style={{ left: histX - 150, top: Math.max(0, y(hb.max) + 20) }}>
           <b>{usd(hb.usd)}</b>
           <span>{usd(hb.min, priceDigits)} – {usd(hb.max, priceDigits)}</span>
