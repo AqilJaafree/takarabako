@@ -16,8 +16,10 @@ import {
   type Bin,
   type PairTokens,
   type Shape,
+  type HybridOptions,
   type Tier,
 } from "./aquaMath.js";
+import { assertFunds } from "./selfShapes.js";
 import {
   chainReady,
   depositOnChain,
@@ -384,6 +386,7 @@ export interface OpenRequest {
   shape?: Exclude<Shape, "full">;
   priceMin?: number;
   priceMax?: number;
+  hybrid?: HybridOptions;
   rationale?: string | null;
 }
 
@@ -395,7 +398,7 @@ export function checkAdvancedRange(min: number, max: number, spot: number) {
 }
 
 /// Plans a position's bins without touching the chain (also used to preview).
-export function planPosition(req: Pick<OpenRequest, "mode" | "shape" | "priceMin" | "priceMax">, spot: number) {
+export function planPosition(req: Pick<OpenRequest, "mode" | "shape" | "priceMin" | "priceMax" | "hybrid">, spot: number) {
   if (req.mode !== "advanced") {
     const plan = TIERS[req.mode];
     const bins: (Bin | null)[] = plan.rangePct === null
@@ -407,13 +410,19 @@ export function planPosition(req: Pick<OpenRequest, "mode" | "shape" | "priceMin
   const min = Number(req.priceMin);
   const max = Number(req.priceMax);
   checkAdvancedRange(min, max, spot);
-  return { shape: shape as Shape, bins: binsFor(shape, min, max, spot) as (Bin | null)[], feeBps: ADVANCED.feeBps, apyEstBps: ADVANCED.apyEstBps };
+  return { shape: shape as Shape, bins: binsFor(shape, min, max, spot, ADVANCED.bins, req.hybrid) as (Bin | null)[], feeBps: ADVANCED.feeBps, apyEstBps: ADVANCED.apyEstBps };
 }
 
 export async function openPosition(req: OpenRequest): Promise<PositionRow> {
   if (!aquaReady || !treasuryAddress) throw new Error(aquaUnavailableReason() ?? "cannot open an Aqua position");
   const spot = await ethUsd(MONEY_PRICE);
   const plan = planPosition(req, spot);
+  // Before any money leaves the box: a strategy under a cent is not placed, so this amount must fund them all.
+  try {
+    assertFunds(plan.bins, req.amount);
+  } catch (err) {
+    throw Object.assign(err as Error, { status: 422 });
+  }
   // Aqua may pull what these strategies can pay out: make sure it is allowed to,
   // and no more than that, before any of them is shipped.
   const extra = { eth: 0n, usdc: 0n };

@@ -9,9 +9,10 @@ import { listSelf, prepareClose, prepareOpen, recordClose, recordOpen, pairBalan
 import { dashOutQuote, prepareDashOut, type DashOutQuote } from "../dashOut.js";
 import { selfNet } from "../selfChain.js";
 import { ethCandles } from "../aqua.js";
-import { ADVANCED, allocate } from "../aquaMath.js";
+import { eurcCandles } from "../pairPrice.js";
+import { ADVANCED, allocate, baseAmount } from "../aquaMath.js";
 import { selfBins } from "../selfShapes.js";
-import { SELF_SHAPES, type SelfShape } from "../selfShapes.js";
+import { HybridBody, SELF_SHAPES, type SelfShape } from "../selfShapes.js";
 
 /// Self-custody positions: the customer's own wallet signs. /self/arc/* is Arc mainnet (real money,
 /// 404 unless SELF_CUSTODY_ARC=1) and /self/sepolia/* is the same flow on Sepolia with worthless
@@ -27,6 +28,7 @@ const Open = z.object({
   shape: z.enum(SELF_SHAPES as [SelfShape, ...SelfShape[]]),
   priceMin: z.number().positive().optional(),
   priceMax: z.number().positive().optional(),
+  hybrid: HybridBody.optional(),
   amount: z.number().positive(),
   wallet: address.optional(),
 });
@@ -55,7 +57,7 @@ selfRouter.get("/self/:net/wallet", requireSession("full"), asyncHandler(async (
     pairs: balances,
     address: s.address,
     usdc: Number(formatUnits(s.usdc, 6)),
-    weth: Number(formatUnits(s.weth, 18)),
+    weth: baseAmount(s.weth, net.pair),
     /// The native coin for network fees, and its name on this chain (USDC on Arc, ETH on Sepolia).
     gas: Number(formatUnits(s.gasNative, 18)),
     gasSymbol: net.symbols.gas,
@@ -147,14 +149,14 @@ selfRouter.post("/self/:net/dashout/prepare", requireSession("full"), asyncHandl
 // ---- the market and the liquidity preview for one pair ------------------------------------------
 
 /// GET /self/:net/market?pair= — the pair's checked price, the range limits, and a week of candles
-/// where there is a price feed for them (ETH has one; a stable pair like EURC/USDC has none yet, so the
+/// where there is a price feed for them (without one, or if it has gone quiet, the
 /// chart is drawn without candles).
 selfRouter.get("/self/:net/market", requireSession("full"), asyncHandler(async (req, res) => {
   const pair = pairKey.safeParse(req.query.pair);
   if (req.query.pair !== undefined && !pair.success) return void res.status(400).json({ error: "not a pair" });
   const net = selfNet(String(req.params.net), pair.success ? pair.data : undefined);
   const spot = await net.spot();
-  const candles = net.stable ? [] : await ethCandles().catch(() => []);
+  const candles = await (net.stable ? eurcCandles() : ethCandles()).catch(() => []);
   res.json({
     pair: net.pairKey,
     symbols: net.symbols,
@@ -170,6 +172,7 @@ const PreviewBody = z.object({
   shape: z.enum(SELF_SHAPES as [SelfShape, ...SelfShape[]]),
   priceMin: z.number().positive().optional(),
   priceMax: z.number().positive().optional(),
+  hybrid: HybridBody.optional(),
   amount: z.number().positive(),
 });
 
@@ -181,7 +184,7 @@ selfRouter.post("/self/:net/preview", requireSession("full"), asyncHandler(async
   const net = selfNet(String(req.params.net), body.data.pair);
   const spot = await net.spot();
   try {
-    const plan = selfBins(body.data.shape, spot, body.data.priceMin, body.data.priceMax);
+    const plan = selfBins(body.data.shape, spot, body.data.priceMin, body.data.priceMax, body.data.hybrid);
     const baseUnit = 10 ** Number(net.pair.eth.decimals);
     const quoteUnit = 10 ** Number(net.pair.usdc.decimals);
     const bins = plan.bins.map((b) => {

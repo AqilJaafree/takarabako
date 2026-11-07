@@ -30,6 +30,9 @@ export function MarketHero({
   liveCount,
   showEstimates = true,
   feeBps = 30,
+  balanceLabel = "Your box",
+  symbols = { base: "ETH", quote: "USDC" },
+  priceDigits = 2,
 }: {
   spot: number;
   candles: Candle[];
@@ -39,6 +42,10 @@ export function MarketHero({
   /// Return estimates are guesses: they are hidden where real money is at stake.
   showEstimates?: boolean;
   feeBps?: number;
+  balanceLabel?: string;
+  /// The pair on the chart, and how many decimals its prices need.
+  symbols?: { base: string; quote: string };
+  priceDigits?: number;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   // Dates and day lines depend on the viewer's timezone, which the server does
@@ -70,7 +77,7 @@ export function MarketHero({
     if (!candles.length) return { lo: spot * 0.99, hi: spot * 1.01 };
     const l = Math.min(spot, ...candles.map((c) => c.l));
     const h = Math.max(spot, ...candles.map((c) => c.h));
-    const pad = (h - l) * 0.06 || 1;
+    const pad = (h - l) * 0.06 || spot * 0.01;
     return { lo: l - pad, hi: h + pad };
   }, [candles, spot]);
   const y = (v: number) => PAD.top + plotH * (1 - (v - lo) / (hi - lo));
@@ -111,7 +118,7 @@ export function MarketHero({
   const tag = (v: number, py: number, cls: string) => (
     <g pointerEvents="none">
       <rect x={PAD.left + plotW + 1} y={py - 9} width={PAD.right - 4} height={18} rx={3} className={cls} />
-      <text x={PAD.left + plotW + 1 + (PAD.right - 4) / 2} y={py} dy="0.34em" textAnchor="middle" className="mh-tag-text">{usd(v, 2)}</text>
+      <text x={PAD.left + plotW + 1 + (PAD.right - 4) / 2} y={py} dy="0.34em" textAnchor="middle" className="mh-tag-text">{usd(v, priceDigits)}</text>
     </g>
   );
 
@@ -119,13 +126,15 @@ export function MarketHero({
     <section className="market-hero">
       <div className="market-hero-top">
         <div>
-          <p className="label" style={{ margin: 0 }}>ETH / USDC</p>
+          <p className="label" style={{ margin: 0 }}>{symbols.base} / {symbols.quote}</p>
           <div className="market-price">
-            <span className="amount">{usd(spot, 2)}</span>
-            <span className={`market-change ${change >= 0 ? "up" : "down"}`}>
-              <span aria-hidden="true">{change >= 0 ? "▲" : "▼"}</span> {Math.abs(change).toFixed(2)}%
-              <span className="muted"> {span === "1d" ? "24h" : "7d"}</span>
-            </span>
+            <span className="amount">{usd(spot, priceDigits)}</span>
+            {candles.length > 0 && (
+              <span className={`market-change ${change >= 0 ? "up" : "down"}`}>
+                <span aria-hidden="true">{change >= 0 ? "▲" : "▼"}</span> {Math.abs(change).toFixed(2)}%
+                <span className="muted"> {span === "1d" ? "24h" : "7d"}</span>
+              </span>
+            )}
           </div>
         </div>
         <div className="mh-controls">
@@ -148,19 +157,19 @@ export function MarketHero({
         onPointerMove={onMove}
         onPointerLeave={() => setHover(null)}
         role="img"
-        aria-label={`ETH/USDC over the last ${span === "1d" ? "24 hours" : "7 days"}, from ${usd(first, 0)} to ${usd(spot, 0)} (low ${usd(lowest, 0)}, high ${usd(highest, 0)})`}
+        aria-label={candles.length ? `${symbols.base}/${symbols.quote} over the last ${span === "1d" ? "24 hours" : "7 days"}, from ${usd(first, priceDigits)} to ${usd(spot, priceDigits)} (low ${usd(lowest, priceDigits)}, high ${usd(highest, priceDigits)})` : `${symbols.base}/${symbols.quote} at ${usd(spot, priceDigits)}, with no price history`}
       >
         {hc && (
           <div className="mh-legend" aria-hidden="true">
             <span className="muted">{inBrowser ? new Date(hc.t * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }) : ""}</span>
             {view === "line" ? (
-              <b>{usd(hc.c, 2)}</b>
+              <b>{usd(hc.c, priceDigits)}</b>
             ) : (
               <>
-                <span>O <b className={up ? "tone-ok" : "tone-bad"}>{hc.o.toFixed(2)}</b></span>
-                <span>H <b className={up ? "tone-ok" : "tone-bad"}>{hc.h.toFixed(2)}</b></span>
-                <span>L <b className={up ? "tone-ok" : "tone-bad"}>{hc.l.toFixed(2)}</b></span>
-                <span>C <b className={up ? "tone-ok" : "tone-bad"}>{hc.c.toFixed(2)}</b></span>
+                <span>O <b className={up ? "tone-ok" : "tone-bad"}>{hc.o.toFixed(priceDigits)}</b></span>
+                <span>H <b className={up ? "tone-ok" : "tone-bad"}>{hc.h.toFixed(priceDigits)}</b></span>
+                <span>L <b className={up ? "tone-ok" : "tone-bad"}>{hc.l.toFixed(priceDigits)}</b></span>
+                <span>C <b className={up ? "tone-ok" : "tone-bad"}>{hc.c.toFixed(priceDigits)}</b></span>
               </>
             )}
           </div>
@@ -169,7 +178,7 @@ export function MarketHero({
           {ticks.map((t) => (
             <g key={t} opacity={Math.abs(y(t) - y(spot)) < 12 ? 0.25 : 1}>
               <line x1={PAD.left} x2={PAD.left + plotW} y1={y(t)} y2={y(t)} className="mh-grid" />
-              <text x={PAD.left + plotW + 8} y={y(t)} dy="0.34em" className="mh-tick">{usd(t, t >= 100 ? 0 : 2)}</text>
+              <text x={PAD.left + plotW + 8} y={y(t)} dy="0.34em" className="mh-tick">{usd(t, t >= 100 ? 0 : priceDigits)}</text>
             </g>
           ))}
           {days.map(({ i, d }) => (
@@ -197,6 +206,9 @@ export function MarketHero({
               </g>
             ))
           )}
+          {candles.length === 0 && (
+            <text x={PAD.left + plotW / 2} y={PAD.top + plotH / 4} textAnchor="middle" className="mh-tick">No price history for this pair yet</text>
+          )}
           <line x1={PAD.left} x2={PAD.left + plotW} y1={y(spot)} y2={y(spot)} className={`mh-last ${trend}`} />
           {view === "line" && candles.length > 0 && <circle cx={x(candles.length - 1)} cy={y(spot)} r={4} className={`mh-now ${trend}`} />}
           {tag(spot, y(spot), `mh-tag ${trend}`)}
@@ -218,7 +230,7 @@ export function MarketHero({
 
       <div className="market-stats">
         <div>
-          <span className="label">Your box</span>
+          <span className="label">{balanceLabel}</span>
           <b className="amount">{usd(balance)}</b>
         </div>
         <div>

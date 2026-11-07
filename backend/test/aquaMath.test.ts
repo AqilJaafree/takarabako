@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { allocate, binsFor, sqrtBounds, valueUsd, TIERS, type PairTokens } from "../src/aquaMath.js";
+import { allocate, baseAmount, binsFor, sqrtBounds, valueUsd, TIERS, type PairTokens } from "../src/aquaMath.js";
 
 const PAIR: PairTokens = {
   eth: { address: "0x5A9E9fF59AeBb96C14DFaB7C2a43d0C130ba9282", decimals: 18n },
@@ -93,6 +93,31 @@ test("a hybrid position is worth what was put in, and both bins hold both tokens
     total += valueUsd(eth, usdc, spot, PAIR);
   }
   close(total, 1000, 0.5);
+});
+
+test("a base token's amount follows its own decimals", () => {
+  assert.equal(baseAmount(1_500_000_000_000_000_000n, PAIR), 1.5);
+  const eurc = { ...PAIR, eth: { address: PAIR.eth.address, decimals: 6n } };
+  assert.equal(baseAmount(1_500_000n, eurc), 1.5);
+});
+
+test("a customer-built Hybrid around the price is worth what was put in, holding both tokens", () => {
+  const spot = 2000;
+  for (const mix of ["curve", "bidask"] as const) {
+    const bins = binsFor("hybrid", 1600, 2400, spot, undefined, { mix, side: "both" });
+    assert.equal(bins.length, 4);
+    let total = 0;
+    let eth = 0n;
+    let usdc = 0n;
+    for (const b of bins) {
+      const a = allocate(1000 * b.weight, b, spot, PAIR);
+      total += valueUsd(a.eth, a.usdc, spot, PAIR);
+      eth += a.eth;
+      usdc += a.usdc;
+    }
+    close(total, 1000, 0.5);
+    assert.ok(eth > 0n && usdc > 0n);
+  }
 });
 
 test("a base token with fewer than 9 decimals (EURC, 6) is sized correctly, not truncated to zero", () => {

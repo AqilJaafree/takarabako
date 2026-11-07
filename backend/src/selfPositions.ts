@@ -2,8 +2,9 @@ import { formatUnits, parseAbi, parseEventLogs, type Address, type Hex } from "v
 import type { Account } from "./accounts.js";
 import { config } from "./config.js";
 import { pool } from "./db.js";
-import { selfBins, type SelfShape } from "./selfShapes.js";
-import { valueUsd } from "./aquaMath.js";
+import type { HybridOptions } from "./aquaMath.js";
+import { assertFunds, selfBins, type SelfShape } from "./selfShapes.js";
+import { baseAmount, valueUsd } from "./aquaMath.js";
 import { GuardError } from "./guards.js";
 import { applyFeeFloor } from "./networks.js";
 import { retryOnLag } from "./retry.js";
@@ -134,14 +135,15 @@ const fmtUnits = (v: bigint, decimals: bigint) => formatUnits(v, Number(decimals
 
 /// Plans a position and the transactions to sign. Refuses, before anything is
 /// signed, if the wallet cannot cover it or the price cannot be trusted.
-export async function prepareOpen(net: SelfNet, account: Account, req: { shape: SelfShape; priceMin?: number; priceMax?: number; amount: number; wallet?: string }) {
-  if (!(req.amount > 0) || req.amount < 5) throw Object.assign(new Error("the amount must be at least $5"), { status: 422 });
+export async function prepareOpen(net: SelfNet, account: Account, req: { shape: SelfShape; priceMin?: number; priceMax?: number; hybrid?: HybridOptions; amount: number; wallet?: string }) {
+  if (!(req.amount > 0)) throw Object.assign(new Error("the amount must be more than $0"), { status: 422 });
   if (req.amount > config.selfCustody.maxUsd) throw Object.assign(new Error(`positions are capped at $${config.selfCustody.maxUsd} for now`), { status: 422 });
 
   const spot = await net.spot(); // the pair's checked price: two sources that must agree
   let plan: ReturnType<typeof selfBins>;
   try {
-    plan = selfBins(req.shape, spot, req.priceMin, req.priceMax);
+    plan = selfBins(req.shape, spot, req.priceMin, req.priceMax, req.hybrid);
+    assertFunds(plan.bins, req.amount);
   } catch (e) {
     throw Object.assign(new Error(e instanceof Error ? e.message : "invalid range"), { status: 422 });
   }
@@ -158,7 +160,7 @@ export async function prepareOpen(net: SelfNet, account: Account, req: { shape: 
 
   const short: string[] = [];
   if (state.usdc < built.need.usdc) short.push(`${fmtUnits(built.need.usdc, 6n)} ${net.symbols.quote} (it holds ${fmtUnits(state.usdc, 6n)})`);
-  if (state.weth < built.need.eth) short.push(`${fmtUnits(built.need.eth, 18n)} ${net.symbols.base} (it holds ${fmtUnits(state.weth, 18n)})`);
+  if (state.weth < built.need.eth) short.push(`${fmtUnits(built.need.eth, net.pair.eth.decimals)} ${net.symbols.base} (it holds ${fmtUnits(state.weth, net.pair.eth.decimals)})`);
   if (short.length) throw Object.assign(new Error(`your wallet needs ${short.join(" and ")} on ${net.name} to open this position`), { status: 422 });
   if (state.gasNative < net.minGasWei) throw Object.assign(new Error(`your wallet needs at least ${fmtUnits(net.minGasWei, 18n)} ${net.symbols.gas} on ${net.name} to pay for the transactions`), { status: 422 });
 
@@ -172,7 +174,7 @@ export async function prepareOpen(net: SelfNet, account: Account, req: { shape: 
   return {
     positionId: id,
     steps: await withFees(net, built.steps),
-    summary: { spot, usdc: fmtUnits(built.need.usdc, 6n), weth: fmtUnits(built.need.eth, 18n), strategies: built.strategies.length },
+    summary: { spot, usdc: fmtUnits(built.need.usdc, 6n), weth: fmtUnits(built.need.eth, net.pair.eth.decimals), strategies: built.strategies.length },
   };
 }
 
@@ -348,7 +350,7 @@ export async function viewSelf(net: SelfNet, row: SelfRow, spotIn?: number | nul
     priceMin: row.priceMin,
     priceMax: row.priceMax,
     strategies: row.strategies.length,
-    weth: Number(formatUnits(eth, 18)),
+    weth: baseAmount(eth, net.pair),
     usdc: Number(formatUnits(usdc, 6)),
     valueUsd: readable && spot ? valueUsd(eth, usdc, spot, net.pair) : null,
     openTxs: row.openTxs,

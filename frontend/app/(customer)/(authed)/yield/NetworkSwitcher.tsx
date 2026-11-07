@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import type { Market, Preview } from "@/lib/types";
 import type { ContractCheck, NetworkInfo, NetworkKey, NetworkStatus, NetworksResponse } from "@/lib/networks";
 import { shortHex, usd } from "@/lib/format";
-import { SelfCustodyPanel } from "./SelfCustodyPanel";
 
 const ORIGIN: Record<string, string> = {
   sdk: "address from the official 1inch SDK",
@@ -14,48 +13,14 @@ const ORIGIN: Record<string, string> = {
 
 const price = (n: number) => (n >= 100 ? Math.round(n).toLocaleString("en-US") : n.toFixed(2));
 
-/// What the yield page shows for the network picked in the top bar. Box positions are opened and
-/// closed on the network the backend runs on (`networks.active`), so their controls only show for
-/// that one; elsewhere this is the self-custody card, if offered, and a description of the network.
-export function NetworkSwitcher({
-  networks,
-  view,
-  onView,
-  market,
-}: {
-  networks: NetworksResponse;
-  view: NetworkKey;
-  onView: (key: NetworkKey) => void;
-  market: Market;
-}) {
+/// The "How it works" box for the network picked in the top bar.
+export function NetworkSwitcher({ networks, view, market }: { networks: NetworksResponse; view: NetworkKey; market: Market }) {
   const info = networks.networks.find((n) => n.key === view)!;
-  const live = networks.networks.find((n) => n.active)!;
-  const isLive = info.active;
-  const panel = <NetworkPanel info={info} market={market} />;
-
   return (
     <section className="net-switch" aria-label="Network">
-      {/* Every network has the same structure as the one the backend runs on: the self-custody card (where
-          the customer can sign with their own wallet), then the "How it works" box. A network the backend
-          does not run on adds a notice saying where the customer's box and positions live. */}
-      {!isLive && (
-        <div className="notice net-notice">
-          <b>{info.name}</b>
-          {info.key === "arc" ? " · real money" : ""}. {info.selfCustody ? "Sign with your own wallet." : "View only."} Your box is on {live.name}.{" "}
-          <button type="button" className="link-btn" onClick={() => onView(live.key)}>
-            Back to {live.name}
-          </button>
-        </div>
-      )}
-      {info.selfCustody && (
-        <div className="card net-panel">
-          <SelfCustodyPanel network={info} market={market} />
-        </div>
-      )}
-      {/* open by default only when there is no self-custody card above it, so a view-only network is not blank */}
-      <details className="card net-panel" open={!info.selfCustody}>
+      <details className="card net-panel">
         <summary>How it works on {info.name}</summary>
-        {panel}
+        <NetworkPanel info={info} market={market} />
       </details>
     </section>
   );
@@ -78,12 +43,12 @@ function NetworkPanel({ info, market }: { info: NetworkInfo; market: Market }) {
     };
   }, [info.key]);
 
-  // The same example on every network: how a $1,000 Hybrid position splits at today's price.
+  // The same example on every network: how a $1,000 Hybrid (Spot + Curve) splits at today's price.
   const lo = market.spot * 0.5;
   const hi = market.spot * 2;
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/yield/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ amount: 1000, shape: "hybrid", priceMin: lo, priceMax: hi }) })
+    fetch("/api/yield/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ amount: 1000, shape: "hybrid", hybrid: { mix: "curve", side: "both" }, priceMin: lo, priceMax: hi }) })
       .then((r) => (r.ok ? (r.json() as Promise<Preview>) : null))
       .catch(() => null)
       .then((p) => !cancelled && setPreview(p));
@@ -136,7 +101,7 @@ function NetworkPanel({ info, market }: { info: NetworkInfo; market: Market }) {
         <li><b>Close.</b> Its value goes back to your box.</li>
       </ol>
 
-      <h3>Example: $1,000 Hybrid at ETH ${price(market.spot)}</h3>
+      <h3>Example: $1,000 Hybrid (Spot + Curve) at ETH ${price(market.spot)}</h3>
       {preview ? (
         <div className="scroll-x">
           <table className="net-table">

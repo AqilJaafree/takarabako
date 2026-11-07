@@ -2,17 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
-/// Shown on a real-money network (see backend networks.ts `real`): a standing
-/// notice at the top of the yield page, and a confirmation before any position
-/// is opened. The wording sticks to what is true of these strategies.
-
-export function RealMoneyNotice({ network }: { network: string }) {
-  return (
-    <div className="real-notice" role="note">
-      <b>Real money on {network}.</b> Value can fall, and fees aren&apos;t guaranteed.
-    </div>
-  );
-}
+/// Shown on a real-money network (see backend networks.ts `real`): a confirmation
+/// before any position is opened. The wording sticks to what is true of these strategies.
 
 const RISKS = [
   "Value can fall below what you put in. Outside your range it stops earning and holds one token.",

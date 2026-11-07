@@ -23,6 +23,22 @@ export interface Position {
 
 export type Shape = "full" | "spot" | "curve" | "bidask" | "hybrid";
 
+/// A Hybrid's choices: what Spot is combined with, and which tokens it holds
+/// ("base" is the priced token such as ETH, "quote" the one it is priced in, such as USDC).
+export interface HybridOptions {
+  mix: "curve" | "bidask";
+  side: "both" | "base" | "quote";
+}
+
+/// The body of a liquidity preview.
+export interface LiquidityRequest {
+  amount: number;
+  shape: Shape;
+  priceMin: number;
+  priceMax: number;
+  hybrid?: HybridOptions;
+}
+
 /// GET /me
 export interface Me {
   userId: string;

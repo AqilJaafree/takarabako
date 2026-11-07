@@ -3,12 +3,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import gsap from "gsap";
-import type { Candle, Pool, RiskTier } from "@/lib/types";
+import type { Candle, LiquidityRequest, Pool, Preview, PreviewBin, RiskTier } from "@/lib/types";
 import { apy, usd } from "@/lib/format";
+import { LiquidityPanel } from "./LiquidityPanel";
+import { RangeChart } from "./RangeChart";
 
-/// Quick start: three ready-made ETH/USDC ranges on 1inch Aqua. Each card
-/// draws the real week of ETH prices with its range shaded, so "how bold"
-/// is something you can see. The projector turns the amount into what it
+/// A ready-made strategy: one even range unless it names another shape (a stable pair's Balanced is a curve).
+export type QuickTier = Pool & { shape?: "curve" };
+
+/// Quick start: three ready-made ranges on 1inch Aqua. Each card draws the real
+/// week of prices with its range shaded, so "how bold" is something you can see,
+/// and the chosen one's liquidity is drawn on a larger chart. The projector turns the amount into what it
 /// would earn at each tier's estimated APY — with an empty box it previews
 /// $100, so the numbers are never blank.
 
@@ -41,7 +46,7 @@ const money = (n: number) => (n > 0 && n < 1 ? `$${n.toFixed(3)}` : usd(n));
 
 /// The week's closes as a line, the tier's range as a shaded band, today's
 /// price as a dot. A full-range tier's band fills the chart.
-function RangeSpark({ candles, tier, spot }: { candles: Candle[]; tier: Pool; spot: number }) {
+function RangeSpark({ candles, tier, spot }: { candles: Candle[]; tier: QuickTier; spot: number }) {
   const W = 300;
   const H = 84;
   const closes = candles.map((c) => c.c);
@@ -85,42 +90,89 @@ export function QuickStart({
   candles,
   spot,
   balance,
+  limits,
+  previewLiquidity,
   onOpen,
   confirm,
   showEstimates = true,
+  initialAmount,
+  availableLabel,
+  symbols = { base: "ETH", quote: "USDC" },
+  priceDigits = 0,
+  disabled = false,
+  readOnly,
 }: {
-  tiers: Pool[];
+  tiers: QuickTier[];
   candles: Candle[];
   spot: number;
   balance: number;
+  /// The prices the liquidity chart can show.
+  limits: { lo: number; hi: number };
+  /// How a tier's liquidity would split. Must be a stable function: a new one fetches again.
+  previewLiquidity: (req: LiquidityRequest) => Promise<Preview>;
   onOpen: (tier: RiskTier, amount: number) => Promise<void>;
   /// Asked before anything is placed (on a real-money network); false cancels.
   confirm?: (summary: string) => Promise<boolean>;
   /// The APY and earnings figures are rough guesses: hidden where real money is at stake.
   showEstimates?: boolean;
+  initialAmount?: number;
+  availableLabel?: string;
+  symbols?: { base: string; quote: string };
+  priceDigits?: number;
+  /// Something else is in progress.
+  disabled?: boolean;
+  /// A preview on a network positions can't be opened on: this button replaces opening one.
+  readOnly?: { label: string; onClick: () => void };
 }) {
   const preview = balance <= 0;
   const cap = preview ? PREVIEW_AMOUNT * 10 : balance;
   const [tier, setTier] = useState<RiskTier>("medium");
-  const [wanted, setWanted] = useState(preview ? PREVIEW_AMOUNT : Math.floor(balance * 100) / 100);
+  const [wanted, setWanted] = useState(preview ? PREVIEW_AMOUNT : (initialAmount ?? Math.floor(balance * 100) / 100));
   const amount = Math.min(wanted, cap); // the box can shrink while this is open
   const [busy, setBusy] = useState(false);
   const chosen = tiers.find((t) => t.riskTier === tier) ?? tiers[0];
   const yearly = (t: Pool) => (amount * t.apyBps) / 10_000;
   const maxYearly = Math.max(...tiers.map(yearly), 0.0001);
   const range = (t: Pool) =>
-    t.fullRange || t.priceLowUsd === null || t.priceHighUsd === null ? "Full range" : `${usd(t.priceLowUsd, 0)} – ${usd(t.priceHighUsd, 0)}`;
+    t.fullRange || t.priceLowUsd === null || t.priceHighUsd === null ? "Full range" : `${usd(t.priceLowUsd, priceDigits)} – ${usd(t.priceHighUsd, priceDigits)}`;
   const earnings = useMemo(() => {
     const y = chosen ? yearly(chosen) : 0;
     return { day: y / 365, month: y / 12, year: y };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chosen, amount]);
 
+  // The chosen tier's liquidity, for the chart. A full-range tier is one block, worked out here.
+  const chosenFull = !chosen || chosen.fullRange || chosen.priceLowUsd === null || chosen.priceHighUsd === null;
+  const chartMin = chosenFull ? limits.lo : chosen.priceLowUsd!;
+  const chartMax = chosenFull ? limits.hi : chosen.priceHighUsd!;
+  const chosenShape = chosen?.shape ?? "spot";
+  const chartAmount = amount > 0 ? amount : PREVIEW_AMOUNT;
+  const [liquidity, setLiquidity] = useState<{ key: string; bins: PreviewBin[] } | null>(null);
+  const [liquidityError, setLiquidityError] = useState("");
+  const chartKey = `${chosenShape}|${chartMin}|${chartMax}`;
+  const seq = useRef(0);
+  useEffect(() => {
+    if (chosenFull) return;
+    const id = ++seq.current;
+    const t = setTimeout(() => {
+      previewLiquidity({ amount: chartAmount, shape: chosenShape, priceMin: chartMin, priceMax: chartMax })
+        .then((p) => {
+          if (id !== seq.current) return;
+          setLiquidity({ key: chartKey, bins: p.bins });
+          setLiquidityError("");
+        })
+        .catch((e) => id === seq.current && setLiquidityError(e instanceof Error ? e.message : "could not draw the liquidity"));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [chosenFull, chosenShape, chartMin, chartMax, chartAmount, chartKey, previewLiquidity]);
+  const fullBins = useMemo<PreviewBin[]>(() => [{ min: limits.lo, max: limits.hi, weight: 1, usd: chartAmount, eth: chartAmount / 2 / spot, usdc: chartAmount / 2 }], [limits.lo, limits.hi, chartAmount, spot]);
+  const chartBins = chosenFull ? fullBins : liquidity?.key === chartKey ? liquidity.bins : [];
+
   return (
     <section className="qs">
       <div className="qs-head">
         <h2>Pick how bold to be</h2>
-        <p className="muted small">Narrower range: more fees, but only while ETH stays inside.</p>
+        <p className="muted small">Narrower range: more fees, but only while {symbols.base} stays inside.</p>
       </div>
 
       <div className="qs-tiers" role="radiogroup" aria-label="Risk level">
@@ -134,7 +186,7 @@ export function QuickStart({
               className={`qs-tier${on ? " is-on" : ""}`}
               style={{ ["--tier" as string]: RAMP[t.riskTier] }}
               onClick={() => setTier(t.riskTier)}
-              disabled={busy}
+              disabled={busy || disabled}
             >
               <span className="qs-tier-top">
                 <span className="qs-tier-name">{t.label}</span>
@@ -156,9 +208,14 @@ export function QuickStart({
         })}
       </div>
       <p className="muted small qs-legend">
-        <span className="qs-key line" /> ETH, last 7 days <span className="qs-key band" /> where the strategy earns
+        <span className="qs-key line" /> {symbols.base}, last 7 days <span className="qs-key band" /> where the strategy earns
         <span className="qs-key dot" /> today
       </p>
+
+      <LiquidityPanel title={`${chosen?.label ?? "Strategy"} liquidity on ${symbols.base}/${symbols.quote}`}>
+        <RangeChart candles={candles} spot={spot} min={chartMin} max={chartMax} limits={limits} bins={chartBins} onChange={() => {}} locked symbols={symbols} priceDigits={priceDigits} />
+        {liquidityError && !chosenFull && <p className="tone-bad small" style={{ margin: "6px 0 0" }}>{liquidityError}</p>}
+      </LiquidityPanel>
 
       <div className="qs-projector">
         <div className="qs-amount">
@@ -195,7 +252,7 @@ export function QuickStart({
             style={{ ["--fill" as string]: `${cap ? (amount / cap) * 100 : 0}%` }}
           />
           <p className="muted small" style={{ margin: "8px 0 0" }}>
-            {preview ? "Preview: your box is empty." : `${usd(balance)} in your box`}
+            {readOnly ? "Preview only on this network." : preview ? "Preview: your box is empty." : (availableLabel ?? `${usd(balance)} in your box`)}
           </p>
         </div>
 
@@ -230,14 +287,18 @@ export function QuickStart({
         )}
       </div>
 
-      {preview ? (
+      {readOnly ? (
+        <button type="button" className="btn btn-gold btn-block qs-cta" onClick={readOnly.onClick}>
+          {readOnly.label}
+        </button>
+      ) : preview ? (
         <Link href="/qr" className="btn btn-gold btn-block qs-cta">
           Insert cash at a kiosk to start earning →
         </Link>
       ) : (
         <button
           className="btn btn-gold btn-block qs-cta"
-          disabled={busy || !(amount > 0) || amount > balance}
+          disabled={busy || disabled || !(amount > 0) || amount > balance}
           onClick={async () => {
             if (confirm && !(await confirm(`${usd(amount)} into ${chosen?.label ?? tier}`))) return;
             setBusy(true);
@@ -249,7 +310,7 @@ export function QuickStart({
         </button>
       )}
       <p className="muted small" style={{ margin: "10px 0 0", textAlign: "center" }}>
-        {showEstimates ? "Estimates, not promises." : "Fees aren't guaranteed, and value moves with ETH."}
+        {showEstimates ? "Estimates, not promises." : `Fees aren't guaranteed, and value moves with ${symbols.base}.`}
       </p>
     </section>
   );

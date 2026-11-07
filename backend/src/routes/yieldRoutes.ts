@@ -9,6 +9,7 @@ import { ethCandles, ethUsd, listPositions, PAIR, planPosition, viewPosition } f
 import { ADVANCED, allocate } from "../aquaMath.js";
 import { closeForCustomer, openForCustomer } from "../yieldPositions.js";
 import { DailyLimitError } from "../limits.js";
+import { HybridBody } from "../selfShapes.js";
 
 /// 1inch Aqua yield for the web app: market data for the chart, a preview
 /// of how a range splits into liquidity, advanced positions and closing.
@@ -41,6 +42,7 @@ const Advanced = z.object({
   shape: z.enum(["spot", "curve", "bidask", "hybrid"]),
   priceMin: z.number().positive(),
   priceMax: z.number().positive(),
+  hybrid: HybridBody.optional(),
 });
 
 /// POST /yield/preview — how an advanced range would split into bins and tokens (no chain calls).

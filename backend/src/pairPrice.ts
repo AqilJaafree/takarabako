@@ -66,6 +66,36 @@ export async function eurcUsdc(): Promise<number> {
   return pool;
 }
 
+const CANDLE_MAX_AGE_SECONDS = 6 * 3600;
+const WEEK_OF_HOURS = 168;
+
+/// Coinbase's candle rows (newest first: time, low, high, open, close, volume) as a week of candles, oldest
+/// first. A feed can stop updating and still answer normally, so one whose newest candle is old gives none.
+export function candlesFromCoinbase(rows: unknown, nowSeconds: number) {
+  if (!Array.isArray(rows)) return [];
+  const usable = rows.filter((r): r is number[] => Array.isArray(r) && r.length >= 5 && r.slice(0, 5).every((v) => typeof v === "number" && v > 0));
+  if (usable.length === 0 || nowSeconds - usable[0]![0]! > CANDLE_MAX_AGE_SECONDS) return [];
+  return usable
+    .slice(0, WEEK_OF_HOURS)
+    .map(([t, l, h, o, c]) => ({ t: t!, o: o!, h: h!, l: l!, c: c! }))
+    .reverse();
+}
+
+let candleCache: { at: number; candles: ReturnType<typeof candlesFromCoinbase> } | null = null;
+
+/// Hourly EURC/USDC candles for the chart, cached 5 min. Only for drawing: money uses eurcUsdc above.
+/// This is EURC-USDC because Coinbase's EURC-USD product stopped updating in 2024.
+export async function eurcCandles() {
+  if (candleCache && Date.now() - candleCache.at < 300_000) return candleCache.candles;
+  const res = await fetch("https://api.exchange.coinbase.com/products/EURC-USDC/candles?granularity=3600", {
+    headers: { "user-agent": "takarabako" },
+    signal: AbortSignal.timeout(8000),
+  });
+  const candles = candlesFromCoinbase(await res.json(), Math.floor(Date.now() / 1000));
+  candleCache = { at: Date.now(), candles };
+  return candles;
+}
+
 /// For tests: forget the cached price.
 export function resetEurcPriceCache() {
   cache = null;

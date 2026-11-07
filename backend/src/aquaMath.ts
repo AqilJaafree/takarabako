@@ -54,6 +54,9 @@ export const ADVANCED = {
   // Hybrid: a tight core around the price plus the whole range as a tail.
   hybridCoreHalfWidth: 0.08, // core is ±8% of the current price
   hybridCoreWeight: 0.7, // share of the position in the core
+  // A Hybrid the customer builds: this share spread evenly, the rest in a few shaped bins.
+  hybridSpotWeight: 0.5,
+  hybridShapedBins: 3,
   feeBps: 30,
   apyEstBps: 1200,
 } as const;
@@ -64,6 +67,21 @@ export interface Bin {
   weight: number; // share of the position's USD, sums to 1
 }
 
+/// What the customer chooses for a Hybrid: the shape combined with Spot, and which tokens it holds
+/// ("base" is the priced token such as ETH, "quote" the one it is priced in, such as USDC).
+export interface HybridOptions {
+  mix: "curve" | "bidask";
+  side: "both" | "base" | "quote";
+}
+
+/// A range only holds one token while it sits wholly on one side of the price (see `allocate`), so a
+/// one-sided choice is checked against the price at the moment it is used. If the price has moved into
+/// the range this refuses, rather than quietly opening a position holding both tokens.
+function assertSide(side: HybridOptions["side"], min: number, max: number, spot: number) {
+  if (side === "base" && min < spot) throw new Error(`holding only the base token needs a price range above today's price ($${spot.toFixed(2)}): move the lower price up`);
+  if (side === "quote" && max > spot) throw new Error(`holding only the quote token needs a price range below today's price ($${spot.toFixed(2)}): move the upper price down`);
+}
+
 /// Splits [min, max] into bins for a liquidity shape. Each bin becomes one
 /// SwapVM concentrated-liquidity strategy, which holds its liquidity evenly
 /// across its own range; weighting the bins draws the shape.
@@ -72,10 +90,19 @@ export interface Bin {
 ///   bidask — more liquidity far from the current price (buy low / sell high)
 ///   hybrid — a tight core around the price (most of the money, most of the
 ///            fees) plus the whole range as a tail, so the position keeps
-///            earning when the price leaves the core
-export function binsFor(shape: Exclude<Shape, "full">, min: number, max: number, spot: number, n: number = ADVANCED.bins): Bin[] {
+///            earning when the price leaves the core. With `hybrid` choices it
+///            is instead one even range plus a few bins of the chosen shape.
+export function binsFor(shape: Exclude<Shape, "full">, min: number, max: number, spot: number, n: number = ADVANCED.bins, hybrid?: HybridOptions): Bin[] {
   if (!(min > 0 && max > min)) throw new Error("price range must have 0 < min < max");
+  if (hybrid && shape !== "hybrid") throw new Error("mix and token choices only apply to a Hybrid position");
   if (shape === "spot") return [{ min, max, weight: 1 }];
+
+  if (hybrid) {
+    assertSide(hybrid.side, min, max, spot);
+    const shaped = binsFor(hybrid.mix, min, max, spot, ADVANCED.hybridShapedBins);
+    const spotWeight = ADVANCED.hybridSpotWeight;
+    return [{ min, max, weight: spotWeight }, ...shaped.map((b) => ({ ...b, weight: b.weight * (1 - spotWeight) }))];
+  }
 
   if (shape === "hybrid") {
     const lo = Math.max(min, spot * (1 - ADVANCED.hybridCoreHalfWidth));
@@ -156,6 +183,9 @@ export function allocate(usd: number, bin: { min: number; max: number } | null, 
     usdc: BigInt(Math.floor(Number(usdcPer) * scale)),
   };
 }
+
+/// A base token's raw amount in whole tokens, by its own decimals (EURC has 6, not 18).
+export const baseAmount = (raw: bigint, t: PairTokens) => Number(raw) / Number(10n ** t.eth.decimals);
 
 /// USD value of token balances at a price.
 export function valueUsd(eth: bigint, usdc: bigint, spot: number, t: PairTokens): number {
