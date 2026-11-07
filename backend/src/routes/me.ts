@@ -1,13 +1,17 @@
 import { Router } from "express";
 import QRCode from "qrcode";
-import { findByPrivyUserId, listDeposits } from "../accounts.js";
+import { z } from "zod";
+import { findByPrivyUserId, listDeposits, setDepositChain, type Account } from "../accounts.js";
+import { chainOps, readyChains } from "../chain.js";
+import { resolveDepositChain } from "../depositChain.js";
+import { getKiosk } from "../kiosks.js";
 import { requireSession } from "../sessions.js";
 import { positionSummaries } from "../yieldPositions.js";
 import { balancesByChain, totalOf } from "../balances.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { config } from "../config.js";
 import { allowanceJson, dailyAllowance } from "../limits.js";
-import { cashReceiptReadyOn, fromTkUnits, kioskState, tkRead, tkSupply } from "../cashReceipt.js";
+import { allowlist, cashReceiptReadyOn, fromTkUnits, kioskState, tkRead, tkSupply } from "../cashReceipt.js";
 import { isCashChain, type CashChainKey } from "../config.js";
 import { issueDepositCode } from "../depositCode.js";
 
@@ -36,6 +40,65 @@ meRouter.get("/me", requireSession("full"), asyncHandler(async (_req, res) => {
     limit: allowanceJson(await dailyAllowance(account)),
     expiresAt: res.locals.session.expiresAt,
   });
+}));
+
+/// Where this customer's next note would be credited, and the chains they can pick from.
+async function depositChainInfo(account: Account) {
+  const ready = readyChains();
+  const kiosk = await getKiosk(config.kioskId);
+  return {
+    chain: resolveDepositChain({ customer: account.depositChain, kiosk: kiosk?.chain, ready, fallback: config.defaultChain }),
+    chosen: account.depositChain,
+    options: ready,
+  };
+}
+
+// A kiosk's deposit-only session may read this, to show where the notes are going. Only a full
+// session can change it (below).
+meRouter.get("/me/deposit-chain", requireSession("deposit"), asyncHandler(async (req, res) => {
+  const account = await findByPrivyUserId(res.locals.session.privyUserId);
+  if (!account) {
+    res.status(404).json({ error: "unknown account" });
+    return;
+  }
+  const info = await depositChainInfo(account);
+  // ?balance=1: the box on that chain, which is a chain read, so only the kiosk asks for it.
+  if (req.query.balance !== "1") {
+    res.json(info);
+    return;
+  }
+  const balance = await chainOps(info.chain).previewValueOnChain(account.boundAddress as `0x${string}`).catch(() => null);
+  res.json({ ...info, balance });
+}));
+
+const DepositChainBody = z.object({ chain: z.string() });
+
+/// POST /me/deposit-chain { chain } — the customer picks the network their notes are credited and
+/// their tkCASH minted on. Only a chain that can take a deposit right now can be picked.
+meRouter.post("/me/deposit-chain", requireSession("full"), asyncHandler(async (req, res) => {
+  const parsed = DepositChainBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const account = await findByPrivyUserId(res.locals.session.privyUserId);
+  if (!account) {
+    res.status(404).json({ error: "unknown account" });
+    return;
+  }
+  const chain = readyChains().find((key) => key === parsed.data.chain);
+  if (!chain) {
+    res.status(422).json({ error: `${parsed.data.chain} can't take deposits right now`, ...(await depositChainInfo(account)) });
+    return;
+  }
+  await setDepositChain(account.privyUserId, chain);
+  // Minting doesn't need the allowlist, but sending tkCASH on this chain later does. A customer who
+  // registered before this chain was enabled isn't on it yet. In the background: picking never waits.
+  void (async () => {
+    if (!cashReceiptReadyOn(chain)) return;
+    if (!(await tkRead<boolean>(chain, "allowlist", [account.privyWallet]))) await allowlist(account.privyWallet, chain);
+  })().catch((err) => console.error(`[tkcash] allowlist on ${chain}:`, err instanceof Error ? err.message : err));
+  res.json(await depositChainInfo({ ...account, depositChain: chain }));
 }));
 
 meRouter.get("/deposits", requireSession("full"), asyncHandler(async (req, res) => {
@@ -99,7 +162,15 @@ meRouter.get("/me/cash-receipts", requireSession("full"), asyncHandler(async (re
     res.json(await one(wanted));
     return;
   }
-  const chains = await Promise.all(config.enabledChains.map(one));
+  // One chain's RPC having a bad moment must not hide the customer's tkCASH on the others.
+  const chains = await Promise.all(
+    config.enabledChains.map((chain) =>
+      one(chain).catch((err) => {
+        console.error(`[tkcash] reading ${chain}:`, err instanceof Error ? err.message.split("\n")[0] : err);
+        return { chain, configured: false as const, unavailable: true as const };
+      }),
+    ),
+  );
   const primary = chains.find((c) => c.chain === config.defaultChain) ?? chains[0];
   res.json({ ...primary, chains, totalBalance: chains.reduce((s, c) => s + (c.configured ? c.balance : 0), 0) });
 }));

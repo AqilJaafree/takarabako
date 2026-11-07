@@ -2,9 +2,10 @@ import { Router } from "express";
 import { z } from "zod";
 import { findByPrivyUserId, createQueuedDeposit, markDepositFailed } from "../accounts.js";
 import { requireSession, type Session } from "../sessions.js";
-import { chainOps } from "../chain.js";
+import { chainOps, readyChains } from "../chain.js";
 import { getKiosk } from "../kiosks.js";
-import { config, isCashChain, type CashChainKey } from "../config.js";
+import { config } from "../config.js";
+import { resolveDepositChain } from "../depositChain.js";
 import { enqueueDeposit } from "../depositQueue.js";
 import { publishUserEvent } from "../events.js";
 import { currentOpenSession } from "../history.js";
@@ -72,11 +73,14 @@ depositRouter.post("/deposit", requireSession("deposit"), asyncHandler(async (re
     return;
   }
 
-  // The note is credited on its kiosk's home chain: the registered kiosk that signed it,
-  // else the backend's own kiosk, else the primary chain.
+  // The note is credited on the network the customer picked, else its kiosk's home chain (the
+  // registered kiosk that signed it, else the backend's own kiosk), else the primary chain.
   const homeKiosk = machine.verified ? null : await getKiosk(config.kioskId);
   const kioskChain = machine.verified ? machine.chain : homeKiosk?.chain;
-  const chain: CashChainKey = kioskChain && isCashChain(kioskChain) && config.enabledChains.includes(kioskChain) ? kioskChain : config.defaultChain;
+  const chain = resolveDepositChain({ customer: account.depositChain, kiosk: kioskChain, ready: readyChains(), fallback: config.defaultChain });
+  if (account.depositChain && account.depositChain !== chain) {
+    console.warn(`[deposit] ${account.depositChain} isn't available, crediting ${account.privyUserId} on ${chain}`);
+  }
   if (!chainOps(chain).chainReady) {
     res.status(503).json({ error: `${config.chains[chain].network.name} isn't configured: set the treasury key and the USDC and vault addresses in backend/.env` });
     return;

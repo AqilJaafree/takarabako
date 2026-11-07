@@ -3,6 +3,9 @@
 
 export type NetworkKey = "sepolia" | "arc-testnet" | "hedera-testnet" | "arc";
 
+/// Remembers the network picked in the top bar, so the server renders the same choice.
+export const NETWORK_COOKIE = "tb_network";
+
 export interface AquaDeployment {
   aqua: string;
   router: string;
@@ -17,6 +20,8 @@ export interface NetworkInfo {
   nativeSymbol: string;
   explorerUrl: string;
   feeFloorGwei: number;
+  /// Real money: a mainnet, as opposed to a testnet with worthless tokens.
+  real: boolean;
   usdc: string;
   baseToken: string;
   aqua: AquaDeployment | null;
@@ -29,6 +34,13 @@ export interface NetworkInfo {
   /// The pairs offered here (a base token against USDC, the quote token every position exits to), the
   /// first being the default, and whether a position manager is deployed for each.
   selfPairs?: Array<{ key: string; symbols: { base: string; quote: string }; stable: boolean; manager: boolean }>;
+}
+
+/// GET /me/deposit-chain: where the customer's next note is credited and its tkCASH minted.
+export interface DepositChainInfo {
+  chain: NetworkKey;
+  chosen: NetworkKey | null;
+  options: NetworkKey[];
 }
 
 export interface NetworksResponse {

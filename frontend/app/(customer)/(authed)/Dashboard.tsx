@@ -5,7 +5,8 @@ import Link from "next/link";
 import type { CashReceipts, CashReceiptsAll, Deposit, LiveEvent, Me } from "@/lib/types";
 import { useLiveEvents } from "@/lib/useLiveEvents";
 import { useRouter } from "next/navigation";
-import { apy, cash, chainName, shortHex, timeAgo, tokenUrl, txUrl, usd, without } from "@/lib/format";
+import { addressUrl, apy, cash, chainName, shortHex, timeAgo, tokenUrl, txUrl, usd, without } from "@/lib/format";
+import { useNetwork } from "@/components/NetworkProvider";
 import { RollingNumber } from "@/components/RollingNumber";
 import { TreasureStage } from "@/components/treasure/TreasureStage";
 import { useStageDirector } from "@/components/treasure/useStageDirector";
@@ -31,15 +32,25 @@ export function Dashboard({
   const [tkBalances, setTkBalances] = useState<Record<string, number>>(
     Object.fromEntries((receipts?.chains ?? (receipts ? [receipts] : [])).map((c) => [c.chain ?? "sepolia", c.configured ? c.balance : 0])),
   );
-  // The box holds a balance on each chain; the headline is their total.
+  // The box holds a balance on each chain; the headline is the one for the network picked in the
+  // top bar (their total if the switch isn't available).
+  const network = useNetwork();
+  const selected = network?.view ?? null;
+  const selectedName = network?.networks.networks.find((n) => n.key === selected)?.name ?? "";
+  const hasBox = !selected || me.balances.some((b) => b.chain === selected);
   const [balances, setBalances] = useState<Record<string, number>>(Object.fromEntries(me.balances.map((b) => [b.chain, b.balance])));
-  const balance = Object.values(balances).reduce((s, n) => s + n, 0);
+  const balance = selected ? balances[selected] ?? 0 : Object.values(balances).reduce((s, n) => s + n, 0);
+  const startBalance = selected ? me.balances.find((b) => b.chain === selected)?.balance ?? 0 : me.balance;
+  const apyHere = me.balances.find((b) => b.chain === selected)?.apyBps ?? me.apyBps;
   const [deposits, setDeposits] = useState(initialDeposits);
+  // A note still landing has no chain yet, so it shows whichever network is picked.
+  const shownDeposits = deposits.filter((d) => !selected || !d.chain || d.chain === selected);
+  const receiptList = (receipts?.chains ?? (receipts ? [receipts] : [])).filter((r) => !selected || (r.chain ?? "sepolia") === selected);
   const [pending, setPending] = useState<Record<string, Pending>>({});
   const [fresh, setFresh] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const { stage, deposit } = useStageDirector(
-    me.balance > 0 ? `${GREETING} Your box holds ${usd(me.balance)}.` : `${GREETING} Insert a note at the kiosk and watch it land here.`,
+    startBalance > 0 ? `${GREETING} Your box holds ${usd(startBalance)}.` : `${GREETING} Insert a note at the kiosk and watch it land here.`,
   );
 
   const upsert = useCallback((d: Partial<Deposit> & { id: string }) => {
@@ -126,7 +137,7 @@ export function Dashboard({
       />
       <section className="lacquer-card" aria-live="polite">
         <div className="spread">
-          <span className="label">Your treasure box</span>
+          <span className="label">Your treasure box{selectedName ? ` · ${selectedName}` : ""}</span>
           <span className={`pill ${live === "live" ? "ok" : "warn"}`}>{live === "live" ? "Live" : live === "polling" ? "Reconnecting" : "Connecting"}</span>
         </div>
         <RollingNumber value={balance} className="balance" />
@@ -142,9 +153,20 @@ export function Dashboard({
           ))}
         </ul>
         <p className="small" style={{ marginTop: 10, marginBottom: 0, color: "rgba(244,233,218,.8)" }}>
-          Earning {apy(me.apyBps)} APY in the Takarabako vault
+          Earning {apy(apyHere)} APY in the Takarabako vault
           {me.balances.length > 1 && <> · <Link href="/bridge">Move USDC between chains →</Link></>}
         </p>
+        {network?.depositChain && (
+          <p className="small" style={{ marginTop: 6, marginBottom: 0, color: "rgba(244,233,218,.8)" }}>
+            {hasBox
+              ? network.depositChain === selected
+                ? `New notes mint tkCASH on ${selectedName}.`
+                : `New notes still mint tkCASH on ${chainName(network.depositChain)}: ${selectedName} can't take them right now.`
+              : selected === "arc"
+                ? <>{selectedName} has no treasure box, so new notes keep minting on {chainName(network.depositChain)}. <Link href="/yield">Sign with your own wallet →</Link></>
+                : `${selectedName} isn't set up yet, so new notes keep minting on ${chainName(network.depositChain)}.`}
+          </p>
+        )}
       </section>
 
       {pendingList.length > 0 && (
@@ -155,8 +177,12 @@ export function Dashboard({
       )}
       {failure && <div className="notice error">{failure}</div>}
 
-      {(receipts?.chains ?? (receipts ? [receipts] : [])).map(
-        (r) => r.configured && <CashReceiptsCard key={r.chain ?? "sepolia"} r={r} balance={tkBalances[r.chain ?? "sepolia"] ?? 0} />,
+      {receiptList.map((r) =>
+        r.configured ? (
+          <CashReceiptsCard key={r.chain ?? "sepolia"} r={r} balance={tkBalances[r.chain ?? "sepolia"] ?? 0} wallet={me.privyWallet} />
+        ) : r.unavailable ? (
+          <div key={r.chain} className="notice">Couldn&apos;t read your tkCASH on {chainName(r.chain)} right now. Reload in a moment.</div>
+        ) : null,
       )}
 
       {me.positions.length > 0 && (
@@ -193,13 +219,13 @@ export function Dashboard({
           <h2 style={{ margin: 0 }}>Deposits</h2>
           <Link href="/kiosks" className="small">Find a kiosk →</Link>
         </div>
-        {deposits.length === 0 ? (
+        {shownDeposits.length === 0 ? (
           <p className="muted" style={{ margin: "12px 0 0" }}>
-            No cash yet. Scan your QR at a Takarabako kiosk and insert a note — it will land here within a second.
+            No cash{selectedName ? ` on ${selectedName}` : ""} yet. Scan your QR at a Takarabako kiosk and insert a note — it will land here within a second.
           </p>
         ) : (
           <ul className="list">
-            {deposits.map((d) => (
+            {shownDeposits.map((d) => (
               <li key={d.id} className={fresh === d.id ? "fresh" : undefined}>
                 <div>
                   <div className="amount">{cash(d.amount, d.currency)}</div>
@@ -239,7 +265,7 @@ function DepositStatus({ d }: { d: Deposit }) {
 
 /// tkCASH: a token for the banknotes this customer put into the kiosk,
 /// with the proof that every token is backed by cash in the box.
-function CashReceiptsCard({ r, balance }: { r: Extract<CashReceipts, { configured: true }>; balance: number }) {
+function CashReceiptsCard({ r, balance, wallet }: { r: Extract<CashReceipts, { configured: true }>; balance: number; wallet: string }) {
   const chain = r.chain ?? "sepolia";
   return (
     <section className="card tk-card">
@@ -259,6 +285,11 @@ function CashReceiptsCard({ r, balance }: { r: Extract<CashReceipts, { configure
         {r.backed ? "✓" : "✗"} {usd(r.supply)} tkCASH issued · {usd(r.reserve)} of banknotes held in Takarabako kiosks · this kiosk{" "}
         <span className="mono">{r.kiosk.kioskId}</span>
         {r.kiosk.lastAuditAt ? ` · last counted ${timeAgo(new Date(r.kiosk.lastAuditAt * 1000).toISOString())}` : ""}
+      </p>
+      <p className="small muted" style={{ margin: "0 0 6px" }}>
+        Your wallet{" "}
+        <a href={addressUrl(wallet, chain)} target="_blank" rel="noreferrer" className="mono">{shortHex(wallet)}</a>
+        {" · "}to add tkCASH to a wallet app, import token <span className="mono">{r.contract}</span>
       </p>
       <a href={tokenUrl(r.contract, chain)} target="_blank" rel="noreferrer" className="small">
         View tkCASH on the {chainName(chain)} explorer →

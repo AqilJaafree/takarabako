@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { ChainKey, Me, MyWallet, ResolvedRecipient } from "@/lib/types";
 import { chainName, txUrl, shortHex, usd } from "@/lib/format";
 import { useWalletSend, type PreparedTx } from "@/lib/useWalletSend";
+import { useChainPick } from "@/components/NetworkProvider";
 
 type Asset = "balance" | "tkcash";
 
@@ -73,7 +74,7 @@ export function RecipientField({ value, onChange, resolved }: { value: string; o
 export function SendForm({ me, wallet }: { me: Me; wallet: MyWallet }) {
   const router = useRouter();
   const signAndSend = useWalletSend();
-  const [chain, setChain] = useState<ChainKey>(me.balances[0]?.chain ?? "sepolia");
+  const [chain, setChain] = useChainPick<ChainKey>(wallet.chains.map((c) => c.chain), me.balances[0]?.chain ?? "sepolia");
   const [asset, setAsset] = useState<Asset>("balance");
   const [to, setTo] = useState("");
   const [amount, setAmount] = useState("");

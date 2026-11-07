@@ -80,8 +80,40 @@ code,
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 20px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.net-select {
+  min-width: 0;
+  max-width: 200px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--cream);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+.net-select:focus-visible {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px var(--gold-soft);
+}
+
+.net-select option {
+  color: var(--cream);
+  background: var(--surface-2);
 }
 
 .brand {
@@ -4477,9 +4509,7 @@ body.chat-lock {
   }
 }
 
-/* Network switcher on the yield page */
-.net-tabs { grid-template-columns: repeat(3, 1fr); margin-bottom: 12px; }
-.net-tabs button { text-align: center; }
+/* The yield page's view of the network picked in the top bar */
 .net-panel { margin-bottom: 20px; }
 .net-notice { margin-bottom: 12px; }
 .net-panel summary { cursor: pointer; font-weight: 600; }

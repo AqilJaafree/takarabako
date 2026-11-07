@@ -41,16 +41,20 @@ export function createChainOps(cfg: ChainConfig) {
   const chainReady = Boolean(account && cfg.usdcAddress && cfg.vaultAddress);
   const treasuryAddress = account?.address;
 
+  // Public testnet RPCs rate-limit bursts and return the odd 502. viem's default backoff (150ms) is
+  // used up within a burst, so wait longer: 0.6s, 1.2s, 2.4s, 4.8s.
+  const transport = () => http(cfg.rpcUrl, { retryCount: 4, retryDelay: 600 });
+
   const publicClient = createPublicClient({
     chain: cfg.network.chain,
-    transport: http(cfg.rpcUrl),
+    transport: transport(),
   });
 
   const walletClient = account
     ? createWalletClient({
         account,
         chain: cfg.network.chain,
-        transport: http(cfg.rpcUrl),
+        transport: transport(),
       })
     : undefined;
 

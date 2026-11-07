@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import jsQR from "jsqr";
 import type { KioskLogin, LiveEvent, OpenedPosition, Pool, RiskTier, WithdrawResult } from "@/lib/types";
 import { useLiveEvents } from "@/lib/useLiveEvents";
-import { apy, cash, NETWORK_NAME, usd, without } from "@/lib/format";
+import { apy, cash, chainName, NETWORK_NAME, usd, without } from "@/lib/format";
 import { TreasureStage } from "@/components/treasure/TreasureStage";
 import { useStageDirector } from "@/components/treasure/useStageDirector";
 import { DepositFlow, type Refusal } from "./DepositFlow";
@@ -467,6 +467,11 @@ export function KioskApp({
               <span className="label">Depositing to</span>
               <div className="account-label">{session.label ?? "your box"}</div>
               <div className="balance">{usd(balance)}</div>
+              {session.depositChain && (
+                <p className="small" style={{ margin: "8px 0 0" }}>
+                  Minting tkCASH on <b>{chainName(session.depositChain)}</b>
+                </p>
+              )}
             </section>
             <div className="kiosk-status" role="status">
               <span className={`kiosk-status-item ${slot === "ready" ? "ok" : slot === "offline" ? "bad" : "idle"}`}>

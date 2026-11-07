@@ -72,7 +72,7 @@ export interface Deposit {
 
 /// GET /me/cash-receipts — the customer's tkCASH and its backing.
 export type CashReceipts =
-  | { configured: false; chain?: ChainKey }
+  | { configured: false; chain?: ChainKey; unavailable?: boolean }
   | {
       configured: true;
       chain?: ChainKey;
@@ -349,4 +349,5 @@ export interface KioskLogin {
   depositSessionId: string | null;
   limit: DailyLimit | null; // what's left of today's limit
   depositBlocked: string | null; // why a deposit couldn't start (e.g. today's limit is used)
+  depositChain: ChainKey | null; // where the notes are credited and tkCASH minted (null = couldn't be read)
 }

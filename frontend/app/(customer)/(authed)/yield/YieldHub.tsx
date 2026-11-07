@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ChainBalance, Market, PositionView, Preview, RiskTier, Shape } from "@/lib/types";
-import type { NetworkKey, NetworksResponse } from "@/lib/networks";
+import type { NetworksResponse } from "@/lib/networks";
 import { addressUrl, apy, usd } from "@/lib/format";
 import { aquaBalance } from "@/lib/boxes";
+import { useNetwork } from "@/components/NetworkProvider";
 import { TreasureStage } from "@/components/treasure/TreasureStage";
 import { useStageDirector } from "@/components/treasure/useStageDirector";
 import { RangeChart } from "./RangeChart";
@@ -33,14 +34,14 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return json as T;
 }
 
-/// The yield page. The switcher at the top describes any network read-only;
-/// the controls below it (open, close, give) only show for the network the
-/// backend runs on, because that is where positions really live.
+/// The yield page, for the network picked in the top bar. The box controls below (open, close) only
+/// show for the network the backend runs on, because that is where box positions really live.
 export function YieldHub({ networks, ...rest }: { networks: NetworksResponse; balance: number; market: Market; positions: PositionView[] }) {
-  const [view, setView] = useState<NetworkKey>(networks.active);
+  const selected = useNetwork();
+  const view = networks.networks.find((n) => n.key === selected?.view)?.key ?? networks.active;
   return (
     <>
-      <NetworkSwitcher networks={networks} view={view} onView={setView} market={rest.market} />
+      <NetworkSwitcher networks={networks} view={view} onView={(key) => selected?.setView(key)} market={rest.market} />
       {view === networks.active && <YieldHubBody {...rest} />}
     </>
   );

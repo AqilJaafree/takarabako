@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { BridgeQuote, BridgeState, BridgeTransfer, ChainKey, Me } from "@/lib/types";
 import { BRIDGE_CHAINS, chainName, shortHex, timeAgo, txUrl, usd } from "@/lib/format";
+import { useChainPick } from "@/components/NetworkProvider";
 
 async function call<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, body === undefined ? { cache: "no-store" } : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -25,7 +26,7 @@ const active = (t: BridgeTransfer) => t.state !== "credited" && t.state !== "fai
 export function BridgeForm({ me, initial }: { me: Me; initial: BridgeTransfer[] }) {
   const router = useRouter();
   const chains = me.balances.filter((b) => BRIDGE_CHAINS.includes(b.chain));
-  const [from, setFrom] = useState<ChainKey>(chains[0]?.chain ?? "sepolia");
+  const [from, setFrom] = useChainPick<ChainKey>(chains.map((c) => c.chain), chains[0]?.chain ?? "sepolia");
   const to: ChainKey = chains.find((c) => c.chain !== from)?.chain ?? (from === "sepolia" ? "arc-testnet" : "sepolia");
   const [amount, setAmount] = useState("");
   const [quote, setQuote] = useState<BridgeQuote | null>(null);

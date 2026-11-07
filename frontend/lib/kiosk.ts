@@ -1,7 +1,7 @@
 import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { BackendError, backendFetch, setSessionCookie } from "./backend";
-import type { DailyLimit, KioskLogin } from "./types";
+import type { ChainKey, DailyLimit, KioskLogin } from "./types";
 
 /// The Pi's bill-acceptor bridge (device-agent/server.js). After a kiosk
 /// login, this server — never the browser — hands it the session token, so
@@ -72,9 +72,12 @@ export async function kioskLoginResponse(req: NextRequest, login: BackendLogin) 
     },
   );
   const bridgeStatus = depositBlocked ? "skipped" : await bridgeStartSession(login);
+  // Only shown on the screen, so it must never stop a login.
+  const deposit = await backendFetch<{ chain: ChainKey; balance: number | null }>("/me/deposit-chain?balance=1", { token: login.token }).catch(() => null);
   const body: KioskLogin = {
     label: login.label,
-    balance: login.balance,
+    // The box on the chain the notes are going to, so it matches the label and each note's update.
+    balance: deposit?.balance ?? login.balance,
     scope: login.scope,
     expiresAt: login.expiresAt,
     qrFallback: login.qrFallback ?? null,
@@ -83,6 +86,7 @@ export async function kioskLoginResponse(req: NextRequest, login: BackendLogin) 
     depositSessionId: depositSession?.id ?? null,
     limit: login.limit ?? null,
     depositBlocked,
+    depositChain: deposit?.chain ?? null,
   };
   const res = NextResponse.json(body);
   setSessionCookie(res, req, "kiosk", login.token);

@@ -14,9 +14,9 @@ const ORIGIN: Record<string, string> = {
 
 const price = (n: number) => (n >= 100 ? Math.round(n).toLocaleString("en-US") : n.toFixed(2));
 
-/// Switches which network the yield page describes. It is a read-only view:
-/// real positions are opened and closed on the network the backend runs on
-/// (`networks.active`), so the controls below it only show for that one.
+/// What the yield page shows for the network picked in the top bar. Box positions are opened and
+/// closed on the network the backend runs on (`networks.active`), so their controls only show for
+/// that one; elsewhere this is the self-custody card, if offered, and a description of the network.
 export function NetworkSwitcher({
   networks,
   view,
@@ -35,15 +35,6 @@ export function NetworkSwitcher({
 
   return (
     <section className="net-switch" aria-label="Network">
-      <div className="yield-tabs net-tabs" role="tablist" aria-label="Network">
-        {networks.networks.map((n) => (
-          <button key={n.key} role="tab" aria-selected={view === n.key} className={view === n.key ? "is-on" : ""} onClick={() => onView(n.key)}>
-            {n.name}
-            <span className="muted small">{n.active ? "your box" : n.selfCustody ? "your wallet" : "view only"}</span>
-          </button>
-        ))}
-      </div>
-
       {/* Every network has the same structure as the one the backend runs on: the self-custody card (where
           the customer can sign with their own wallet), then the "How it works" box. A network the backend
           does not run on adds a notice saying where the customer's box and positions live. */}

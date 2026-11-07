@@ -10,10 +10,11 @@ export interface Account {
   boundAddress: string; // vault account (deriveBoundAddress in store.ts)
   label: string | null; // friendly handle shown in place of the address (labels.ts)
   qrEmailedAt: Date | null;
+  depositChain: string | null; // the network they picked: notes are credited and tkCASH minted there
 }
 
 const COLUMNS = `privy_user_id as "privyUserId", email, privy_wallet as "privyWallet",
-  bound_address as "boundAddress", label, qr_emailed_at as "qrEmailedAt"`;
+  bound_address as "boundAddress", label, qr_emailed_at as "qrEmailedAt", deposit_chain as "depositChain"`;
 
 export async function findByPrivyUserId(privyUserId: string): Promise<Account | null> {
   const { rows } = await pool.query(`select ${COLUMNS} from accounts where privy_user_id = $1`, [privyUserId]);
@@ -31,7 +32,11 @@ export async function findByWallet(wallet: string): Promise<Account | null> {
   return rows[0] ?? null;
 }
 
-export async function insertAccount(a: Omit<Account, "qrEmailedAt">): Promise<Account> {
+export async function setDepositChain(privyUserId: string, chain: CashChainKey) {
+  await pool.query("update accounts set deposit_chain = $2 where privy_user_id = $1", [privyUserId, chain]);
+}
+
+export async function insertAccount(a: Omit<Account, "qrEmailedAt" | "depositChain">): Promise<Account> {
   const { rows } = await pool.query(
     `insert into accounts (privy_user_id, email, privy_wallet, bound_address, label)
      values ($1, $2, $3, $4, $5) returning ${COLUMNS}`,
